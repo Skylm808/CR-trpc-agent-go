@@ -33,6 +33,22 @@ type Report struct {
 	CreatedAt time.Time
 }
 
+type DecisionRecord struct {
+	TaskID  string
+	Command string
+	Action  string
+	Reason  string
+	At      time.Time
+}
+
+type SandboxRunRecord struct {
+	TaskID  string
+	Command string
+	Status  string
+	Output  string
+	At      time.Time
+}
+
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -81,6 +97,22 @@ CREATE TABLE IF NOT EXISTS reports (
   task_id TEXT PRIMARY KEY,
   json_report BLOB NOT NULL,
   markdown_report BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS permission_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  command TEXT NOT NULL,
+  action TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sandbox_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  command TEXT NOT NULL,
+  status TEXT NOT NULL,
+  output TEXT,
   created_at TEXT NOT NULL
 );
 `)
@@ -187,6 +219,22 @@ SELECT json_report, markdown_report, created_at FROM reports WHERE task_id=?
 	}
 	rep.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	return rep, nil
+}
+
+func (s *Store) SaveDecision(ctx context.Context, rec DecisionRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO permission_decisions(task_id, command, action, reason, created_at)
+VALUES(?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Command, rec.Action, rec.Reason, rec.At.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) SaveSandboxRun(ctx context.Context, rec SandboxRunRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO sandbox_runs(task_id, command, status, output, created_at)
+VALUES(?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Command, rec.Status, rec.Output, rec.At.UTC().Format(time.RFC3339Nano))
+	return err
 }
 
 func nullableTime(t time.Time) any {

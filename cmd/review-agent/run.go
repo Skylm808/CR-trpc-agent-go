@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
@@ -33,9 +36,18 @@ func Run(opts Options) error {
 	if err := os.MkdirAll(opts.OutputDir, 0o755); err != nil {
 		return err
 	}
-	diffBytes, err := os.ReadFile(opts.DiffFile)
-	if err != nil {
-		return err
+	var diffBytes []byte
+	var err error
+	if opts.DiffFile != "" {
+		diffBytes, err = os.ReadFile(opts.DiffFile)
+		if err != nil {
+			return err
+		}
+	} else {
+		diffBytes, err = diffFromRepo(opts.RepoPath)
+		if err != nil {
+			return err
+		}
 	}
 	result, err := review.BuildReport(string(diffBytes))
 	if err != nil {
@@ -70,8 +82,8 @@ func Run(opts Options) error {
 		task := sqlite.Task{
 			ID:         "task-1",
 			InputType:  "diff",
-			InputRef:   opts.DiffFile,
-			InputDigest:"",
+			InputRef:   firstNonEmpty(opts.DiffFile, opts.RepoPath),
+			InputDigest: fmt.Sprintf("%x", time.Now().UnixNano()),
 			RepoPath:   opts.RepoPath,
 			Status:     "done",
 			Mode:       opts.Mode,
@@ -89,4 +101,50 @@ func Run(opts Options) error {
 		}
 	}
 	return nil
+}
+
+func diffFromRepo(repoPath string) ([]byte, error) {
+	if repoPath == "" {
+		return nil, errors.New("repo path is required")
+	}
+	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
+		cmd := exec.Command("git", "-C", repoPath, "diff", "--unified=3")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("git diff: %w: %s", err, string(out))
+		}
+		return out, nil
+	}
+	var b strings.Builder
+	entries, err := os.ReadDir(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(repoPath, entry.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(&b, "diff --git a/%s b/%s\n", entry.Name(), entry.Name())
+		fmt.Fprintf(&b, "--- a/%s\n+++ b/%s\n", entry.Name(), entry.Name())
+		fmt.Fprintf(&b, "@@ -1,0 +1,%d @@\n", len(strings.Split(string(content), "\n")))
+		b.Write(content)
+		if !strings.HasSuffix(b.String(), "\n") {
+			b.WriteString("\n")
+		}
+	}
+	return []byte(b.String()), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

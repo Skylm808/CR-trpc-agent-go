@@ -66,5 +66,23 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	if string(report.JSON) != `{"ok":true}` {
 		t.Fatalf("unexpected report json: %s", string(report.JSON))
 	}
-}
 
+	if err := store.SaveDecision(context.Background(), DecisionRecord{
+		TaskID: "task-1",
+		Command: "go test ./...",
+		Action: "allow",
+		Reason: "ok",
+		At: now,
+	}); err != nil {
+		t.Fatalf("SaveDecision returned error: %v", err)
+	}
+	if err := store.SaveSandboxRun(context.Background(), SandboxRunRecord{
+		TaskID: "task-1",
+		Command: "go test ./...",
+		Status: "ok",
+		Output: "PASS",
+		At: now,
+	}); err != nil {
+		t.Fatalf("SaveSandboxRun returned error: %v", err)
+	}
+}
