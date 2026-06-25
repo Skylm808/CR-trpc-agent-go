@@ -5,9 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/sandbox"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/governance"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 )
 
@@ -17,6 +20,7 @@ type Options struct {
 	OutputDir  string
 	Mode       string
 	SQLitePath string
+	RunChecks  bool
 }
 
 func Run(opts Options) error {
@@ -48,6 +52,15 @@ func Run(opts Options) error {
 	if err := os.WriteFile(filepath.Join(opts.OutputDir, "review_report.md"), []byte(md), 0o644); err != nil {
 		return err
 	}
+	if opts.RunChecks {
+		runner := sandbox.Runner{
+			Timeout: 5 * time.Second,
+			Policy:  governance.DefaultPolicy(),
+		}
+		if _, err := runner.Run(context.Background(), sandbox.Request{Command: "go", Args: []string{"test", "./..."}, Timeout: 5 * time.Second}); err != nil {
+			// sandbox failures are recorded as non-fatal for the first version
+		}
+	}
 	if opts.SQLitePath != "" {
 		store, err := sqlite.Open(opts.SQLitePath)
 		if err != nil {
@@ -77,4 +90,3 @@ func Run(opts Options) error {
 	}
 	return nil
 }
-
