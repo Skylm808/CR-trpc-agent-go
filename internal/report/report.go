@@ -21,6 +21,16 @@ func BuildMarkdown(result review.Result) string {
 		b.WriteString(result.Summary)
 		b.WriteString("\n\n")
 	}
+	if result.Metrics.FindingCount > 0 || result.Metrics.TotalDurationMS > 0 {
+		fmt.Fprintf(&b, "Metrics: findings=%d total_ms=%d sandbox_ms=%d tool_calls=%d permission_blocks=%d redactions=%d\n\n",
+			result.Metrics.FindingCount,
+			result.Metrics.TotalDurationMS,
+			result.Metrics.SandboxDurationMS,
+			result.Metrics.ToolCallCount,
+			result.Metrics.PermissionBlocks,
+			result.Metrics.RedactionCount,
+		)
+	}
 	fmt.Fprintf(&b, "Findings: %d\n\n", len(findings))
 	for _, f := range findings {
 		fmt.Fprintf(&b, "- [%s] %s:%d %s\n", strings.ToUpper(f.Severity), f.File, f.Line, f.Title)
@@ -33,4 +43,3 @@ func BuildMarkdown(result review.Result) string {
 	}
 	return b.String()
 }
-

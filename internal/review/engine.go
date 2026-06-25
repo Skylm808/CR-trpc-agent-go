@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type Analysis struct {
@@ -16,6 +17,7 @@ type Analysis struct {
 }
 
 func AnalyzeDiff(input string) (Result, error) {
+	start := time.Now()
 	parsed, err := ParseUnifiedDiff(input)
 	if err != nil {
 		return Result{}, err
@@ -23,9 +25,22 @@ func AnalyzeDiff(input string) (Result, error) {
 	analysis := runRules(parsed)
 	findings := DedupeFindings(analysis.Findings)
 	warnings := DedupeFindings(analysis.Warnings)
+	metrics := Metrics{
+		TotalDurationMS: int64(time.Since(start).Milliseconds()),
+		FindingCount:    len(findings),
+		SeverityCounts:  map[string]int{},
+		ExceptionCounts: map[string]int{},
+	}
+	for _, f := range findings {
+		metrics.SeverityCounts[f.Severity]++
+	}
+	for _, w := range warnings {
+		metrics.SeverityCounts[w.Severity]++
+	}
 	return Result{
 		Findings: findings,
 		Warnings: warnings,
+		Metrics:  metrics,
 		Summary:   fmt.Sprintf("%d findings, %d warnings", len(findings), len(warnings)),
 	}, nil
 }

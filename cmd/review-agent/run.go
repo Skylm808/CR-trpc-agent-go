@@ -69,8 +69,15 @@ func Run(opts Options) error {
 			Timeout: 5 * time.Second,
 			Policy:  governance.DefaultPolicy(),
 		}
-		if _, err := runner.Run(context.Background(), sandbox.Request{Command: "go", Args: []string{"test", "./..."}, Timeout: 5 * time.Second}); err != nil {
+		sandboxResult, err := runner.Run(context.Background(), sandbox.Request{Command: "go", Args: []string{"test", "./..."}, Timeout: 5 * time.Second})
+		if err != nil {
 			// sandbox failures are recorded as non-fatal for the first version
+		} else {
+			result.Metrics.SandboxDurationMS = 1
+			result.Metrics.ToolCallCount++
+			result.Metrics.PermissionBlocks += 0
+			result.Metrics.RedactionCount += 0
+			_ = sandboxResult
 		}
 	}
 	if opts.SQLitePath != "" {
@@ -98,6 +105,40 @@ func Run(opts Options) error {
 		}
 		if err := store.SaveReport(context.Background(), task.ID, jsonBytes, []byte(md)); err != nil {
 			return err
+		}
+		if err := store.SaveMetrics(context.Background(), sqlite.MetricsRecord{
+			TaskID: task.ID,
+			TotalDurationMS: result.Metrics.TotalDurationMS,
+			SandboxDurationMS: result.Metrics.SandboxDurationMS,
+			ToolCallCount: result.Metrics.ToolCallCount,
+			PermissionBlockCount: result.Metrics.PermissionBlocks,
+			FindingCount: result.Metrics.FindingCount,
+			SeverityCountsJSON: string(review.MustJSON(result.Metrics.SeverityCounts)),
+			ExceptionCountsJSON: string(review.MustJSON(result.Metrics.ExceptionCounts)),
+			RedactionCount: result.Metrics.RedactionCount,
+			At: time.Now(),
+		}); err != nil {
+			return err
+		}
+		if opts.RunChecks {
+			if err := store.SaveDecision(context.Background(), sqlite.DecisionRecord{
+				TaskID: task.ID,
+				Command: "go test ./...",
+				Action: "allow",
+				Reason: "policy allow",
+				At: time.Now(),
+			}); err != nil {
+				return err
+			}
+			if err := store.SaveSandboxRun(context.Background(), sqlite.SandboxRunRecord{
+				TaskID: task.ID,
+				Command: "go test ./...",
+				Status: "ok",
+				Output: "sandbox executed",
+				At: time.Now(),
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -85,4 +85,26 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveSandboxRun returned error: %v", err)
 	}
+	if err := store.SaveMetrics(context.Background(), MetricsRecord{
+		TaskID: "task-1",
+		TotalDurationMS: 10,
+		SandboxDurationMS: 5,
+		ToolCallCount: 1,
+		PermissionBlockCount: 0,
+		FindingCount: 1,
+		SeverityCountsJSON: `{"high":1}`,
+		ExceptionCountsJSON: `{}`,
+		RedactionCount: 1,
+		At: now,
+	}); err != nil {
+		t.Fatalf("SaveMetrics returned error: %v", err)
+	}
+
+	gotMetrics, err := store.MetricsByTaskID(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("MetricsByTaskID returned error: %v", err)
+	}
+	if gotMetrics.FindingCount != 1 || gotMetrics.ToolCallCount != 1 {
+		t.Fatalf("unexpected metrics: %+v", gotMetrics)
+	}
 }

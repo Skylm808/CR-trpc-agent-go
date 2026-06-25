@@ -49,6 +49,32 @@ type SandboxRunRecord struct {
 	At      time.Time
 }
 
+type MetricsRecord struct {
+	TaskID              string
+	TotalDurationMS     int64
+	SandboxDurationMS   int64
+	ToolCallCount       int
+	PermissionBlockCount int
+	FindingCount        int
+	SeverityCountsJSON  string
+	ExceptionCountsJSON  string
+	RedactionCount      int
+	At                  time.Time
+}
+
+type MetricsSummary struct {
+	TaskID string
+	TotalDurationMS int64
+	SandboxDurationMS int64
+	ToolCallCount int
+	PermissionBlockCount int
+	FindingCount int
+	SeverityCountsJSON string
+	ExceptionCountsJSON string
+	RedactionCount int
+	At time.Time
+}
+
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -113,6 +139,18 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
   command TEXT NOT NULL,
   status TEXT NOT NULL,
   output TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metrics (
+  task_id TEXT PRIMARY KEY,
+  total_duration_ms INTEGER NOT NULL,
+  sandbox_duration_ms INTEGER NOT NULL,
+  tool_call_count INTEGER NOT NULL,
+  permission_block_count INTEGER NOT NULL,
+  finding_count INTEGER NOT NULL,
+  severity_counts_json TEXT NOT NULL,
+  exception_counts_json TEXT NOT NULL,
+  redaction_count INTEGER NOT NULL,
   created_at TEXT NOT NULL
 );
 `)
@@ -235,6 +273,38 @@ INSERT INTO sandbox_runs(task_id, command, status, output, created_at)
 VALUES(?, ?, ?, ?, ?)
 `, rec.TaskID, rec.Command, rec.Status, rec.Output, rec.At.UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+func (s *Store) SaveMetrics(ctx context.Context, rec MetricsRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET
+total_duration_ms=excluded.total_duration_ms,
+sandbox_duration_ms=excluded.sandbox_duration_ms,
+tool_call_count=excluded.tool_call_count,
+permission_block_count=excluded.permission_block_count,
+finding_count=excluded.finding_count,
+severity_counts_json=excluded.severity_counts_json,
+exception_counts_json=excluded.exception_counts_json,
+redaction_count=excluded.redaction_count,
+created_at=excluded.created_at
+`, rec.TaskID, rec.TotalDurationMS, rec.SandboxDurationMS, rec.ToolCallCount, rec.PermissionBlockCount, rec.FindingCount, rec.SeverityCountsJSON, rec.ExceptionCountsJSON, rec.RedactionCount, rec.At.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) MetricsByTaskID(ctx context.Context, taskID string) (MetricsSummary, error) {
+	var out MetricsSummary
+	var createdAt string
+	err := s.db.QueryRowContext(ctx, `
+SELECT task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at
+FROM metrics WHERE task_id=?
+`, taskID).Scan(&out.TaskID, &out.TotalDurationMS, &out.SandboxDurationMS, &out.ToolCallCount, &out.PermissionBlockCount, &out.FindingCount, &out.SeverityCountsJSON, &out.ExceptionCountsJSON, &out.RedactionCount, &createdAt)
+	if err != nil {
+		return MetricsSummary{}, err
+	}
+	out.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+	return out, nil
 }
 
 func nullableTime(t time.Time) any {
