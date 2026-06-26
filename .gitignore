@@ -1,0 +1,9 @@
+review_report.json
+review_report.md
+*.db
+*.sqlite
+*.sqlite3
+coverage.out
+dist/
+bin/
+tmp/
