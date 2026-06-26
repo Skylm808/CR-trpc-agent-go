@@ -118,6 +118,40 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	}
 }
 
+// TestAgentRunAcceptsFixtureInput 固定 fixture 输入契约，避免 CLI 自己解析
+// fixture 后绕过 Agent 编排。
+func TestAgentRunAcceptsFixtureInput(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeLocalFallback,
+		OutputDir:    outDir,
+		Timeout:      5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		Fixture: "secret.diff",
+		Mode:    ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.Findings) == 0 || result.Findings[0].RuleID != "secret-leak" {
+		t.Fatalf("expected fixture secret finding, got %+v", result.Findings)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "review_report.json")); err != nil {
+		t.Fatalf("expected json report: %v", err)
+	}
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()

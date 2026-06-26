@@ -76,6 +76,28 @@ func TestAllFixturesMatchExpectedReviewResults(t *testing.T) {
 	}
 }
 
+func TestRunCanUseFixtureName(t *testing.T) {
+	out := t.TempDir()
+	if err := Run(Options{
+		Fixture:      "secret.diff",
+		FixturesRoot: filepath.Join("..", "..", "testdata", "fixtures"),
+		OutputDir:    out,
+		Mode:         cragent.ModeRuleOnly,
+		Runtime:      cragent.RuntimeLocalFallback,
+		SkillsRoot:   filepath.Join("..", "..", "skills"),
+	}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	jsonPath := filepath.Join(out, "review_report.json")
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("read report json: %v", err)
+	}
+	if !strings.Contains(string(data), "secret-leak") {
+		t.Fatalf("expected fixture report to include secret finding, got %s", data)
+	}
+}
+
 func runFixture(t *testing.T, root, name string) reportData {
 	t.Helper()
 	out := t.TempDir()

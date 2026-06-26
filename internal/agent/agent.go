@@ -53,14 +53,16 @@ type Config struct {
 	Runtime          string
 	SQLitePath       string
 	OutputDir        string
+	FixturesRoot     string
 	Timeout          time.Duration
 	OutputLimitBytes int
 }
 
-// Request 描述一次审查输入；DiffFile、RepoPath 至少需要提供一个。
+// Request 描述一次审查输入；DiffFile、RepoPath、Fixture 至少需要提供一个。
 type Request struct {
 	DiffFile string
 	RepoPath string
+	Fixture  string
 	Mode     string
 }
 
@@ -133,7 +135,7 @@ func New(cfg Config) (*Agent, error) {
 // Run 执行一次完整审查：采集输入、加载 Skill、权限判定、执行脚本、生成报告并落库。
 func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	start := time.Now()
-	diff, inputRef, err := readInput(req)
+	diff, inputRef, err := readInput(a.cfg, req)
 	if err != nil {
 		return review.Result{}, err
 	}
@@ -455,16 +457,33 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 }
 
 // readInput 读取 diff 文件或从 repo path 生成统一 diff。
-func readInput(req Request) ([]byte, string, error) {
+func readInput(cfg Config, req Request) ([]byte, string, error) {
 	if req.DiffFile != "" {
 		b, err := os.ReadFile(req.DiffFile)
 		return b, req.DiffFile, err
+	}
+	if req.Fixture != "" {
+		return readFixtureInput(cfg.FixturesRoot, req.Fixture)
 	}
 	if req.RepoPath != "" {
 		b, err := diffFromRepo(req.RepoPath)
 		return b, req.RepoPath, err
 	}
-	return nil, "", errors.New("diff file or repo path is required")
+	return nil, "", errors.New("diff file, repo path, or fixture is required")
+}
+
+// readFixtureInput 从受控 fixture 根目录读取 diff 样本。
+func readFixtureInput(root string, name string) ([]byte, string, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, "", errors.New("fixtures root is required")
+	}
+	cleanName := filepath.Clean(strings.TrimSpace(name))
+	if cleanName == "." || filepath.IsAbs(cleanName) || strings.HasPrefix(cleanName, "..") {
+		return nil, "", fmt.Errorf("invalid fixture name %q", name)
+	}
+	path := filepath.Join(root, cleanName)
+	b, err := os.ReadFile(path)
+	return b, path, err
 }
 
 // diffFromRepo 统一在 Agent 层采集工作区变更，保证 CLI 不绕过审查编排。
