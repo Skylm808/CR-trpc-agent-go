@@ -8,7 +8,7 @@
 目标：
 1. 保持官方 trpc-agent-go 为主线：tool/skill 加载并运行 skills/code-review，tool.PermissionPolicy 决策所有高风险命令，codeexecutor/container 是默认 runtime，local-fallback 只能显式用于开发和测试。
 2. 补齐真实沙箱和治理验证：增加 container runtime integration test（默认跳过，设置环境变量才跑 Docker），补 Agent 层 ask/deny/needs_human_review 不进入 executor 的测试，确保 go test/go vet/staticcheck 都有 permission decision 和 sandbox run。
-3. 补齐数据库和安全验收：按 task_id 可查询 task、permission/filter decision、sandbox run、finding、artifact、metrics、report；增加 DB 全表 secret 扫描测试，确保报告和数据库不出现明文 API key/token/password。
+3. 补齐数据库和安全验收：按 task_id 可查询 task、permission/filter decision、sandbox run、finding/warning/human review item、artifact、metrics、report；保持 DB 全表 secret 扫描测试，确保报告和数据库不出现明文 API key/token/password。
 4. 补齐评测和交付：新增 hidden/eval 或公开 fixture eval 脚本，输出 recall、precision、耗时；保持 examples/review_report.json 和 examples/review_report.md 可生成；更新 README 和 docs。
 5. 保持 deterministic rule-only / dry-run / fake-model 在无真实模型 API Key 时可完整跑通，单次流程耗时 <= 2 分钟。
 
@@ -45,5 +45,5 @@
 如果你只想让 Goal 模式做一个最小安全推进，可以把目标缩短为：
 
 ```text
-继续 CR-trpc-agent-go 的 trpc-agent-go framework-first MVP，只做三件事：补 container integration test（env gated）、补 permission non-allow Agent E2E、补 DB 全表 secret 扫描测试。不得重写架构，不得绕过 tool/skill、PermissionPolicy 或 codeexecutor/container。完成后运行 go test ./...，更新 docs，并按 conventional commit + Lore trailers 提交。
+继续 CR-trpc-agent-go 的 trpc-agent-go framework-first MVP，只做两件事：补 container integration test（env gated）、补 permission non-allow Agent E2E。不得重写架构，不得绕过 tool/skill、PermissionPolicy 或 codeexecutor/container。完成后运行 go test ./...，更新 docs，并按 conventional commit + Lore trailers 提交。
 ```

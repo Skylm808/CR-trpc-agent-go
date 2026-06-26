@@ -11,9 +11,9 @@
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | ask/deny Agent E2E 待补 |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go` | 🔶 | 文件路径列表、base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
-| 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | warnings 持久化语义待定 |
+| 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
-| 8 | 安全边界 | Agent timeout/output limit/digest/redaction | sandbox failure/timeout tests | 🔶 | artifact cap、env 强白名单、DB 全表 secret 扫描待补 |
+| 8 | 安全边界 | Agent timeout/output limit/digest/redaction | sandbox failure/timeout tests + DB secret scan | 🔶 | artifact cap、env 强白名单、更多 secret 样本待补 |
 | 9 | 监控审计 | metrics 表 + report metrics | report/agent/sqlite tests | 🔶 | 官方 telemetry hook 待接 |
 
 ## 输入输出要求追踪
@@ -57,9 +57,9 @@
 |---|---------|------|---------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` | — |
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 待建 eval | 缺 hidden/eval |
-| 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | warnings 是否入库需明确 |
+| 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container 真实 E2E 待补 |
-| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion | 需 DB 全表扫描与更多 secret 样本 |
+| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | 🔶 | `policy_test.go` | Agent ask/deny E2E 待补 |
 | 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议 | ✅ | `report_test.go`、`agent_test.go` | 可补 conclusion |
@@ -82,10 +82,9 @@
 
 1. 增加 Docker container runtime E2E，默认 skip，显式环境变量运行。
 2. 增加 Agent ask/deny/needs_human_review 不进入 executor 的测试。
-3. 增加 DB 全表 secret 扫描测试。
-4. 抽出 `internal/storage/store.go`。
-5. 增加 hidden/eval 评测脚本。
-6. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+3. 抽出 `internal/storage/store.go`。
+4. 增加 hidden/eval 评测脚本。
+5. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
 
 ## 相关文档
 

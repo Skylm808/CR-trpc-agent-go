@@ -588,7 +588,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
-	for _, finding := range result.Findings {
+	for _, finding := range persistedReviewItems(result) {
 		if err := a.store.SaveFinding(ctx, taskID, finding); err != nil {
 			return err
 		}
@@ -626,6 +626,16 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		}
 	}
 	return a.store.SaveReport(ctx, taskID, jsonReport, markdownReport)
+}
+
+// persistedReviewItems 返回需要进入 SQLite 回放链路的结构化审查项。
+func persistedReviewItems(result review.Result) []review.Finding {
+	// findings 和 warnings 共用同一张表，通过 status 区分高置信问题和低置信复核项。
+	items := make([]review.Finding, 0, len(result.Findings)+len(result.Warnings)+len(result.HumanReviewItems))
+	items = append(items, result.Findings...)
+	items = append(items, result.Warnings...)
+	items = append(items, result.HumanReviewItems...)
+	return review.DedupeFindings(items)
 }
 
 // readInput 读取 diff 文件或从 repo path 生成统一 diff。

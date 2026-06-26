@@ -102,7 +102,7 @@
 | `dedupe_key` | ✅ `file + line + category + rule_id` |
 | `status` | ✅ `finding` / `warning` / `needs_human_review` |
 
-当前 SQLite 只写入 `result.Findings`。`warnings` 和 `human_review_items` 会进入报告 JSON/Markdown，但是否写入 findings 表需要后续明确。
+当前 SQLite 会把 `result.Findings`、`result.Warnings` 和 `result.HumanReviewItems` 都写入 `findings` 表，并通过 `status` 区分 `finding`、`warning`、`needs_human_review`。这样报告和数据库回放使用同一份结构化 review item 数据。
 
 ## Artifact
 
@@ -162,7 +162,7 @@
 3. Permission 非 allow 决策必须落库，即使命令未执行。
 4. sandbox 失败或超时必须落库，不能导致 review 整体失败。
 5. evidence、report、stdout/stderr 明文进入存储前必须脱敏或摘要化。
-6. 按 `task_id` 必须能查询 task、findings、report、decisions、filter decisions、sandbox runs、artifacts、metrics。
+6. 按 `task_id` 必须能查询 task、findings/warnings、report、decisions、filter decisions、sandbox runs、artifacts、metrics。
 
 ## Store Interface
 

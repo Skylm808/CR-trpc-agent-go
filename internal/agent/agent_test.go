@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,99 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if len(artifacts) < 2 || artifacts[0].Name == "" {
 		t.Fatalf("expected report artifacts, got %+v", artifacts)
 	}
+}
+
+// TestAgentRunDoesNotPersistRawSecretsInSQLite 扫描所有 SQLite 文本列和 BLOB 列，
+// 固定验收标准：报告和数据库中不能出现明文 API key、token 或 password。
+func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeLocalFallback,
+		SQLitePath:   dbPath,
+		OutputDir:    t.TempDir(),
+		Timeout:      5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	if _, err := ag.Run(context.Background(), Request{
+		Fixture: "secret.diff",
+		Mode:    ModeRuleOnly,
+	}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite directly: %v", err)
+	}
+	defer db.Close()
+
+	leaks, err := scanSQLiteForRawSecrets(context.Background(), db, []string{
+		"sk-1234567890abcdef",
+	})
+	if err != nil {
+		t.Fatalf("scan sqlite: %v", err)
+	}
+	if len(leaks) > 0 {
+		t.Fatalf("sqlite persisted raw secrets: %s", strings.Join(leaks, ", "))
+	}
+}
+
+// TestAgentRunPersistsWarningsForReplay 固定数据库回放契约：低置信度 warning
+// 不能只存在于报告 JSON 中，也要作为结构化 review item 可按 task_id 查询。
+func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeLocalFallback,
+		SQLitePath:   dbPath,
+		OutputDir:    t.TempDir(),
+		Timeout:      5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		Fixture: "test-missing.diff",
+		Mode:    ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatalf("expected fixture to produce warning")
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	items, err := store.FindingsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load review items: %v", err)
+	}
+	for _, item := range items {
+		if item.RuleID == "missing-test-hint" && item.Status == "warning" {
+			return
+		}
+	}
+	t.Fatalf("expected warning to be persisted for replay, got %+v", items)
 }
 
 // TestAgentRunAcceptsFixtureInput 固定 fixture 输入契约，避免 CLI 自己解析
@@ -522,4 +616,103 @@ func assertAnyRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, comman
 		}
 	}
 	t.Fatalf("expected sandbox run for %q, got %+v", command, runs)
+}
+
+// scanSQLiteForRawSecrets 遍历用户表中的 TEXT/BLOB 列，返回命中的表列和值片段。
+func scanSQLiteForRawSecrets(ctx context.Context, db *sql.DB, secrets []string) ([]string, error) {
+	tables, err := sqliteTableNames(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	var leaks []string
+	for _, table := range tables {
+		columns, err := sqliteTextColumns(ctx, db, table)
+		if err != nil {
+			return nil, err
+		}
+		for _, column := range columns {
+			values, err := sqliteColumnValues(ctx, db, table, column)
+			if err != nil {
+				return nil, err
+			}
+			for _, value := range values {
+				for _, secret := range secrets {
+					if strings.Contains(value, secret) {
+						leaks = append(leaks, table+"."+column+" contains "+secret)
+					}
+				}
+			}
+		}
+	}
+	return leaks, nil
+}
+
+// sqliteTableNames 返回应用创建的 SQLite 用户表名。
+func sqliteTableNames(ctx context.Context, db *sql.DB) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT name FROM sqlite_schema
+WHERE type='table' AND name NOT LIKE 'sqlite_%'
+ORDER BY name
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, err
+		}
+		tables = append(tables, table)
+	}
+	return tables, rows.Err()
+}
+
+// sqliteTextColumns 返回需要检查明文泄漏的 TEXT/BLOB 列。
+func sqliteTextColumns(ctx context.Context, db *sql.DB, table string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var columns []string
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, err
+		}
+		upperType := strings.ToUpper(columnType)
+		if strings.Contains(upperType, "TEXT") || strings.Contains(upperType, "BLOB") {
+			columns = append(columns, name)
+		}
+	}
+	return columns, rows.Err()
+}
+
+// sqliteColumnValues 读取指定列的所有非空值，用于测试侧全表扫描。
+func sqliteColumnValues(ctx context.Context, db *sql.DB, table string, column string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var values []string
+	for rows.Next() {
+		var value sql.NullString
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		if value.Valid {
+			values = append(values, value.String)
+		}
+	}
+	return values, rows.Err()
 }

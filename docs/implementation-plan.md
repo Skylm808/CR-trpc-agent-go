@@ -53,18 +53,18 @@ M5  验收交付与评测                         ⬜
 | SQLite 记录 permission_decisions | ✅ | 增加 policy_name 字段可选 |
 | SQLite 记录 filter_decisions | ✅ | 扩展非 secret filter |
 | SQLite 记录 sandbox_runs | ✅ | 增加 artifact_count / finished_at |
-| SQLite 记录 findings | ✅ | 当前只持久化 findings，不持久化 warnings |
+| SQLite 记录 findings/warnings/human review items | ✅ | 统一写入 `findings` 表，用 `status` 区分 |
 | SQLite 记录 artifacts | ✅ | 当前是报告产物记录，未接官方 artifact service |
 | SQLite 记录 metrics | ✅ | 后续接官方 telemetry hook |
 | SQLite 记录 reports | ✅ | — |
-| 按 task_id 查询全部核心实体 | ✅ | warnings 查询需补 |
+| 按 task_id 查询全部核心实体 | ✅ | — |
 | 报告含 governance/sandbox/human review/artifacts | ✅ | 补 conclusion 字段 |
 
 建议后续小改：
 
 1. 将 `Store` interface 从 `internal/agent` 抽到 `internal/storage/store.go`。
-2. 明确 warnings 是否也写入 `findings` 表，或者新增 `review_items` 表。
-3. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
+2. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
+3. 增加 report conclusion 字段，便于 CI 汇总。
 
 ## M4：真实沙箱、治理与遥测增强 🔶
 
@@ -101,9 +101,9 @@ M5  验收交付与评测                         ⬜
 |---|------|----------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | — |
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺 hidden/eval 脚本 |
-| 3 | DB 完整记录 task/sandbox/finding/report，按 task_id 查询 | 🔶 | warnings 持久化语义需明确 |
+| 3 | DB 完整记录 task/sandbox/finding/report，按 task_id 查询 | ✅ | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ local fallback 已测 | container 真实超时需测 |
-| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | 需更强 secret fixture 和 DB 全表扫描测试 |
+| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | DB 全表扫描已有；仍需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | — |
 | 7 | 高风险命令须先过 Filter/Permission | 🔶 | ask/deny Agent E2E 待补 |
 | 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 可补 conclusion |
@@ -112,10 +112,9 @@ M5  验收交付与评测                         ⬜
 
 1. 写 container integration test，默认跳过，显式环境变量才跑 Docker。
 2. 补 Agent 层 ask/deny/needs_human_review 不执行 executor 的测试。
-3. 增加 DB 全表 secret 扫描测试，确保报告和数据库都不泄漏明文。
-4. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
-5. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
-6. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
+3. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
+4. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
+5. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 
 ## Definition of Done
 
@@ -125,7 +124,7 @@ M5  验收交付与评测                         ⬜
 - [x] 沙箱失败、超时不崩溃 review，且写入 DB。
 - [x] 报告和 finding evidence 中不出现明文 API Key / token / password。
 - [ ] container runtime 真实 E2E 验证。
-- [ ] DB 全表 secret 扫描测试。
+- [x] DB 全表 secret 扫描测试。
 - [ ] ask/deny/needs_human_review Agent E2E 测试。
 - [ ] hidden/eval 评测脚本。
 - [ ] 官方 artifact/session/telemetry 能力的最小接入或清晰边界说明。
