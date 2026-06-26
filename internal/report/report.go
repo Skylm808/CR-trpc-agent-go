@@ -1,3 +1,5 @@
+// Package report renders the structured review result into JSON and Markdown
+// artifacts for users and CI systems.
 package report
 
 import (
@@ -8,11 +10,13 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
+// BuildJSON serializes the review result after deduplicating findings.
 func BuildJSON(result review.Result) ([]byte, error) {
 	result.Findings = review.DedupeFindings(result.Findings)
 	return json.MarshalIndent(result, "", "  ")
 }
 
+// BuildMarkdown formats the review result into a readable Markdown summary.
 func BuildMarkdown(result review.Result) string {
 	findings := review.DedupeFindings(result.Findings)
 	var b strings.Builder

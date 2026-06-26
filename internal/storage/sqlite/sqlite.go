@@ -1,3 +1,5 @@
+// Package sqlite persists review tasks, findings, telemetry, and reports in a
+// single-file SQLite database for the first version of the agent.
 package sqlite
 
 import (
@@ -10,10 +12,12 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
+// Store owns the SQLite connection used by the prototype.
 type Store struct {
 	db *sql.DB
 }
 
+// Task is the canonical persisted review task record.
 type Task struct {
 	ID         string
 	InputType   string
@@ -27,12 +31,14 @@ type Task struct {
 	FinishedAt  time.Time
 }
 
+// Report stores the generated JSON and Markdown report bodies.
 type Report struct {
 	JSON      []byte
 	Markdown  []byte
 	CreatedAt time.Time
 }
 
+// DecisionRecord captures one permission-policy decision for auditability.
 type DecisionRecord struct {
 	TaskID  string
 	Command string
@@ -41,6 +47,7 @@ type DecisionRecord struct {
 	At      time.Time
 }
 
+// SandboxRunRecord captures one sandbox execution attempt.
 type SandboxRunRecord struct {
 	TaskID  string
 	Command string
@@ -49,6 +56,7 @@ type SandboxRunRecord struct {
 	At      time.Time
 }
 
+// MetricsRecord stores the aggregated review telemetry for a task.
 type MetricsRecord struct {
 	TaskID              string
 	TotalDurationMS     int64
@@ -62,6 +70,7 @@ type MetricsRecord struct {
 	At                  time.Time
 }
 
+// MetricsSummary is the query shape returned by MetricsByTaskID.
 type MetricsSummary struct {
 	TaskID string
 	TotalDurationMS int64
@@ -75,6 +84,7 @@ type MetricsSummary struct {
 	At time.Time
 }
 
+// Open creates or opens the SQLite database at the provided path.
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -88,6 +98,7 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// Init creates the tables needed by the first-version review agent.
 func (s *Store) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA foreign_keys = ON;
@@ -157,6 +168,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 	return err
 }
 
+// Close closes the owned database handle.
 func (s *Store) Close() error {
 	if s.db == nil {
 		return nil
@@ -164,6 +176,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// SaveTask inserts or updates the task row used as the persistence anchor.
 func (s *Store) SaveTask(ctx context.Context, task Task) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO review_tasks(task_id, input_type, input_ref, input_digest, repo_path, status, mode, created_at, started_at, finished_at)
@@ -184,6 +197,7 @@ finished_at=excluded.finished_at
 	return err
 }
 
+// SaveFinding writes one structured finding row.
 func (s *Store) SaveFinding(ctx context.Context, taskID string, finding review.Finding) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO findings(finding_id, task_id, severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, dedupe_key, status)
@@ -194,6 +208,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return err
 }
 
+// SaveReport writes the final JSON and Markdown artifacts.
 func (s *Store) SaveReport(ctx context.Context, taskID string, jsonReport, markdownReport []byte) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO reports(task_id, json_report, markdown_report, created_at)
@@ -207,6 +222,7 @@ created_at=excluded.created_at
 	return err
 }
 
+// TaskByID loads a task for later inspection or replay.
 func (s *Store) TaskByID(ctx context.Context, id string) (Task, error) {
 	var task Task
 	var createdAt string
@@ -224,6 +240,7 @@ FROM review_tasks WHERE task_id=?
 	return task, nil
 }
 
+// FindingsByTaskID loads the stored findings for one task.
 func (s *Store) FindingsByTaskID(ctx context.Context, taskID string) ([]review.Finding, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, status
@@ -246,6 +263,7 @@ ORDER BY file, line, rule_id
 	return out, rows.Err()
 }
 
+// ReportByTaskID loads the persisted report bodies for one task.
 func (s *Store) ReportByTaskID(ctx context.Context, taskID string) (Report, error) {
 	var rep Report
 	var createdAt string
@@ -259,6 +277,7 @@ SELECT json_report, markdown_report, created_at FROM reports WHERE task_id=?
 	return rep, nil
 }
 
+// SaveDecision writes a governance decision for the audit trail.
 func (s *Store) SaveDecision(ctx context.Context, rec DecisionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO permission_decisions(task_id, command, action, reason, created_at)
@@ -267,6 +286,7 @@ VALUES(?, ?, ?, ?, ?)
 	return err
 }
 
+// SaveSandboxRun writes one sandbox attempt for later troubleshooting.
 func (s *Store) SaveSandboxRun(ctx context.Context, rec SandboxRunRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO sandbox_runs(task_id, command, status, output, created_at)
@@ -275,6 +295,7 @@ VALUES(?, ?, ?, ?, ?)
 	return err
 }
 
+// SaveMetrics stores the aggregated telemetry snapshot for a task.
 func (s *Store) SaveMetrics(ctx context.Context, rec MetricsRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
@@ -293,6 +314,7 @@ created_at=excluded.created_at
 	return err
 }
 
+// MetricsByTaskID loads the telemetry snapshot for one task.
 func (s *Store) MetricsByTaskID(ctx context.Context, taskID string) (MetricsSummary, error) {
 	var out MetricsSummary
 	var createdAt string
@@ -307,6 +329,7 @@ FROM metrics WHERE task_id=?
 	return out, nil
 }
 
+// nullableTime converts an optional time to a database-friendly value.
 func nullableTime(t time.Time) any {
 	if t.IsZero() {
 		return nil
@@ -314,6 +337,7 @@ func nullableTime(t time.Time) any {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
+// parseNullableTime turns a nullable text timestamp back into time.Time.
 func parseNullableTime(v sql.NullString) time.Time {
 	if !v.Valid || v.String == "" {
 		return time.Time{}
