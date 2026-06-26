@@ -56,7 +56,7 @@
 | # | 验收标准 | 状态 | 验证方式 | 缺口 |
 |---|---------|------|---------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 待建 eval | 缺 hidden/eval |
+| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补 |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container test 已加但本地未执行 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
@@ -82,8 +82,8 @@
 
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
 2. 抽出 `internal/storage/store.go`。
-3. 增加 hidden/eval 评测脚本。
-4. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+3. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+4. 为隐藏样本扩展外部 expected matrix 输入。
 
 ## 相关文档
 

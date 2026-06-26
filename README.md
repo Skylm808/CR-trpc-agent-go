@@ -62,6 +62,14 @@ GOCACHE=/private/tmp/cr-agent-gocache \
 go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
 ```
 
+运行公开 fixture 评测：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+```
+
+可用 `CR_AGENT_EVAL_FIXTURES_ROOT` 指向外部/隐藏样本目录，用 `CR_AGENT_EVAL_FIXTURES` 选择样本子集。
+
 用 fixture 生成报告：
 
 ```bash
@@ -180,6 +188,7 @@ skills/code-review/     SKILL.md, rule docs, scripts/check.sh
 testdata/fixtures/      runnable diff fixtures
 docs/                   architecture, data contract, traceability docs
 examples/               sample review reports
+scripts/eval.sh         public fixture recall / precision evaluator
 ```
 
 ## Documentation

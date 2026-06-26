@@ -96,9 +96,9 @@ Issue 要求隐藏样本检出率 ≥ 80%、误报 ≤ 15%。当前还缺：
 | 目录/脚本 | 用途 | 状态 |
 |----------|------|------|
 | `testdata/hidden/` | 隐藏样本，评测/CI 注入 | ⬜ |
-| `scripts/eval.sh` 或 Go eval command | 输出 recall / precision / 耗时 | ⬜ |
+| `scripts/eval.sh` | 输出公开样本 recall / precision / 耗时；可通过环境变量切换 fixtures root | 🔶 |
 
-建议隐藏样本不要提交到公开仓库，或通过 CI secret/artifact 注入。
+建议隐藏样本不要提交到公开仓库，或通过 CI secret/artifact 注入。脚本当前内置公开样本 expected matrix；隐藏样本如需同样计算 recall/precision，应在 CI 中提供对应 expected matrix 或扩展脚本读取外部 expected TSV。
 
 ## 示例报告输出
 

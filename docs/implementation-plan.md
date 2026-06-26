@@ -92,7 +92,7 @@ M5  验收交付与评测                         ⬜
 | 示例输出 | ✅ | `examples/review_report.json/md` |
 | README | ✅ | — |
 | 300–500 字方案说明 | ✅ | `design-summary.md` |
-| hidden/eval 评测脚本 | ⬜ | 增加 precision/recall 统计 |
+| hidden/eval 评测脚本 | 🔶 | 公开 fixture eval 已有；隐藏样本可通过外部 root 注入 |
 | Docker/E2B 使用说明 | 🔶 | Docker test 命令已写；E2B 入口待补 |
 
 ## 当前验收对照
@@ -112,8 +112,8 @@ M5  验收交付与评测                         ⬜
 
 1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
 2. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
-3. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
-4. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
+3. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
+4. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
 
 ## Definition of Done
 
@@ -125,7 +125,7 @@ M5  验收交付与评测                         ⬜
 - [ ] container runtime 真实 E2E 在 Docker 环境中验证。
 - [x] DB 全表 secret 扫描测试。
 - [x] ask/deny/needs_human_review Agent E2E 测试。
-- [ ] hidden/eval 评测脚本。
+- [x] 公开 fixture eval 脚本。
 - [ ] 官方 artifact/session/telemetry 能力的最小接入或清晰边界说明。
 
 ## 相关文档

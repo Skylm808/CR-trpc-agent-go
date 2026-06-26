@@ -45,5 +45,5 @@
 如果你只想让 Goal 模式做一个最小安全推进，可以把目标缩短为：
 
 ```text
-继续 CR-trpc-agent-go 的 trpc-agent-go framework-first MVP，优先在 Docker 环境运行 env-gated container integration test，并补 hidden/eval 评测脚本。不得重写架构，不得绕过 tool/skill、PermissionPolicy 或 codeexecutor/container。完成后运行 go test ./...，更新 docs，并按 conventional commit + Lore trailers 提交。
+继续 CR-trpc-agent-go 的 trpc-agent-go framework-first MVP，优先在 Docker 环境运行 env-gated container integration test，并为 hidden/eval 增加外部 expected matrix 输入。不得重写架构，不得绕过 tool/skill、PermissionPolicy 或 codeexecutor/container。完成后运行 go test ./...，更新 docs，并按 conventional commit + Lore trailers 提交。
 ```
