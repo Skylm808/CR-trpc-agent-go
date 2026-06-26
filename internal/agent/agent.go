@@ -50,18 +50,20 @@ const (
 	defaultSkillCommand     = "scripts/check.sh"
 	defaultOutputLimitBytes = 64 * 1024
 	defaultTimeout          = 30 * time.Second
+	containerRepoMountPath  = "/workspace/repo"
 )
 
 // Config 描述 Agent 运行一轮审查所需的稳定依赖和安全边界。
 type Config struct {
-	SkillsRoot        string
-	Runtime           string
-	SQLitePath        string
-	OutputDir         string
-	FixturesRoot      string
-	Timeout           time.Duration
-	OutputLimitBytes  int
-	EnableStaticcheck bool
+	SkillsRoot            string
+	Runtime               string
+	SQLitePath            string
+	OutputDir             string
+	FixturesRoot          string
+	ContainerRepoHostPath string
+	Timeout               time.Duration
+	OutputLimitBytes      int
+	EnableStaticcheck     bool
 }
 
 // Request 描述一次审查输入；DiffFile、RepoPath、Fixture 至少需要提供一个。
@@ -312,7 +314,12 @@ func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 	case RuntimeContainer:
 		// 默认生产路径走官方 codeexecutor/container。测试不依赖 Docker，
 		// 因此必须显式选择 RuntimeLocalFallback。
-		exec, err := containerexec.New()
+		opts := []containerexec.Option{}
+		if strings.TrimSpace(cfg.ContainerRepoHostPath) != "" {
+			// 容器运行时无法访问主机绝对路径，显式把 repo 只读挂到固定路径。
+			opts = append(opts, containerexec.WithBindMount(cfg.ContainerRepoHostPath, containerRepoMountPath, "ro"))
+		}
+		exec, err := containerexec.New(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("create container executor: %w", err)
 		}
@@ -365,7 +372,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	args, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
-			"code":     "cd " + shellQuote(repoPath) + " && " + command,
+			"code":     goSandboxCode(a.cfg.Runtime, repoPath, command),
 		}},
 		"execution_id": taskID + "-" + strings.ReplaceAll(command, " ", "-"),
 	})
@@ -739,6 +746,19 @@ func codeExecOutput(raw any) string {
 // shellQuote 对本地路径做 POSIX 单引号转义。
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+// sandboxRepoPathForRuntime 返回 sandbox 命令在目标 runtime 中应访问的 repo 路径。
+func sandboxRepoPathForRuntime(runtime string, hostRepoPath string) string {
+	if runtime == RuntimeContainer {
+		return containerRepoMountPath
+	}
+	return hostRepoPath
+}
+
+// goSandboxCode 构造 Go 检查命令，避免 container runtime 泄漏主机路径。
+func goSandboxCode(runtime string, hostRepoPath string, command string) string {
+	return "cd " + shellQuote(sandboxRepoPathForRuntime(runtime, hostRepoPath)) + " && " + command
 }
 
 // severityCounts 汇总 findings 与 warnings 的严重级别分布。

@@ -444,6 +444,33 @@ func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 	assertAnyRunForCommand(t, runs, "staticcheck ./...")
 }
 
+func TestSandboxRepoPathForRuntime(t *testing.T) {
+	t.Parallel()
+
+	hostRepo := filepath.Join(t.TempDir(), "repo")
+	localPath := sandboxRepoPathForRuntime(RuntimeLocalFallback, hostRepo)
+	if localPath != hostRepo {
+		t.Fatalf("local fallback path = %q, want %q", localPath, hostRepo)
+	}
+	containerPath := sandboxRepoPathForRuntime(RuntimeContainer, hostRepo)
+	if containerPath != containerRepoMountPath {
+		t.Fatalf("container path = %q, want %q", containerPath, containerRepoMountPath)
+	}
+}
+
+func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
+	t.Parallel()
+
+	hostRepo := filepath.Join(t.TempDir(), "repo")
+	code := goSandboxCode(RuntimeContainer, hostRepo, "go test ./...")
+	if !strings.Contains(code, "cd "+shellQuote(containerRepoMountPath)) {
+		t.Fatalf("container command should cd into mount path, got %q", code)
+	}
+	if strings.Contains(code, hostRepo) {
+		t.Fatalf("container command leaked host repo path %q: %q", hostRepo, code)
+	}
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
