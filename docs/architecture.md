@@ -1,183 +1,210 @@
-# CR-trpc-agent-go Architecture
+# CR-trpc-agent-go 架构设计
 
-## Goal
+## 目标
 
-Build an automated Go code review agent on top of `trpc-agent-go` that can:
+在 `trpc-agent-go` 之上构建面向 Go 工程的自动代码评审 Agent，能够：
 
-- accept a unified diff, PR patch, file list, or local workspace change
-- load a dedicated code-review Skill and its rule scripts
-- apply governance checks before any sandbox execution
-- run optional static checks in an isolated runtime
-- produce structured findings and a human-readable report
-- persist tasks, decisions, findings, artifacts, and metrics
+- 接收 unified diff、PR patch、文件路径列表或本地工作区变更
+- 加载 code-review Skill 及其规则脚本
+- 在沙箱执行前经过治理策略审批
+- 在隔离 runtime 中可选执行静态检查（go test / go vet / staticcheck）
+- 输出结构化 findings 与人类可读报告
+- 将任务、决策、发现项、产物与监控指标持久化
 
-## Design Principle
+## 设计原则
 
-The project is an application built on the framework, not a framework fork. The repository should own:
+本项目是**框架之上的应用**，不是框架 fork。本仓库拥有：
 
-- review workflow
-- rule engine
-- diff parsing
-- persistence schema
-- report generation
-- fixtures and tests
+- 审查工作流编排
+- 规则引擎与 diff 解析
+- 持久化 schema 与存储实现
+- 报告生成
+- fixture 与验收测试
 
-`trpc-agent-go` is used for reusable primitives such as skill loading, workspace execution, host execution, code execution, session/memory/storage patterns, and telemetry hooks.
+`trpc-agent-go` 提供可复用原语：Skill 加载与执行、workspace/host/code 执行、container/E2B 沙箱、Session/Memory/SQL 存储模式、PermissionPolicy、Filter 与 Telemetry。
 
-## System Flow
+## 系统流程
 
-1. CLI loads input from `--diff-file`, `--repo-path`, or a fixture.
-2. Diff parser extracts files, hunks, line mapping, and package hints.
-3. Skill loader reads `skills/code-review/SKILL.md`, rules, and scripts.
-4. Governance layer evaluates whether a command or script may run.
-5. Sandbox executor runs approved checks in container or E2B runtime.
-6. Rule engine merges static analysis, heuristics, and diff-local checks.
-7. Deduplication removes repeated findings on the same file, line, and rule class.
-8. Report builder produces `review_report.json` and `review_report.md`.
-9. Storage writes task state, decisions, runs, findings, artifacts, and metrics.
+```
+CLI 输入（--diff-file / --repo-path / fixture）
+  ↓
+Diff 解析器 → 文件、hunk、行号、Go package 提示
+  ↓
+Skill 层（skills/code-review/）→ 加载 SKILL.md、规则文档、脚本
+  ↓
+Filter 层 → 输入/输出/content 是否允许进入报告或落库
+  ↓
+Permission 层 → 命令是否允许进入沙箱（allow / deny / ask / needs_human_review）
+  ↓
+沙箱执行器（container / E2B，local 仅 dev fallback）
+  ↓
+规则引擎 → 合并 diff 启发式 + 沙箱静态检查结果
+  ↓
+去重与降噪 → 低置信度进入 warnings / needs_human_review
+  ↓
+脱敏 → 报告与存储写入前替换敏感字面量
+  ↓
+报告生成（review_report.json + review_report.md）
+  ↓
+持久化（task / decision / sandbox run / finding / artifact / metrics / report）
+```
 
-## Core Components
+## 框架集成映射
+
+| 本仓库组件 | trpc-agent-go 对应能力 | 当前状态 |
+|-----------|----------------------|---------|
+| Skill 加载与规则 | `tool/skill`（skill load / skill run） | 🔶 骨架已有，编排未接入 |
+| 工作区命令 | `tool/workspaceexec` | ⬜ 待接入 |
+| 主机命令 | `tool/hostexec` | ⬜ 待接入 |
+| 沙箱执行 | `codeexecutor/container`、`codeexecutor/e2b` | 🔶 本地 runner 已实现，container/E2B 待接入 |
+| 命令治理 | `tool.PermissionPolicy` | 🔶 自研 Policy 已实现，框架 Policy 待替换 |
+| 内容过滤 | Filter | ⬜ 待实现 |
+| 持久化 | `session/sqlite` 或自研 `storage.Store` interface | 🔶 SQLite 实现已有，interface 待抽象 |
+| 遥测 | telemetry hooks | 🔶 Metrics 字段已有，框架 hook 待接入 |
+| 产物 | artifact | ⬜ 表结构与写入待实现 |
+
+## 核心组件
 
 ### CLI
 
-Responsible for argument parsing, mode selection, and orchestration.
+负责参数解析、mode 选择与流水线编排。
 
-Supported modes:
+**支持的 mode：**
 
-- `rule-only`
-- `dry-run`
-- `sandbox`
-- `fake-model`
+| Mode | 行为 | 用途 |
+|------|------|------|
+| `rule-only` | diff 解析 + 确定性规则，不调用模型、不跑沙箱 | 默认；fixture 测试；无 API Key 验收 |
+| `dry-run` | 完整编排（Skill 加载、Permission 决策），但不执行沙箱、可选不落库 | 验证链路而不产生副作用 |
+| `sandbox` | 规则 + 经 Permission 批准的沙箱检查（go test / go vet / staticcheck） | 接近生产路径 |
+| `fake-model` | 模拟 LLM 审查路径，使用 stub 响应，验证全链路 | 无真实模型 Key 时的集成测试 |
 
-### Input Parser
+### 输入解析器
 
-Parses:
+解析：
 
-- unified diff text
-- file path lists
-- git workspace changes
+- unified diff 文本
+- 文件路径列表（待实现）
+- git 工作区变更（`--repo-path` + `git diff`）
 
-Outputs normalized file and hunk metadata with candidate line numbers.
+输出：归一化的 `ParsedFile`、`ParsedHunk`、候选行号与 Go package 提示。
 
-### Skill Layer
+### Skill 层
 
-Contains a `code-review` Skill folder with:
+`skills/code-review/` 包含：
 
-- `SKILL.md`
-- rule docs
-- scripts
-- usage notes
+- `SKILL.md` — Skill 入口与使用说明
+- `rules.md` — 规则文档（与 engine rule_id 一一对应）
+- `scripts/` — 沙箱可执行检查脚本（如 `check.sh`、go vet 包装）
 
-The skill provides review policy and executable helper scripts.
+Skill 通过 `skill load` 加载，`skill run` 触发脚本；规则引擎与 Skill 脚本结果合并后去重。
 
-### Governance Layer
+### 治理层：Filter 与 Permission
 
-Intercepts high-risk commands before execution.
+两层职责分离：
 
-It records:
+| 层 | 职责 | 决策对象 | 典型动作 |
+|----|------|---------|---------|
+| **Filter** | 内容/输入/输出过滤 | diff 片段、报告文本、artifact | 拦截含明文密钥的内容进入报告或 DB |
+| **Permission** | 命令执行授权 | shell / go test / staticcheck 等 | allow / deny / ask / needs_human_review |
 
-- allow
-- deny
-- ask
-- needs_human_review
+**关键约束：** `deny`、`ask`、`needs_human_review` 的命令**不得**进入沙箱 executor；所有决策必须写入 `permission_decisions` 表供审计。
 
-The sandbox executor may only receive commands approved by policy.
+### 沙箱执行器
 
-### Sandbox Executor
+**Runtime 选择策略：**
 
-Executes checks in an isolated runtime.
+| 环境 | 默认 runtime | 说明 |
+|------|-------------|------|
+| 生产 / CI | `container` 或 `e2b` | Issue 验收要求；local 不能作为默认 |
+| 本地开发 | `local`（仅 fallback） | 通过 `CR_SANDBOX_RUNTIME=local` 或 test tag 启用 |
+| 单元测试 | `local` 或 mock | 验证 timeout / deny / failure 不崩溃 |
 
-Preferred production runtimes:
+**控制项：**
 
-- container
-- E2B/Cube-style sandbox
+- 超时（timeout_ms）
+- 输出大小限制（output_limit_bytes）
+- 环境变量白名单（env_whitelist）
+- artifact 数量上限（artifact cap）
+- 敏感信息脱敏（stdout/stderr digest 写入 DB，明文不落库）
+- 失败记录（status=timeout / failed / denied，不导致整个 review 崩溃）
 
-Local execution is a fallback only for development and tests.
+### 规则引擎
 
-Controls:
+面向 Go 代码评审的确定性规则，至少覆盖 Issue 要求的 4 类（目标覆盖 7 类）：
 
-- timeout
-- output size limit
-- env whitelist
-- artifact cap
-- secret redaction
+| 类别 | rule_id | 当前状态 |
+|------|---------|---------|
+| 敏感信息泄漏 | `secret-leak` | ✅ |
+| 错误处理（直接 panic） | `panic-direct` | ✅ |
+| 可维护性（TODO/FIXME） | `todo-marker` | ✅ |
+| 测试缺失提示 | `missing-test-hint` | ✅（warning 级别） |
+| goroutine 泄漏 | `goroutine-leak` | ⬜ fixture 已有，规则待实现 |
+| context 泄漏 | `context-leak` | ⬜ fixture 已有，规则待实现 |
+| 资源关闭生命周期 | `resource-leak` | ⬜ fixture 已有，规则待实现 |
+| 数据库连接/事务生命周期 | `db-lifecycle` | ⬜ fixture 已有，规则待实现 |
 
-### Rule Engine
+低置信度问题进入 `warnings` 或 `needs_human_review`，不混入高置信 `findings`。
 
-Implements Go-review rules focused on the repo domain:
+### 去重器（Deduper）
 
-- security risk
-- goroutine or context leak
-- resource close lifecycle
-- error handling
-- test coverage gaps
-- secret leakage
-- database transaction or connection lifecycle
-
-At least four categories must be supported in the first version.
-
-### Deduper
-
-Prevents duplicate reporting of the same issue by normalizing:
+按以下维度归一化并去重：
 
 - file
 - line
 - category
 - rule_id
 
-Low-confidence items become warnings or human-review items, not high-confidence findings.
+同一文件同一行同一 rule_id 只保留第一条 finding。
 
-### Storage
+### 存储
 
-Persists:
+持久化实体见 [data-contract.md](data-contract.md)。
 
-- review task
-- input digest
-- sandbox run
-- permission decision
-- filter decision
-- finding
-- artifact
-- final report
-- metrics summary
+- 默认后端：SQLite（`internal/storage/sqlite/`）
+- 接口：`storage.Store`（待抽象，保留切换 SQL 后端空间）
+- 查询：按 `task_id` 加载 task、findings、report、metrics、decisions、sandbox runs、artifacts
 
-SQLite is the default backend. The storage interface should stay backend-neutral.
+### 报告
 
-### Reporting
+输出：
 
-Produces:
+- `review_report.json` — 结构化 JSON
+- `review_report.md` — 人类可读 Markdown
 
-- structured JSON
-- Markdown summary
+报告必须包含（Issue 验收标准 8）：
 
-Reports include:
+- findings 摘要与 severity 分布
+- warnings 与人工复核项（human_review_items）
+- 治理拦截摘要（governance_summary）
+- 沙箱执行摘要（sandbox_summary）
+- 监控指标（metrics）
+- 可执行修复建议（recommendation）
 
-- findings summary
-- severity distribution
-- governance blocks
-- sandbox summary
-- human-review items
-- metrics summary
-- actionable recommendations
+## 安全边界
 
-## Safety Boundaries
+- 禁止无限制 shell 执行
+- 沙箱命令必须先过 Permission 决策
+- Filter 拦截的敏感内容不得进入报告或 DB 明文
+- 输出捕获有大小上限，运行有超时上限
+- artifact 数量有上限
+- 沙箱失败、超时、deny 均记录但不崩溃整个 review 任务
 
-- no unrestricted shell execution
-- no sandbox execution without policy approval
-- no secret material in logs, artifacts, or reports
-- no unlimited output capture
-- no unbounded runtime
-- no silent sandbox failure
+## 里程碑
 
-## First Milestone
+| 里程碑 | 内容 | 状态 |
+|--------|------|------|
+| M1 | 确定性 rule-only 流水线（parse → rules → dedupe → redact → report） | ✅ 主路径已通 |
+| M2 | 规则补全 + fixture 预期矩阵（Issue 8 样本全覆盖） | 🔶 进行中 |
+| M3 | Storage interface + schema 对齐 data-contract | 🔶 部分完成 |
+| M4 | trpc-agent-go 集成（Skill run + PermissionPolicy + container/E2B） | ⬜ 待开始 |
+| M5 | 报告/监控/验收（report 字段补全 + 评测 + design-summary） | ⬜ 待开始 |
 
-The first milestone is a deterministic rule-only pipeline:
+M1 必须在无真实模型 API Key 的情况下可完整运行。
 
-- parse diff
-- run rules
-- dedupe
-- redact
-- persist
-- report
+## 相关文档
 
-That milestone must work without any real model API key.
+- [implementation-plan.md](implementation-plan.md) — 分阶段实现计划
+- [data-contract.md](data-contract.md) — 实体字段与持久化规则
+- [issue-2004-traceability.md](issue-2004-traceability.md) — Issue 需求追踪矩阵
+- [fixtures-matrix.md](fixtures-matrix.md) — 测试夹具预期行为
+- [design-summary.md](design-summary.md) — 300–500 字方案设计说明

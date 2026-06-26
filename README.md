@@ -200,9 +200,13 @@ go run ./cmd/review-agent \
 
 | 文档 | 说明 |
 |------|------|
-| [docs/architecture.md](docs/architecture.md) | 系统目标、组件划分、安全边界、首版里程碑 |
-| [docs/implementation-plan.md](docs/implementation-plan.md) | 分阶段实现计划与完成标准 |
-| [docs/data-contract.md](docs/data-contract.md) | 实体字段、枚举值与持久化规则 |
+| [docs/README.md](docs/README.md) | 文档总索引与阅读顺序 |
+| [docs/architecture.md](docs/architecture.md) | 系统架构、框架集成映射、mode 定义、安全边界 |
+| [docs/implementation-plan.md](docs/implementation-plan.md) | M1–M5 里程碑、Definition of Done |
+| [docs/data-contract.md](docs/data-contract.md) | 实体字段；Target vs Current v0 实现状态 |
+| [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md) | Issue #2004 需求与验收追踪矩阵 |
+| [docs/fixtures-matrix.md](docs/fixtures-matrix.md) | 每个 diff fixture 的预期 rule_id 与 severity |
+| [docs/design-summary.md](docs/design-summary.md) | 300–500 字方案设计说明（Issue 交付物） |
 | [skills/code-review/SKILL.md](skills/code-review/SKILL.md) | 审查 Skill 使用说明 |
 | [testdata/fixtures/README.md](testdata/fixtures/README.md) | 夹具场景说明 |
 
