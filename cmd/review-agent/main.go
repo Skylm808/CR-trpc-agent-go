@@ -17,6 +17,7 @@ func main() {
 	flag.StringVar(&opts.Runtime, "runtime", "container", "executor runtime: container or local-fallback")
 	flag.StringVar(&opts.SkillsRoot, "skills-root", "skills", "path to skills root")
 	flag.StringVar(&opts.FixturesRoot, "fixtures-root", "testdata/fixtures", "path to fixture diffs")
+	flag.BoolVar(&opts.Staticcheck, "staticcheck", false, "run optional staticcheck in sandbox mode")
 	flag.Parse()
 
 	if err := Run(opts); err != nil {

@@ -346,6 +346,59 @@ func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	assertRunForCommand(t, runs, "go vet ./...")
 }
 
+// TestAgentRunSandboxModeOptionallyExecutesStaticcheck 固定 staticcheck 为显式
+// opt-in 检查：即使本机未安装 staticcheck，也必须先记录权限决策和沙箱 run。
+func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/staticdemo\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package staticdemo\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:        filepath.Join(root, "skills"),
+		Runtime:           RuntimeLocalFallback,
+		SQLitePath:        dbPath,
+		OutputDir:         t.TempDir(),
+		Timeout:           10 * time.Second,
+		EnableStaticcheck: true,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo,
+		Mode:     ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	decisions, err := store.DecisionsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load decisions: %v", err)
+	}
+	assertDecisionForCommand(t, decisions, "staticcheck ./...")
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	assertAnyRunForCommand(t, runs, "staticcheck ./...")
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -386,4 +439,15 @@ func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command s
 		}
 	}
 	t.Fatalf("expected ok sandbox run for %q, got %+v", command, runs)
+}
+
+// assertAnyRunForCommand 检查指定命令存在沙箱记录，不限制成功或失败。
+func assertAnyRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command string) {
+	t.Helper()
+	for _, run := range runs {
+		if run.Command == command && run.Status != "" {
+			return
+		}
+	}
+	t.Fatalf("expected sandbox run for %q, got %+v", command, runs)
 }

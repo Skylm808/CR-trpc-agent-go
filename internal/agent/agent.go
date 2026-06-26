@@ -54,13 +54,14 @@ const (
 
 // Config 描述 Agent 运行一轮审查所需的稳定依赖和安全边界。
 type Config struct {
-	SkillsRoot       string
-	Runtime          string
-	SQLitePath       string
-	OutputDir        string
-	FixturesRoot     string
-	Timeout          time.Duration
-	OutputLimitBytes int
+	SkillsRoot        string
+	Runtime           string
+	SQLitePath        string
+	OutputDir         string
+	FixturesRoot      string
+	Timeout           time.Duration
+	OutputLimitBytes  int
+	EnableStaticcheck bool
 }
 
 // Request 描述一次审查输入；DiffFile、RepoPath、Fixture 至少需要提供一个。
@@ -334,7 +335,8 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 		}
 		if req.ToolName == "execute_code" &&
 			(strings.Contains(string(req.Arguments), "go test ./...") ||
-				strings.Contains(string(req.Arguments), "go vet ./...")) {
+				strings.Contains(string(req.Arguments), "go vet ./...") ||
+				strings.Contains(string(req.Arguments), "staticcheck ./...")) {
 			return tool.AllowPermission(), nil
 		}
 		return tool.AskPermission("unrecognized tool command requires human review"), nil
@@ -344,6 +346,10 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 // runGoSandboxChecks 在 sandbox 模式下执行 Go 项目的最小静态/测试检查。
 func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]sqlite.DecisionRecord, []sqlite.SandboxRunRecord) {
 	commands := []string{"go test ./...", "go vet ./..."}
+	if a.cfg.EnableStaticcheck {
+		// staticcheck 是可选检查，只有显式开启时才进入权限和沙箱链路。
+		commands = append(commands, "staticcheck ./...")
+	}
 	decisions := make([]sqlite.DecisionRecord, 0, len(commands))
 	runs := make([]sqlite.SandboxRunRecord, 0, len(commands))
 	for _, command := range commands {

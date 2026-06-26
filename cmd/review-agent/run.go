@@ -20,6 +20,7 @@ type Options struct {
 	Runtime      string
 	SkillsRoot   string
 	FixturesRoot string
+	Staticcheck  bool
 }
 
 // Run 只做 CLI 参数到 Agent 请求的适配，实际审查链路必须进入 internal/agent。
@@ -28,11 +29,12 @@ func Run(opts Options) error {
 		return errors.New("diff file, repo path, or fixture is required")
 	}
 	cfg := cragent.Config{
-		SkillsRoot:   opts.SkillsRoot,
-		Runtime:      opts.Runtime,
-		SQLitePath:   opts.SQLitePath,
-		OutputDir:    opts.OutputDir,
-		FixturesRoot: opts.FixturesRoot,
+		SkillsRoot:        opts.SkillsRoot,
+		Runtime:           opts.Runtime,
+		SQLitePath:        opts.SQLitePath,
+		OutputDir:         opts.OutputDir,
+		FixturesRoot:      opts.FixturesRoot,
+		EnableStaticcheck: opts.Staticcheck,
 	}
 	if cfg.SkillsRoot == "" {
 		// 默认使用仓库内交付的 code-review Skill；生产运行可通过 CLI 覆盖。
