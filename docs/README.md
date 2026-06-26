@@ -9,7 +9,8 @@
 | [architecture.md](architecture.md) | 系统架构、组件划分、框架集成映射、mode 定义、安全边界 |
 | [framework-first-mvp.md](framework-first-mvp.md) | 基于 trpc-agent-go 的第一个小版本边界与实现顺序 |
 | [implementation-plan.md](implementation-plan.md) | 分阶段实现计划（M1–M5）、Definition of Done、验收对照 |
-| [data-contract.md](data-contract.md) | 实体字段定义；Target Contract vs Current v0 实现状态 |
+| [data-contract.md](data-contract.md) | 实体字段、SQLite schema、按 task_id 查询契约 |
+| [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) | 可直接复制给 Goal 模式的下一阶段执行 prompt |
 
 ## Issue #2004 专项
 
@@ -33,6 +34,7 @@
 2. [implementation-plan.md](implementation-plan.md) — 当前 Milestone 与任务清单
 3. [fixtures-matrix.md](fixtures-matrix.md) — 规则实现的目标行为
 4. [data-contract.md](data-contract.md) — 字段与持久化约束
+5. [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) — 交给 Goal 模式继续推进
 
 ## 状态图例
 

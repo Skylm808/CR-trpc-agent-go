@@ -1,87 +1,33 @@
 # 实现计划
 
-本文档按 Issue #2004 验收优先级排列里程碑，而非严格的时间线顺序。每个 Phase 标注当前状态：`✅ 完成` / `🔶 部分` / `⬜ 待做`。
-
-**纠偏原则：后续开发必须框架优先。** 本地 rule-only 原型只能作为迁移素材；第一版交付必须证明 `trpc-agent-go` 的 Skill、Permission、CodeExecutor、SQLite/Store、Filter、Telemetry 能串成一条可审计 CR 链路。
+本文档按 Issue #2004 验收优先级排列。当前仓库已经完成第一轮 framework-first 纠偏：官方 `trpc-agent-go` 的 Skill、PermissionPolicy、CodeExecutor 和 SQLite 审计链路已进入主线。下一阶段目标是把它从“可跑通原型”推进到“可验收 MVP”。
 
 ## 里程碑总览
 
+```text
+M0  本地 rule-only 原型                    ✅ 已作为迁移基础
+M1  trpc-agent-go 最小链路                 ✅ 已打通
+M2  规则补全 + fixture 预期                ✅ 公开 fixture 已覆盖
+M3  存储与报告对齐契约                     🔶 核心完成，仍需收口
+M4  真实沙箱/治理/遥测增强                 🔶 当前最高优先级
+M5  验收交付与评测                         ⬜
 ```
-M0  本地 rule-only 原型       🔶 可迁移，非最终主线
-M1  trpc-agent-go 最小链路    ⬜ 当前最高优先级
-M2  规则补全 + fixture 预期   🔶
-M3  存储与报告对齐契约        ⬜
-M4  验收与交付物              ⬜
-```
 
----
+## M1：trpc-agent-go 最小链路 ✅
 
-## M0：本地 Rule-only 原型 🔶
+| 任务 | 状态 | 证据 |
+|------|------|------|
+| 添加官方 `trpc-agent-go` 依赖 | ✅ | `go.mod` |
+| 建立 `internal/agent` 编排层 | ✅ | CLI 调用 Agent |
+| `tool/skill` 加载 `skills/code-review` | ✅ | `agent.New` + `NewLoadTool` |
+| `skill_run` 执行 `scripts/check.sh` | ✅ | `runSkillChecks` |
+| `tool.PermissionPolicy` 执行前决策 | ✅ | `defaultPermissionPolicy` |
+| 默认 `codeexecutor/container` | ✅ | `RuntimeContainer` 默认值 |
+| `local-fallback` 仅显式启用 | ✅ | CLI `--runtime local-fallback` |
+| `tool/codeexec` 执行 Go 检查 | ✅ | `runGoSandboxChecks` |
+| `dry-run` / `sandbox` / `fake-model` / `rule-only` mode | ✅ | CLI flag + Agent branch |
 
-**目标：** 作为迁移参考，无 API Key 可跑通 parse → rules → dedupe → redact → report。该阶段不能作为 Issue #2004 最终交付主线。
-
-| 任务 | 状态 |
-|------|------|
-| Go module 与 CLI 入口（`cmd/review-agent/`） | ✅ |
-| `--diff-file`、`--repo-path` 输入 | ✅ |
-| unified diff 解析（文件、hunk、行号、package 提示） | ✅ |
-| 确定性规则：secret-leak、panic-direct、todo-marker、missing-test-hint | ✅ |
-| 去重（DedupeFindings）与脱敏（RedactSecrets） | ✅ |
-| 生成 review_report.json / review_report.md | ✅ |
-| fixture 端到端测试（报告文件存在） | ✅ |
-
----
-
-## M1：trpc-agent-go 最小链路 ⬜
-
-**目标：** 先用框架原语打通 `Skills + Permission + CodeExecutor + SQLite` 的最小闭环。完成后再继续扩展本地规则。
-
-### Phase 1a：依赖与编排层
-
-| 任务 | 状态 |
-|------|------|
-| 添加 `trpc-agent-go` 依赖，并记录具体 module path / version | ⬜ |
-| 新增 `internal/agent` 或等价编排层，CLI 只调用 Agent，不直接调用本地 runner | ⬜ |
-| 保留现有 parser / rules / report 作为 adapter 后端 | ⬜ |
-| 增加 `--mode=rule-only/dry-run/sandbox/fake-model` 的真实分支 | ⬜ |
-
-### Phase 1b：Skill 链路
-
-| 任务 | 状态 |
-|------|------|
-| 通过 `tool/skill` 加载 `skills/code-review/SKILL.md` | ⬜ |
-| 通过 `skill run` 执行 `skills/code-review/scripts/check.sh` | ⬜ |
-| 脚本输出 JSON findings，映射为内部 `Finding` | ⬜ |
-| Skill run 失败记录为 warning / exception，不导致任务崩溃 | ⬜ |
-
-### Phase 1c：Permission + CodeExecutor
-
-| 任务 | 状态 |
-|------|------|
-| 接入 `tool.PermissionPolicy` 或兼容 wrapper | ⬜ |
-| 所有命令先生成 permission decision 并落库 | ⬜ |
-| `deny` / `ask` / `needs_human_review` 不进入 executor | ⬜ |
-| 默认使用 `codeexecutor/container` 执行 `go test` / `go vet` / 脚本 | ⬜ |
-| E2B / Cube 作为可选 runtime | ⬜ |
-| local runtime 仅通过显式 dev/test fallback 启用 | ⬜ |
-| timeout、output limit、env whitelist、exit code、stdout/stderr digest 全部记录 | ⬜ |
-
-### Phase 1d：最小持久化与报告
-
-| 任务 | 状态 |
-|------|------|
-| SQLite 记录 task、permission decision、sandbox run、finding、report、metrics | ⬜ |
-| 增加 filter decision 与 artifact 记录 | ⬜ |
-| report 包含 findings、warnings、人审项、governance、sandbox、metrics、修复建议 | ⬜ |
-| 至少 8 个 fixture 走完整框架链路并生成 JSON/Markdown | ⬜ |
-
----
-
-## M2：规则补全 + Fixture 预期 🔶
-
-**目标：** Issue 7 类规则至少覆盖 4 类（当前 4 类），补全至 6–7 类；8+ 公开样本有 deterministic 预期。
-
-### Phase 2a：补全规则引擎
+## M2：规则补全 + Fixture 预期 ✅
 
 | rule_id | 类别 | fixture | 状态 |
 |---------|------|---------|------|
@@ -89,123 +35,106 @@ M4  验收与交付物              ⬜
 | `panic-direct` | 错误处理 | `panic.diff` | ✅ |
 | `todo-marker` | 可维护性 | `todo.diff` | ✅ |
 | `missing-test-hint` | 测试缺失 | `test-missing.diff`、`missing-test.diff` | ✅ warning |
-| `goroutine-leak` | goroutine 泄漏 | `goroutine.diff` | ⬜ |
-| `context-leak` | context 泄漏 | `context.diff` | ⬜ |
-| `resource-leak` | 资源关闭 | `resource.diff` | ⬜ |
-| `db-lifecycle` | DB 生命周期 | `db-lifecycle.diff` | ⬜ |
+| `goroutine-leak` | goroutine 泄漏 | `goroutine.diff` | ✅ |
+| `context-leak` | context 生命周期 | `context.diff` | ✅ |
+| `resource-leak` | 资源关闭 | `resource.diff` | ✅ |
+| `db-lifecycle` | DB 生命周期 | `db-lifecycle.diff` | ✅ |
+| 去重 | duplicate panic | `dedupe.diff` | ✅ |
+| 沙箱失败 | command exit != 0 | `sandbox-fail.diff` | ✅ |
+| 沙箱超时 | timed out | `sandbox-timeout.diff` | ✅ |
 
-实现方式（首版）：基于 diff hunk 新增行的文本启发式，不必上 AST；后续可叠加 staticcheck 沙箱结果。
-
-### Phase 2b：补全 fixture 与预期测试
-
-| 任务 | 状态 |
-|------|------|
-| 现有 10 个 diff fixture | ✅ |
-| 新增 `dedupe.diff`（同一行同一 rule 重复触发） | ⬜ |
-| 新增 `sandbox-fail.diff`（触发沙箱超时/失败） | ⬜ |
-| `fixtures-matrix.md` 预期表 | ✅ 文档已写 |
-| 测试从「报告存在」升级为「断言 rule_id + severity」 | ⬜ |
-| `rules.md` 与 engine rule_id 一一对应 | 🔶 部分 |
-
-详见 [fixtures-matrix.md](fixtures-matrix.md)。
-
----
+公开 fixture 已从“报告存在”升级为 rule_id/severity/status 断言。
 
 ## M3：存储与报告对齐契约 🔶
 
-**目标：** 数据库完整记录 task / sandbox run / permission decision / finding / artifact / report；报告包含 Issue 要求的全部摘要字段。
+| 任务 | 状态 | 下一步 |
+|------|------|--------|
+| SQLite 记录 task | ✅ | — |
+| SQLite 记录 permission_decisions | ✅ | 增加 policy_name 字段可选 |
+| SQLite 记录 filter_decisions | ✅ | 扩展非 secret filter |
+| SQLite 记录 sandbox_runs | ✅ | 增加 artifact_count / finished_at |
+| SQLite 记录 findings | ✅ | 当前只持久化 findings，不持久化 warnings |
+| SQLite 记录 artifacts | ✅ | 当前是报告产物记录，未接官方 artifact service |
+| SQLite 记录 metrics | ✅ | 后续接官方 telemetry hook |
+| SQLite 记录 reports | ✅ | — |
+| 按 task_id 查询全部核心实体 | ✅ | warnings 查询需补 |
+| 报告含 governance/sandbox/human review/artifacts | ✅ | 补 conclusion 字段 |
 
-### Phase 3a：Storage interface
+建议后续小改：
 
-| 任务 | 状态 |
-|------|------|
-| 定义 `internal/storage/store.go` interface | ⬜ |
-| SQLite 实现 task / finding / report / metrics | ✅ |
-| SQLite 实现 permission_decisions | ✅ |
-| SQLite 实现 sandbox_runs（扩展 runtime/args/timeout/digest 字段） | 🔶 字段不完整 |
-| 新增 artifacts 表与 SaveArtifact / ArtifactsByTaskID | ⬜ |
-| 新增 filter_decisions 表 | ⬜ |
-| 按 task_id 查询全部关联记录 | 🔶 部分方法已有 |
-| task_id 使用 UUID 而非硬编码 | ⬜ |
+1. 将 `Store` interface 从 `internal/agent` 抽到 `internal/storage/store.go`。
+2. 明确 warnings 是否也写入 `findings` 表，或者新增 `review_items` 表。
+3. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
 
-### Phase 3b：报告字段补全
+## M4：真实沙箱、治理与遥测增强 🔶
 
-| ReviewReport 字段 | 状态 |
-|-------------------|------|
-| findings / warnings | ✅ |
-| severity 分布 | 🔶 JSON 有，Markdown 段待补 |
-| governance_summary | ⬜ |
-| sandbox_summary | ⬜ |
-| human_review_items | ⬜ |
-| metrics | 🔶 基础字段有 |
-| artifacts | ⬜ |
-| conclusion | ⬜ |
+这是当前最高优先级。
 
-### Phase 3c：CLI mode 分支
+| 任务 | 状态 | 验证方式 |
+|------|------|----------|
+| Docker container runtime 真实 E2E | ⬜ | `CR_AGENT_RUN_CONTAINER_TESTS=1 go test ./internal/agent -run Container` |
+| container bind mount repo 到 `/workspace/repo` | ✅ | `ContainerRepoHostPath` + `WithBindMount` |
+| E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
+| ask/needs_human_review 不进入 executor | 🔶 | policy 单测有基础，需 Agent E2E |
+| deny 不进入 executor | 🔶 | 需 Agent E2E |
+| env whitelist 强校验 | 🔶 | 当前记录 `PATH,HOME,TMPDIR`，未强制过滤所有 env |
+| artifact cap | ⬜ | 当前只记录 report artifacts |
+| 官方 telemetry hook | ⬜ | 当前是本地 metrics 表 |
 
-| Mode | 状态 |
-|------|------|
-| `rule-only` | ✅ 默认 |
-| `dry-run` | ⬜ 未分支 |
-| `sandbox` | 🔶 RunChecks 标志存在但未暴露 CLI flag |
-| `fake-model` | ⬜ 未实现 |
+## M5：验收交付与评测 ⬜
 
----
+| 交付物 | 状态 | 下一步 |
+|--------|------|--------|
+| Go 示例入口 | ✅ | — |
+| Skill + rules + script | ✅ | 增加脚本 schema 文档 |
+| 数据库 schema + SQLite 实现 | ✅ | 补 migration 说明 |
+| 8+ diff 样本 | ✅ | — |
+| 示例输出 | ✅ | `examples/review_report.json/md` |
+| README | ✅ | — |
+| 300–500 字方案说明 | ✅ | `design-summary.md` |
+| hidden/eval 评测脚本 | ⬜ | 增加 precision/recall 统计 |
+| Docker/E2B 使用说明 | 🔶 | Docker 路径需验证 |
 
-## M4：验收与交付物 ⬜
+## 当前验收对照
 
-**目标：** 满足 Issue #2004 全部 Deliverables 与 8 条验收标准。
-
-| 交付物 | 状态 |
-|--------|------|
-| Go 示例入口（`cmd/review-agent/`） | ✅ |
-| `skills/code-review/SKILL.md` + rules + scripts | 🔶 骨架 |
-| 数据库 schema + 存储实现 | 🔶 SQLite 有，interface 待抽象 |
-| 8+ 测试样例 diff | ✅ 10 个，缺 dedupe / sandbox-fail |
-| `review_report.json/md` 示例输出（`testdata/expected/`） | ⬜ |
-| README 运行说明 | ✅ |
-| 300–500 字方案设计说明 | ✅ [design-summary.md](design-summary.md) |
-| Issue 追踪矩阵 | ✅ [issue-2004-traceability.md](issue-2004-traceability.md) |
-
-### 验收标准对照
-
-| # | 标准 | 当前 | 阻塞项 |
-|---|------|------|--------|
+| # | 标准 | 当前状态 | 缺口 |
+|---|------|----------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺评测脚本与规则补全 |
-| 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | 🔶 | artifact、filter 表缺失 |
-| 4 | 沙箱超时控制；失败不崩溃 | 🔶 | output limit 未实现 |
-| 5 | 脱敏检出率 ≥ 95%，报告/DB 无明文密钥 | 🔶 | 需补脱敏计数与断言测试 |
-| 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ rule-only 已满足 | mode 分支待实现 |
-| 7 | 高风险命令须先过 Filter/Permission | 🔶 | deny 有，ask/needs_human_review 链路未完整 |
-| 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议 | 🔶 | 报告字段待补全 |
+| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺 hidden/eval 脚本 |
+| 3 | DB 完整记录 task/sandbox/finding/report，按 task_id 查询 | 🔶 | warnings 持久化语义需明确 |
+| 4 | 沙箱超时控制；失败不崩溃 | ✅ local fallback 已测 | container 真实超时需测 |
+| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | 需更强 secret fixture 和 DB 全表扫描测试 |
+| 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | — |
+| 7 | 高风险命令须先过 Filter/Permission | 🔶 | ask/deny Agent E2E 待补 |
+| 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 可补 conclusion |
 
-### 评测方法（待实现）
+## 下一阶段推荐顺序
 
-```
-testdata/fixtures/          ← 公开样本（deterministic 预期）
-testdata/hidden/            ← 隐藏样本（评测用，不提交或 CI 注入）
-scripts/eval.sh             ← 输出 recall / precision / 耗时
-```
-
----
+1. 写 container integration test，默认跳过，显式环境变量才跑 Docker。
+2. 补 Agent 层 ask/deny/needs_human_review 不执行 executor 的测试。
+3. 增加 DB 全表 secret 扫描测试，确保报告和数据库都不泄漏明文。
+4. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
+5. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
+6. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 
 ## Definition of Done
 
-- [ ] 所有公开 fixture 产出报告且 rule_id/severity 符合预期矩阵
-- [ ] findings 结构化、去重、低置信度分流正确
-- [ ] 存储 interface 抽象完成，SQLite 实现全部 entity
-- [ ] 按 task_id 可查询 task / findings / report / metrics / decisions / sandbox runs / artifacts
-- [ ] 沙箱失败、超时、deny 不崩溃 review，且写入 DB
-- [ ] 报告与 DB 中无明文 API Key / token / password
-- [ ] container/E2B 为默认沙箱 runtime（local 仅 dev fallback）
-- [ ] dry-run / fake-model / rule-only 三种 mode 可无 API Key 验收
-- [ ] 隐藏样本评测 recall ≥ 80%、precision ≥ 85%（误报 ≤ 15%）
+- [x] 所有公开 fixture 产出报告且 rule_id/severity/status 符合矩阵。
+- [x] findings 结构化、去重、低置信度分流正确。
+- [x] SQLite 记录 task / decisions / sandbox runs / artifacts / metrics / reports。
+- [x] 沙箱失败、超时不崩溃 review，且写入 DB。
+- [x] 报告和 finding evidence 中不出现明文 API Key / token / password。
+- [ ] container runtime 真实 E2E 验证。
+- [ ] DB 全表 secret 扫描测试。
+- [ ] ask/deny/needs_human_review Agent E2E 测试。
+- [ ] hidden/eval 评测脚本。
+- [ ] 官方 artifact/session/telemetry 能力的最小接入或清晰边界说明。
 
 ## 相关文档
 
 - [architecture.md](architecture.md)
+- [framework-first-mvp.md](framework-first-mvp.md)
 - [data-contract.md](data-contract.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
-- [design-summary.md](design-summary.md)
+- [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)

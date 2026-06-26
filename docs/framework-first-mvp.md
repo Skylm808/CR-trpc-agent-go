@@ -1,62 +1,88 @@
 # Framework-first MVP
 
-本文档定义下一轮实现目标：第一个小版本必须基于 `trpc-agent-go` 现有能力串起 **Skills + 沙箱 + 数据库存储**，而不是继续扩展纯本地 CR 原型。
+本文档定义当前小版本边界：在官方 `trpc-agent-go` 上完成 **Skills + Permission + 沙箱 + SQLite 审计** 的最小闭环，并继续补齐 Issue #2004 验收项。
 
-## 纠偏结论
+## 已完成的纠偏
 
-Issue #2004 的核心难点不是“写一个 diff 规则扫描器”，而是验证 `trpc-agent-go` 的工程编排能力：
+项目已从纯本地 diff runner 调整为框架优先路线：
 
-- `tool/skill` 负责加载和运行 `skills/code-review`
-- `tool/workspaceexec` 或 `tool/codeexec` 负责在 workspace 中执行检查脚本
-- `codeexecutor/container` 或 `codeexecutor/e2b` 负责隔离执行 `go test`、`go vet`、自定义规则脚本
-- `tool.PermissionPolicy` 或兼容 wrapper 负责命令执行前的 allow / deny / ask / needs_human_review 决策
-- `session/sqlite`、SQL schema 或兼容 Store 负责记录 task、decision、sandbox run、finding、artifact、report
-- Filter 和 telemetry 负责脱敏、拦截记录、耗时、异常与 severity 分布
+- `go.mod` 依赖官方 `trpc.group/trpc-go/trpc-agent-go v1.10.0`，没有本地 `replace`。
+- `internal/agent` 统一编排 CLI，不再让 CLI 直接调用本地 runner。
+- `tool/skill` 加载并运行 `skills/code-review/scripts/check.sh`。
+- `tool.PermissionPolicy` 在执行前做 allow/ask/deny 决策。
+- `codeexecutor/container` 是默认 runtime；`local-fallback` 仅显式用于测试/开发。
+- `tool/codeexec` 在 `sandbox` 模式执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`。
+- SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 
-当前仓库中已有的 diff parser、deterministic rules、report、SQLite schema 只能作为业务逻辑和测试夹具的迁移基础。它们不能替代框架集成，也不能作为最终验收主线。
-
-## 第一个小版本范围
-
-第一个 framework-first MVP 只做一条最小但完整的链路：
+## 当前小版本能力
 
 ```text
 CLI 输入
-  -> trpc-agent-go Skill 加载 code-review
-  -> 解析 diff / repo 变更
-  -> PermissionPolicy 决策 go test / go vet / scripts/check.sh
-  -> codeexecutor/container 执行，local 仅 test/dev fallback
-  -> 合并 Skill 脚本输出 + deterministic rules
-  -> Filter 脱敏与降噪
-  -> SQLite 持久化
+  -> internal/agent.Agent
+  -> skill_load(code-review)
+  -> PermissionPolicy
+  -> skill_run(scripts/check.sh)
+  -> optional tool/codeexec(go test/go vet/staticcheck)
+  -> redact + dedupe + warning/human-review split
+  -> SQLite audit trail
   -> review_report.json / review_report.md
 ```
 
-## 必须完成的能力
+## 当前可运行路径
 
-| 能力 | 第一版要求 |
-|------|-----------|
-| Skill | `skills/code-review/SKILL.md`、`rules.md`、`scripts/check.sh` 由 `tool/skill` 加载和运行 |
-| 沙箱 | 默认 runtime 为 container；E2B 可选；local 只能通过显式 dev/test fallback 启用 |
-| Permission | 所有高风险命令先经过 `tool.PermissionPolicy` 或兼容 wrapper；非 allow 不执行 |
-| 输入 | 支持 `--diff-file`、`--repo-path`、fixture；提取文件、hunk、候选行号、Go package |
-| 规则 | 至少覆盖 secret、panic/error handling、goroutine/context/resource/db/test missing 中 4 类 |
-| 存储 | SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、report、metrics |
-| 报告 | JSON/Markdown 包含 findings、warnings、人审项、severity 统计、governance、sandbox、metrics、建议 |
-| 模式 | `rule-only`、`dry-run`、`sandbox`、`fake-model` 都能无真实模型 Key 验证 |
+开发/测试环境没有 Docker 时：
 
-## 实现顺序
+```bash
+go run ./cmd/review-agent \
+  --fixture secret.diff \
+  --runtime local-fallback \
+  --mode rule-only
+```
 
-1. **依赖与适配层**：添加 `trpc-agent-go` 依赖；建立 `internal/agent` 编排层，禁止 CLI 直接调用本地 sandbox。
-2. **Skill 链路**：用框架 Skill API 加载 `skills/code-review`，运行 `scripts/check.sh`，把脚本 JSON 输出映射为 findings。
-3. **Permission 链路**：用 `tool.PermissionPolicy` 或 wrapper 统一执行决策，并把 decision 写入 DB。
-4. **沙箱链路**：用 `codeexecutor/container` 作为默认 executor，记录 timeout、output limit、env whitelist、exit code、stdout/stderr digest。
-5. **存储链路**：抽 `storage.Store` interface，补 `filter_decisions`、`artifacts`、扩展 `sandbox_runs`。
-6. **报告链路**：补齐 Issue 验收要求的所有摘要段。
-7. **fixture 验证**：8+ diff 样本必须跑完整链路；dry-run/fake-model 不需要真实 API Key。
+接近生产路径：
+
+```bash
+go run ./cmd/review-agent \
+  --repo-path /path/to/go/repo \
+  --runtime container \
+  --mode sandbox \
+  --staticcheck
+```
+
+## 能力状态
+
+| 能力 | 当前状态 | 下一步 |
+|------|----------|--------|
+| Skill | ✅ `tool/skill` load/run 已接入 | 增加脚本输出 schema 校验 |
+| 沙箱 | 🔶 container 默认，local fallback 可测 | 增加 Docker E2E test 或环境跳过 test |
+| Permission | ✅ allowlist 已接入 | 覆盖 ask/needs_human_review/deny 的端到端测试 |
+| 输入 | 🔶 diff/fixture/repo 支持 | 补文件路径列表、base/head ref |
+| 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测 |
+| 存储 | ✅ SQLite 核心表和查询方法完成 | 考虑迁出 `internal/storage/store.go` 独立接口 |
+| 报告 | ✅ 核心摘要字段完成 | 增加 conclusion 字段和更稳定 golden report |
+| 安全 | 🔶 timeout/output limit/digest/redaction 有记录 | 增加 artifact cap、env 白名单强校验 |
+| 监控 | 🔶 metrics 表记录核心摘要 | 接官方 telemetry hook |
 
 ## 非目标
 
-- 不继续把本地 `internal/sandbox` 扩展成生产沙箱。
-- 不用纯文本 LLM 评论替代 Skill / sandbox / DB 链路。
-- 不把 local runtime 当默认生产方案。
-- 不先追求复杂 AST 规则；第一版优先打通框架链路和审计闭环。
+- 不 fork 或复制 `trpc-agent-go` 框架代码。
+- 不把 `local-fallback` 当生产默认方案。
+- 不用纯文本 LLM 评论替代 Skill、Permission、沙箱和数据库链路。
+- 不优先做复杂 AST；当前更重要的是验收链路和审计数据完整。
+
+## 下一阶段 v0.2 Definition of Done
+
+- `go test ./...` 通过。
+- 所有公开 fixture 在 `local-fallback` 下通过 rule_id/severity/status 断言。
+- 新增 container integration test，默认跳过，设置环境变量后跑真实 Docker。
+- `sandbox` 模式的 go test/go vet/staticcheck run 均有 permission decision 和 sandbox run。
+- SQLite 可按 task_id 查询 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
+- 报告和数据库中无明文 API key/token/password。
+- README、docs、examples 与 CLI flag 和 JSON contract 保持一致。
+
+## 相关文档
+
+- [architecture.md](architecture.md)
+- [implementation-plan.md](implementation-plan.md)
+- [issue-2004-traceability.md](issue-2004-traceability.md)
+- [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)
