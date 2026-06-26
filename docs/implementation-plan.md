@@ -2,21 +2,23 @@
 
 本文档按 Issue #2004 验收优先级排列里程碑，而非严格的时间线顺序。每个 Phase 标注当前状态：`✅ 完成` / `🔶 部分` / `⬜ 待做`。
 
+**纠偏原则：后续开发必须框架优先。** 本地 rule-only 原型只能作为迁移素材；第一版交付必须证明 `trpc-agent-go` 的 Skill、Permission、CodeExecutor、SQLite/Store、Filter、Telemetry 能串成一条可审计 CR 链路。
+
 ## 里程碑总览
 
 ```
-M1  Rule-only 闭环          ✅ 主路径已通
-M2  规则补全 + fixture 预期  🔶 进行中
-M3  存储与报告对齐契约       🔶 部分完成
-M4  trpc-agent-go 集成       ⬜ 待开始
-M5  验收与交付物             ⬜ 待开始
+M0  本地 rule-only 原型       🔶 可迁移，非最终主线
+M1  trpc-agent-go 最小链路    ⬜ 当前最高优先级
+M2  规则补全 + fixture 预期   🔶
+M3  存储与报告对齐契约        ⬜
+M4  验收与交付物              ⬜
 ```
 
 ---
 
-## M1：Rule-only 闭环 ✅
+## M0：本地 Rule-only 原型 🔶
 
-**目标：** 无 API Key 可跑通 parse → rules → dedupe → redact → report。
+**目标：** 作为迁移参考，无 API Key 可跑通 parse → rules → dedupe → redact → report。该阶段不能作为 Issue #2004 最终交付主线。
 
 | 任务 | 状态 |
 |------|------|
@@ -27,6 +29,51 @@ M5  验收与交付物             ⬜ 待开始
 | 去重（DedupeFindings）与脱敏（RedactSecrets） | ✅ |
 | 生成 review_report.json / review_report.md | ✅ |
 | fixture 端到端测试（报告文件存在） | ✅ |
+
+---
+
+## M1：trpc-agent-go 最小链路 ⬜
+
+**目标：** 先用框架原语打通 `Skills + Permission + CodeExecutor + SQLite` 的最小闭环。完成后再继续扩展本地规则。
+
+### Phase 1a：依赖与编排层
+
+| 任务 | 状态 |
+|------|------|
+| 添加 `trpc-agent-go` 依赖，并记录具体 module path / version | ⬜ |
+| 新增 `internal/agent` 或等价编排层，CLI 只调用 Agent，不直接调用本地 runner | ⬜ |
+| 保留现有 parser / rules / report 作为 adapter 后端 | ⬜ |
+| 增加 `--mode=rule-only/dry-run/sandbox/fake-model` 的真实分支 | ⬜ |
+
+### Phase 1b：Skill 链路
+
+| 任务 | 状态 |
+|------|------|
+| 通过 `tool/skill` 加载 `skills/code-review/SKILL.md` | ⬜ |
+| 通过 `skill run` 执行 `skills/code-review/scripts/check.sh` | ⬜ |
+| 脚本输出 JSON findings，映射为内部 `Finding` | ⬜ |
+| Skill run 失败记录为 warning / exception，不导致任务崩溃 | ⬜ |
+
+### Phase 1c：Permission + CodeExecutor
+
+| 任务 | 状态 |
+|------|------|
+| 接入 `tool.PermissionPolicy` 或兼容 wrapper | ⬜ |
+| 所有命令先生成 permission decision 并落库 | ⬜ |
+| `deny` / `ask` / `needs_human_review` 不进入 executor | ⬜ |
+| 默认使用 `codeexecutor/container` 执行 `go test` / `go vet` / 脚本 | ⬜ |
+| E2B / Cube 作为可选 runtime | ⬜ |
+| local runtime 仅通过显式 dev/test fallback 启用 | ⬜ |
+| timeout、output limit、env whitelist、exit code、stdout/stderr digest 全部记录 | ⬜ |
+
+### Phase 1d：最小持久化与报告
+
+| 任务 | 状态 |
+|------|------|
+| SQLite 记录 task、permission decision、sandbox run、finding、report、metrics | ⬜ |
+| 增加 filter decision 与 artifact 记录 | ⬜ |
+| report 包含 findings、warnings、人审项、governance、sandbox、metrics、修复建议 | ⬜ |
+| 至少 8 个 fixture 走完整框架链路并生成 JSON/Markdown | ⬜ |
 
 ---
 
@@ -105,33 +152,7 @@ M5  验收与交付物             ⬜ 待开始
 
 ---
 
-## M4：trpc-agent-go 集成 ⬜
-
-**目标：** Skill run、PermissionPolicy、container/E2B 沙箱接入；local runtime 仅作 dev fallback。
-
-| 任务 | 状态 |
-|------|------|
-| 添加 trpc-agent-go 依赖 | ⬜ |
-| Skill load → 读 rules/scripts | ⬜ |
-| skill run 触发 check.sh / go vet 包装 | ⬜ |
-| 替换自研 Policy 为 PermissionPolicy wrapper | ⬜ |
-| container runtime 作为默认沙箱 | ⬜ |
-| E2B runtime 作为可选沙箱 | ⬜ |
-| 沙箱 output size limit | ⬜ |
-| 沙箱 env whitelist | ⬜ |
-| 沙箱失败/超时不崩溃 review | 🔶 基础逻辑有 |
-| Filter 层实现 | ⬜ |
-| Telemetry hook 接入 | ⬜ |
-
-**Runtime 选择：**
-
-- 生产/CI：`CR_SANDBOX_RUNTIME=container`（默认）
-- 本地开发：`CR_SANDBOX_RUNTIME=local`（显式启用）
-- 单元测试：mock 或 local + 短 timeout
-
----
-
-## M5：验收与交付物 ⬜
+## M4：验收与交付物 ⬜
 
 **目标：** 满足 Issue #2004 全部 Deliverables 与 8 条验收标准。
 

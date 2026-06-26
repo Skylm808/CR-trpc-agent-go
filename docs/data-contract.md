@@ -2,6 +2,8 @@
 
 本文档定义审查流程中的核心实体。**Target Contract** 为 Issue #2004 验收目标；**Current v0** 标注当前代码/SQLite 实现状态。
 
+**框架优先约束：** Target Contract 中的 `PermissionDecision`、`FilterDecision`、`SandboxRun`、`Artifact` 和 `MetricsSummary` 必须记录 `trpc-agent-go` 的实际 Skill / Permission / CodeExecutor / telemetry 链路事件。本地 runner 或自研 policy 产生的数据只能作为 dev/test fallback，不能替代最终框架事件审计。
+
 ---
 
 ## ReviewTask

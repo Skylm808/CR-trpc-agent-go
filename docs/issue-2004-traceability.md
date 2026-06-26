@@ -2,16 +2,18 @@
 
 本文档将 Issue #2004 的 9 项能力要求、8 条验收标准与仓库组件、测试、当前状态一一对应，便于 PR 评审与 Issue 进度更新。
 
+**重要纠偏：当前最高优先级是接入 `trpc-agent-go` 框架能力。** 纯本地 diff parser、rules、sandbox、SQLite 只能作为迁移基础；如果没有 `tool/skill`、`PermissionPolicy`、`codeexecutor/container|e2b`、Filter、Telemetry 的实际调用链，不能视为满足本 Issue。
+
 ## 能力要求追踪
 
 | # | Issue 要求 | 组件路径 | 测试覆盖 | 状态 | 阻塞项 |
 |---|-----------|---------|---------|------|--------|
-| 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/review/engine.go` | `skill_test.go` | 🔶 | Skill 未接入 Run() 编排；goroutine/context/resource/DB 规则未实现 |
-| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `internal/sandbox/runner.go` | `runner_test.go`、`sandbox_test.go` | 🔶 | 仅 local exec；container/E2B 未接入 |
-| 3 | skill_run / workspace_exec / PermissionPolicy | `internal/governance/policy.go` | `policy_test.go` | 🔶 | 自研 Policy；框架 PermissionPolicy 未接入 |
+| 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`tool/skill` adapter、`internal/review/engine.go` | `skill_test.go` + framework integration test | 🔶 | Skill 目录已有，但未通过框架 skill load / skill run 编排 |
+| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container` / `codeexecutor/e2b` adapter | sandbox integration test | ⬜ | 当前仅本地 runner，必须迁移到框架 CodeExecutor |
+| 3 | skill_run / workspace_exec / PermissionPolicy | `tool.PermissionPolicy` wrapper、`tool/workspaceexec` 或 `tool/codeexec` | policy + integration test | ⬜ | 自研 Policy 只能临时兼容，未接框架 PermissionPolicy |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/review/parser.go`、`cmd/review-agent/run.go` | `parser_test.go`、`repo_test.go` | 🔶 | 文件路径列表、base/head ref 未支持 |
 | 5 | 结构化 findings（severity/category/file/line/...） | `internal/review/types.go` | `engine_test.go`、`types_test.go` | ✅ | — |
-| 6 | 数据库存储（task/run/decision/finding/artifact/report） | `internal/storage/sqlite/sqlite.go` | `sqlite_test.go` | 🔶 | 无 Store interface；artifact/filter 表缺失 |
+| 6 | 数据库存储（task/run/decision/finding/artifact/report） | `session/sqlite` 或兼容 `storage.Store` + `internal/storage/sqlite` | `sqlite_test.go` | 🔶 | 无 Store interface；artifact/filter 表缺失；需记录框架执行事件 |
 | 7 | 去重降噪（同文件同行不重复；低置信度分流） | `internal/review/types.go` DedupeFindings | `types_test.go` | 🔶 | needs_human_review 分流未实现；dedupe fixture 缺失 |
 | 8 | 安全边界（timeout/output limit/env whitelist/脱敏/artifact cap） | `internal/sandbox/runner.go`、`RedactSecrets` | `runner_test.go` | 🔶 | output limit、env whitelist、artifact cap 未实现 |
 | 9 | 监控审计（耗时/工具调用/拦截/finding 分布/异常分布） | `internal/review/types.go` Metrics | `report_test.go` | 🔶 | exception_counts、redaction_count 未完整填充 |
@@ -80,14 +82,15 @@ Issue 要求 7 类规则中至少 4 类。当前与目标：
 
 ## 下一步（按优先级）
 
-1. **M2** — 补全 4 类缺失规则 + fixture 预期断言测试
-2. **M3** — Storage interface + artifact/filter 表 + 报告字段补全
-3. **M4** — trpc-agent-go 集成（Skill run + container/E2B + PermissionPolicy）
-4. **M5** — 示例 report 输出 + 隐藏样本评测脚本
+1. **M1** — 优先接入 trpc-agent-go：Skill run + PermissionPolicy + CodeExecutor(container/E2B)
+2. **M2** — 补全 4 类缺失 Go 规则 + fixture 预期断言测试
+3. **M3** — Storage interface + artifact/filter 表 + 框架执行事件落库
+4. **M4** — 示例 report 输出 + 隐藏样本评测脚本
 
 ## 相关文档
 
 - [architecture.md](architecture.md)
+- [framework-first-mvp.md](framework-first-mvp.md)
 - [implementation-plan.md](implementation-plan.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
 - [data-contract.md](data-contract.md)

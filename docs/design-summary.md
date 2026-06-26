@@ -4,11 +4,11 @@
 
 ## Skill 设计
 
-code-review Skill 位于 `skills/code-review/`，包含 `SKILL.md`（入口与使用约束）、`rules.md`（规则文档，与 engine `rule_id` 一一对应）和 `scripts/`（沙箱可执行检查脚本）。Agent 通过 `skill load` 加载 Skill，读取规则策略后由确定性规则引擎对 diff 新增行做启发式扫描；必要时经 Permission 批准后，`skill run` 触发 `go test`、`go vet` 或 staticcheck 脚本。Skill 层负责「审查策略与可执行脚本」，规则引擎负责「diff 本地确定性检出」，两者结果合并去重后输出。
+code-review Skill 位于 `skills/code-review/`，包含 `SKILL.md`（入口与使用约束）、`rules.md`（规则文档，与 engine `rule_id` 一一对应）和 `scripts/`（沙箱可执行检查脚本）。第一版必须通过 `trpc-agent-go` 的 `tool/skill` 执行 `skill load` / `skill run`，读取规则策略后由确定性规则引擎对 diff 新增行做启发式扫描；必要时经 Permission 批准后，Skill 脚本触发 `go test`、`go vet` 或 staticcheck。Skill 层负责「审查策略与可执行脚本」，规则引擎负责「diff 确定性检出」，两者结果合并去重后输出。
 
 ## 沙箱隔离策略
 
-生产与 CI 默认使用 `codeexecutor/container` 或 E2B runtime，本地 `exec.Command` 仅通过 `CR_SANDBOX_RUNTIME=local` 显式启用。沙箱执行前必须经过 Permission 决策：`deny`、`ask`、`needs_human_review` 的命令不进入 executor。执行控制包括超时（默认 30s）、stdout/stderr 输出大小上限、环境变量白名单、artifact 数量上限。stdout/stderr 以 digest 形式落库，明文密钥在写入前脱敏。沙箱超时或命令失败记录为 `status=timeout/failed`，不导致整个 review 任务崩溃。
+生产与 CI 默认使用 `codeexecutor/container` 或 E2B runtime，本地 `exec.Command` 仅通过 `CR_SANDBOX_RUNTIME=local` 显式启用。沙箱执行前必须经过 `tool.PermissionPolicy` 或兼容 wrapper 决策：`deny`、`ask`、`needs_human_review` 的命令不进入 executor。执行控制包括超时（默认 30s）、stdout/stderr 输出大小上限、环境变量白名单、artifact 数量上限。stdout/stderr 以 digest 形式落库，明文密钥在写入前脱敏。沙箱超时或命令失败记录为 `status=timeout/failed`，不导致整个 review 任务崩溃。
 
 ## Permission / Filter 策略
 

@@ -7,6 +7,7 @@
 | 文档 | 说明 |
 |------|------|
 | [architecture.md](architecture.md) | 系统架构、组件划分、框架集成映射、mode 定义、安全边界 |
+| [framework-first-mvp.md](framework-first-mvp.md) | 基于 trpc-agent-go 的第一个小版本边界与实现顺序 |
 | [implementation-plan.md](implementation-plan.md) | 分阶段实现计划（M1–M5）、Definition of Done、验收对照 |
 | [data-contract.md](data-contract.md) | 实体字段定义；Target Contract vs Current v0 实现状态 |
 
@@ -28,9 +29,10 @@
 
 **开始开发：**
 
-1. [implementation-plan.md](implementation-plan.md) — 当前 Milestone 与任务清单
-2. [fixtures-matrix.md](fixtures-matrix.md) — 规则实现的目标行为
-3. [data-contract.md](data-contract.md) — 字段与持久化约束
+1. [framework-first-mvp.md](framework-first-mvp.md) — 先确认第一版必须基于 trpc-agent-go 能力
+2. [implementation-plan.md](implementation-plan.md) — 当前 Milestone 与任务清单
+3. [fixtures-matrix.md](fixtures-matrix.md) — 规则实现的目标行为
+4. [data-contract.md](data-contract.md) — 字段与持久化约束
 
 ## 状态图例
 

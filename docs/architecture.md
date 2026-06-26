@@ -23,6 +23,8 @@
 
 `trpc-agent-go` 提供可复用原语：Skill 加载与执行、workspace/host/code 执行、container/E2B 沙箱、Session/Memory/SQL 存储模式、PermissionPolicy、Filter 与 Telemetry。
 
+**关键约束：第一个可交付版本必须以 `trpc-agent-go` 为主线。** 现有本地 diff parser、规则、报告、SQLite 代码只作为业务逻辑和测试夹具的迁移基础；不能继续把纯本地 runner / policy / storage 当成最终交付主体。Issue #2004 验收的是 Skills、沙箱执行、治理策略、数据库、监控审计和安全边界组成的框架化链路。
+
 ## 系统流程
 
 ```
@@ -30,13 +32,13 @@ CLI 输入（--diff-file / --repo-path / fixture）
   ↓
 Diff 解析器 → 文件、hunk、行号、Go package 提示
   ↓
-Skill 层（skills/code-review/）→ 加载 SKILL.md、规则文档、脚本
+trpc-agent-go Skill 层（tool/skill）→ skill load / skill run code-review
   ↓
 Filter 层 → 输入/输出/content 是否允许进入报告或落库
   ↓
-Permission 层 → 命令是否允许进入沙箱（allow / deny / ask / needs_human_review）
+Permission 层（tool.PermissionPolicy）→ 命令是否允许进入沙箱
   ↓
-沙箱执行器（container / E2B，local 仅 dev fallback）
+CodeExecutor（container / E2B，local 仅 dev fallback）
   ↓
 规则引擎 → 合并 diff 启发式 + 沙箱静态检查结果
   ↓
@@ -53,15 +55,25 @@ Permission 层 → 命令是否允许进入沙箱（allow / deny / ask / needs_h
 
 | 本仓库组件 | trpc-agent-go 对应能力 | 当前状态 |
 |-----------|----------------------|---------|
-| Skill 加载与规则 | `tool/skill`（skill load / skill run） | 🔶 骨架已有，编排未接入 |
+| Skill 加载与规则 | `tool/skill`（skill load / skill run） | ⬜ 框架未接入；仅 Skill 目录骨架已有 |
 | 工作区命令 | `tool/workspaceexec` | ⬜ 待接入 |
 | 主机命令 | `tool/hostexec` | ⬜ 待接入 |
-| 沙箱执行 | `codeexecutor/container`、`codeexecutor/e2b` | 🔶 本地 runner 已实现，container/E2B 待接入 |
-| 命令治理 | `tool.PermissionPolicy` | 🔶 自研 Policy 已实现，框架 Policy 待替换 |
+| 沙箱执行 | `codeexecutor/container`、`codeexecutor/e2b` | ⬜ 框架未接入；本地 runner 仅作迁移参考 |
+| 命令治理 | `tool.PermissionPolicy` | ⬜ 框架未接入；自研 Policy 仅作兼容参考 |
 | 内容过滤 | Filter | ⬜ 待实现 |
-| 持久化 | `session/sqlite` 或自研 `storage.Store` interface | 🔶 SQLite 实现已有，interface 待抽象 |
-| 遥测 | telemetry hooks | 🔶 Metrics 字段已有，框架 hook 待接入 |
+| 持久化 | `session/sqlite` 或兼容 `storage.Store` interface | 🔶 SQLite 基础实现已有，需记录框架事件 |
+| 遥测 | telemetry hooks | ⬜ 框架 hook 未接入；Metrics 字段仅作参考 |
 | 产物 | artifact | ⬜ 表结构与写入待实现 |
+
+## 第一个 Framework-first 小版本
+
+详见 [framework-first-mvp.md](framework-first-mvp.md)。本小版本的完成条件不是“本地规则能跑”，而是：
+
+- CLI 通过 `trpc-agent-go` Skill API 加载并运行 `skills/code-review`
+- `go test` / `go vet` / `scripts/check.sh` 的执行先经过 `tool.PermissionPolicy` 或兼容 wrapper
+- 默认沙箱 runtime 是 `codeexecutor/container`；E2B 可选；local 仅显式 dev/test fallback
+- sandbox run、permission decision、filter decision、artifact、finding、metrics、report 全部写入 SQLite 或兼容 Store
+- `rule-only`、`dry-run`、`sandbox`、`fake-model` 在无真实模型 Key 时仍可验证完整链路
 
 ## 核心组件
 
@@ -96,7 +108,7 @@ Permission 层 → 命令是否允许进入沙箱（allow / deny / ask / needs_h
 - `rules.md` — 规则文档（与 engine rule_id 一一对应）
 - `scripts/` — 沙箱可执行检查脚本（如 `check.sh`、go vet 包装）
 
-Skill 通过 `skill load` 加载，`skill run` 触发脚本；规则引擎与 Skill 脚本结果合并后去重。
+Skill 必须通过 `trpc-agent-go` 的 `tool/skill` 能力加载，`skill run` 触发脚本；规则引擎与 Skill 脚本结果合并后去重。CLI 不应直接绕过 Skill 目录调用脚本。
 
 ### 治理层：Filter 与 Permission
 
@@ -193,17 +205,18 @@ Skill 通过 `skill load` 加载，`skill run` 触发脚本；规则引擎与 Sk
 
 | 里程碑 | 内容 | 状态 |
 |--------|------|------|
-| M1 | 确定性 rule-only 流水线（parse → rules → dedupe → redact → report） | ✅ 主路径已通 |
-| M2 | 规则补全 + fixture 预期矩阵（Issue 8 样本全覆盖） | 🔶 进行中 |
-| M3 | Storage interface + schema 对齐 data-contract | 🔶 部分完成 |
-| M4 | trpc-agent-go 集成（Skill run + PermissionPolicy + container/E2B） | ⬜ 待开始 |
-| M5 | 报告/监控/验收（report 字段补全 + 评测 + design-summary） | ⬜ 待开始 |
+| M0 | 本地 rule-only 原型（迁移参考，不是最终主线） | 🔶 可运行但未接框架 |
+| M1 | trpc-agent-go Skill + Permission + sandbox 最小链路 | ⬜ 当前最高优先级 |
+| M2 | SQLite / Store 对齐 task、decision、run、artifact、finding、report | ⬜ |
+| M3 | Go CR 规则补全 + fixture 预期矩阵 | 🔶 进行中 |
+| M4 | 报告/监控/验收（severity、governance、sandbox、telemetry） | ⬜ |
 
-M1 必须在无真实模型 API Key 的情况下可完整运行。
+M1 必须在无真实模型 API Key 的情况下可完整运行，并且必须经过 `trpc-agent-go` 的 Skill / Permission / CodeExecutor 适配层。
 
 ## 相关文档
 
 - [implementation-plan.md](implementation-plan.md) — 分阶段实现计划
+- [framework-first-mvp.md](framework-first-mvp.md) — 框架优先的小版本边界
 - [data-contract.md](data-contract.md) — 实体字段与持久化规则
 - [issue-2004-traceability.md](issue-2004-traceability.md) — Issue 需求追踪矩阵
 - [fixtures-matrix.md](fixtures-matrix.md) — 测试夹具预期行为
