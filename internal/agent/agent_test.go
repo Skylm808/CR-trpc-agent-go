@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore 固定第一版最小链路：
@@ -210,6 +211,86 @@ func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 		}
 	}
 	t.Fatalf("expected warning to be persisted for replay, got %+v", items)
+}
+
+// TestAgentRunDoesNotExecuteNonAllowPermission 固定治理边界：deny/ask 决策
+// 必须落库并进入报告摘要，但不能继续执行 skill_run 产生规则 finding。
+func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		decision tool.PermissionDecision
+	}{
+		{name: "deny", decision: tool.DenyPermission("blocked by test policy")},
+		{name: "ask", decision: tool.AskPermission("requires approval in test policy")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := repoRoot(t)
+			dbPath := filepath.Join(t.TempDir(), "review.db")
+			ag, err := New(Config{
+				SkillsRoot:   filepath.Join(root, "skills"),
+				FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+				Runtime:      RuntimeLocalFallback,
+				SQLitePath:   dbPath,
+				OutputDir:    t.TempDir(),
+				Timeout:      5 * time.Second,
+			})
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer ag.Close()
+			ag.policy = tool.PermissionPolicyFunc(func(ctx context.Context, req *tool.PermissionRequest) (tool.PermissionDecision, error) {
+				_ = ctx
+				_ = req
+				return tc.decision, nil
+			})
+
+			result, err := ag.Run(context.Background(), Request{
+				Fixture: "secret.diff",
+				Mode:    ModeRuleOnly,
+			})
+			if err != nil {
+				t.Fatalf("Run returned error: %v", err)
+			}
+			for _, finding := range result.Findings {
+				if finding.RuleID == "secret-leak" {
+					t.Fatalf("skill_run appears to have executed after %s decision: %+v", tc.decision.Action, result.Findings)
+				}
+			}
+			if len(result.HumanReviewItems) == 0 {
+				t.Fatalf("expected non-allow decision to create a human review item")
+			}
+			if len(result.GovernanceSummary.PermissionDecisions) == 0 ||
+				result.GovernanceSummary.PermissionDecisions[0].Action != string(tc.decision.Action) {
+				t.Fatalf("expected governance summary action %q, got %+v", tc.decision.Action, result.GovernanceSummary)
+			}
+
+			store, err := sqlite.Open(dbPath)
+			if err != nil {
+				t.Fatalf("open sqlite: %v", err)
+			}
+			defer store.Close()
+			decisions, err := store.DecisionsByTaskID(context.Background(), result.TaskID)
+			if err != nil {
+				t.Fatalf("load decisions: %v", err)
+			}
+			if len(decisions) != 1 || decisions[0].Action != string(tc.decision.Action) {
+				t.Fatalf("expected persisted %s decision, got %+v", tc.decision.Action, decisions)
+			}
+			runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+			if err != nil {
+				t.Fatalf("load sandbox runs: %v", err)
+			}
+			if len(runs) != 1 || runs[0].Status != string(tc.decision.Action) || runs[0].ExitCode != 0 {
+				t.Fatalf("expected non-executed %s sandbox record, got %+v", tc.decision.Action, runs)
+			}
+		})
+	}
 }
 
 // TestAgentRunAcceptsFixtureInput 固定 fixture 输入契约，避免 CLI 自己解析

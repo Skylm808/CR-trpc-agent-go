@@ -8,7 +8,7 @@
 |---|-----------|---------|---------|------|------|
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/codeexec` | local fallback tests | 🔶 | 真实 Docker/E2B E2E 待补 |
-| 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | ask/deny Agent E2E 待补 |
+| 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go` | 🔶 | 文件路径列表、base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
@@ -61,7 +61,7 @@
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container 真实 E2E 待补 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
-| 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | 🔶 | `policy_test.go` | Agent ask/deny E2E 待补 |
+| 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
 | 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议 | ✅ | `report_test.go`、`agent_test.go` | 可补 conclusion |
 
 ## 规则覆盖追踪
@@ -81,10 +81,9 @@
 ## 下一步
 
 1. 增加 Docker container runtime E2E，默认 skip，显式环境变量运行。
-2. 增加 Agent ask/deny/needs_human_review 不进入 executor 的测试。
-3. 抽出 `internal/storage/store.go`。
-4. 增加 hidden/eval 评测脚本。
-5. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+2. 抽出 `internal/storage/store.go`。
+3. 增加 hidden/eval 评测脚本。
+4. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
 
 ## 相关文档
 

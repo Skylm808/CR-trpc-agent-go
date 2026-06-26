@@ -75,8 +75,8 @@ M5  验收交付与评测                         ⬜
 | Docker container runtime 真实 E2E | ⬜ | `CR_AGENT_RUN_CONTAINER_TESTS=1 go test ./internal/agent -run Container` |
 | container bind mount repo 到 `/workspace/repo` | ✅ | `ContainerRepoHostPath` + `WithBindMount` |
 | E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
-| ask/needs_human_review 不进入 executor | 🔶 | policy 单测有基础，需 Agent E2E |
-| deny 不进入 executor | 🔶 | 需 Agent E2E |
+| ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
+| deny 不进入 executor | ✅ | Agent E2E 覆盖 deny |
 | env whitelist 强校验 | 🔶 | 当前记录 `PATH,HOME,TMPDIR`，未强制过滤所有 env |
 | artifact cap | ⬜ | 当前只记录 report artifacts |
 | 官方 telemetry hook | ⬜ | 当前是本地 metrics 表 |
@@ -105,16 +105,15 @@ M5  验收交付与评测                         ⬜
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ local fallback 已测 | container 真实超时需测 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | DB 全表扫描已有；仍需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | — |
-| 7 | 高风险命令须先过 Filter/Permission | 🔶 | ask/deny Agent E2E 待补 |
+| 7 | 高风险命令须先过 Filter/Permission | ✅ | — |
 | 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 可补 conclusion |
 
 ## 下一阶段推荐顺序
 
 1. 写 container integration test，默认跳过，显式环境变量才跑 Docker。
-2. 补 Agent 层 ask/deny/needs_human_review 不执行 executor 的测试。
-3. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
-4. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
-5. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
+2. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
+3. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
+4. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 
 ## Definition of Done
 
@@ -125,7 +124,7 @@ M5  验收交付与评测                         ⬜
 - [x] 报告和 finding evidence 中不出现明文 API Key / token / password。
 - [ ] container runtime 真实 E2E 验证。
 - [x] DB 全表 secret 扫描测试。
-- [ ] ask/deny/needs_human_review Agent E2E 测试。
+- [x] ask/deny/needs_human_review Agent E2E 测试。
 - [ ] hidden/eval 评测脚本。
 - [ ] 官方 artifact/session/telemetry 能力的最小接入或清晰边界说明。
 

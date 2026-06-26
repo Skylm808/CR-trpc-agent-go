@@ -55,7 +55,7 @@ go run ./cmd/review-agent \
 |------|----------|--------|
 | Skill | ✅ `tool/skill` load/run 已接入 | 增加脚本输出 schema 校验 |
 | 沙箱 | 🔶 container 默认，local fallback 可测 | 增加 Docker E2E test 或环境跳过 test |
-| Permission | ✅ allowlist 已接入 | 覆盖 ask/needs_human_review/deny 的端到端测试 |
+| Permission | ✅ allowlist 与 ask/deny Agent E2E 已接入 | 扩展更细粒度命令策略 |
 | 输入 | 🔶 diff/fixture/repo 支持 | 补文件路径列表、base/head ref |
 | 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测 |
 | 存储 | ✅ SQLite 核心表和查询方法完成 | 考虑迁出 `internal/storage/store.go` 独立接口 |
@@ -76,6 +76,7 @@ go run ./cmd/review-agent \
 - 所有公开 fixture 在 `local-fallback` 下通过 rule_id/severity/status 断言。
 - 新增 container integration test，默认跳过，设置环境变量后跑真实 Docker。
 - `sandbox` 模式的 go test/go vet/staticcheck run 均有 permission decision 和 sandbox run。
+- ask/deny 非 allow 决策不会进入 executor，并会进入报告治理摘要和 SQLite。
 - SQLite 可按 task_id 查询 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 - 报告和数据库中无明文 API key/token/password。
 - README、docs、examples 与 CLI flag 和 JSON contract 保持一致。
