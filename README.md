@@ -1,217 +1,189 @@
 # CR-trpc-agent-go
 
-基于 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 构建的 **Go 代码自动审查 Agent** 原型。项目目标是：接收 unified diff、PR patch 或本地工作区变更，通过确定性规则与可选沙箱检查，输出结构化审查结论与可读报告，并将任务、决策与指标持久化。
+基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `codeexecutor/container` 作为生产默认执行器，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物、指标和最终报告。
 
-> 本项目是框架之上的**应用层实现**，而非框架 fork。审查工作流、规则引擎、diff 解析、持久化 schema、报告生成与测试夹具均在本仓库维护；`trpc-agent-go` 提供 Skill 加载、工作区执行、会话/存储模式等可复用原语（后续逐步接入）。
+本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
----
+## Current Status
 
-## 当前进度
+已实现：
 
-对照 [docs/implementation-plan.md](docs/implementation-plan.md) 的七个阶段，当前状态如下：
+- `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
+- `skill_load` 加载 `skills/code-review/SKILL.md`。
+- `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
+- `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
+- `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
+- `sandbox` 模式下通过官方 `tool/codeexec` 执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`。
+- SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact、metrics、report。
+- 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
+- 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
+- 敏感信息在报告和 DB 写入前脱敏。
+- 公开 fixture 覆盖安全、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
 
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| Phase 1 | Go 模块、CLI 入口、确定性 rule-only 流水线、fixture 加载 | ✅ 已完成 |
-| Phase 2 | unified diff 解析、Go 包名推断、规则检查、去重与脱敏 | 🔶 部分完成 |
-| Phase 3 | SQLite schema、任务/发现项/报告/指标持久化 | ✅ 已完成 |
-| Phase 4 | 治理策略、沙箱执行、超时与输出限制 | 🔶 基础版完成 |
-| Phase 5 | `skills/code-review` Skill 打包 | 🔶 骨架完成 |
-| Phase 6 | JSON/Markdown 报告、示例 diff | ✅ 已完成 |
-| Phase 7 | 单元测试、端到端 fixture 审查 | 🔶 进行中 |
+仍需完善：
 
-### 已实现能力
+- Docker `codeexecutor/container` 真实端到端验证。
+- 官方 artifact service 接入；当前 artifact 为本地 SQLite 记录。
+- `session/sqlite` 作为 Agent session/history 的直接使用。
+- 更完整的 telemetry hook 和外部观测集成。
 
-- **输入**：`--diff-file` 指定 unified diff，或 `--repo-path` 从 Git 仓库 / 普通目录生成 diff
-- **Diff 解析**：提取文件、hunk、行号映射与 Go 包名提示
-- **规则引擎**（确定性、无需模型 API Key）：
-  - 密钥/凭证字面量泄露（`secret-leak`）
-  - 直接 `panic` 路径（`panic-direct`）
-  - TODO/FIXME 标记（`todo-marker`）
-  - 新函数缺少测试提示（`missing-test-hint`，warning 级别）
-- **去重与脱敏**：按 file + line + category + rule_id 去重；敏感内容写入报告前脱敏
-- **报告**：生成 `review_report.json` 与 `review_report.md`
-- **持久化**（可选）：`--sqlite` 写入任务、发现项、指标、治理决策与沙箱运行记录
-- **治理层**：拦截高风险命令（如 `rm -rf`、`sudo`），允许 `go test` / `go vet` / `staticcheck`
-- **沙箱**（可选）：本地命令执行 + 超时保护；失败不阻断报告生成
-- **测试夹具**：`testdata/fixtures/` 下 10 个 diff 样例 + 端到端 fixture 测试
+## Architecture
 
-### 待完善 / 后续接入
-
-- **规则扩展**：goroutine/context 泄漏、资源生命周期、DB 连接/事务、更细粒度 error handling（fixture 已预留，规则待实现）
-- **沙箱运行时**：容器 / E2B 等隔离环境（当前为本地 fallback）
-- **trpc-agent-go 深度集成**：Skill 加载、工作区执行、telemetry hooks
-- **运行模式**：`dry-run`、`sandbox`、`fake-model` 等 CLI mode 完整接线
-- **Artifact 持久化**与报告中的 governance/sandbox 摘要完善
-
-第一个里程碑（[docs/architecture.md](docs/architecture.md)）——**无需模型 API Key 的确定性 rule-only 流水线**——已打通主路径。
-
----
-
-## 系统架构
-
-```
-CLI 输入
-  ↓
-Diff 解析器 ──→ 文件 / hunk / 行号 / 包名
-  ↓
-Skill 层（skills/code-review/）
-  ↓
-治理层（allow / deny / ask / needs_human_review）
-  ↓
-沙箱执行器（可选，经策略批准）
-  ↓
-规则引擎 ──→ 去重 ──→ 脱敏
-  ↓
-报告生成（JSON + Markdown）
-  ↓
-SQLite 持久化（可选）
+```text
+CLI
+  -> internal/agent
+  -> trpc-agent-go/tool/skill skill_load
+  -> tool.PermissionPolicy
+  -> trpc-agent-go/tool/skill skill_run
+  -> optional trpc-agent-go/tool/codeexec go checks
+  -> report JSON/Markdown
+  -> SQLite audit store
 ```
 
-安全边界（详见 [docs/architecture.md](docs/architecture.md)）：
+runtime 策略：
 
-- 禁止无限制 shell 执行
-- 沙箱命令须先过策略审批
-- 日志、产物与报告中不得出现明文密钥
-- 输出大小、运行时间与 artifact 数量均有上限
+- 默认 `--runtime container`，通过 `codeexecutor/container` 创建隔离执行器。
+- `--runtime local-fallback` 仅用于开发和测试。
+- container 模式下 `--repo-path` 会 bind mount 到容器内 `/workspace/repo`，Go check 命令在容器路径执行。
 
----
+## Quick Start
 
-## 项目结构
-
-```
-cmd/review-agent/     CLI 入口与编排
-internal/
-  review/             diff 解析、规则引擎、去重、脱敏
-  report/             JSON / Markdown 报告
-  governance/         命令权限策略
-  sandbox/            受控命令执行
-  storage/sqlite/     SQLite 持久化
-skills/code-review/   审查 Skill（SKILL.md、规则文档、脚本）
-testdata/fixtures/    示例 diff 与端到端测试输入
-docs/                 架构、实现计划、数据契约
-```
-
----
-
-## 快速开始
-
-### 环境要求
-
-- Go 1.25+
-
-### 运行测试
+运行测试：
 
 ```bash
-go test ./...
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 ```
 
-针对单个 fixture 生成报告：
+用 fixture 生成报告：
 
 ```bash
 go run ./cmd/review-agent \
-  --diff-file testdata/fixtures/secret.diff \
+  --fixture secret.diff \
+  --fixtures-root testdata/fixtures \
+  --skills-root skills \
+  --runtime local-fallback \
+  --mode rule-only \
   --output-dir /tmp/review-out
 ```
 
-从 Git 仓库读取工作区 diff：
-
-```bash
-go run ./cmd/review-agent \
-  --repo-path /path/to/your/repo \
-  --output-dir /tmp/review-out
-```
-
-启用 SQLite 持久化：
+从 diff 文件生成报告：
 
 ```bash
 go run ./cmd/review-agent \
   --diff-file testdata/fixtures/panic.diff \
+  --skills-root skills \
+  --runtime local-fallback \
+  --mode fake-model \
   --sqlite /tmp/review.db \
   --output-dir /tmp/review-out
 ```
 
-### CLI 参数
+对本地 Go repo 运行 sandbox checks：
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--diff-file` | — | unified diff 文件路径 |
-| `--repo-path` | — | Git 仓库或普通目录（与 diff-file 二选一） |
-| `--output-dir` | `.` | 报告输出目录 |
-| `--mode` | `rule-only` | 审查模式 |
-| `--sqlite` | — | SQLite 数据库路径（可选） |
+```bash
+go run ./cmd/review-agent \
+  --repo-path /path/to/go/repo \
+  --skills-root skills \
+  --runtime container \
+  --mode sandbox \
+  --staticcheck \
+  --sqlite /tmp/review.db \
+  --output-dir /tmp/review-out
+```
 
----
+示例输出见：
 
-## 测试夹具
+- [examples/review_report.json](examples/review_report.json)
+- [examples/review_report.md](examples/review_report.md)
 
-`testdata/fixtures/` 覆盖多种审查场景：
+## CLI
 
-| 文件 | 场景 |
-|------|------|
-| `safe.diff` | 干净的 Go 变更 |
-| `secret.diff` | 潜在密钥泄露 |
-| `panic.diff` | 直接 panic 路径 |
-| `todo.diff` | TODO/FIXME 标记 |
-| `test-missing.diff` | 缺少测试提示 |
-| `goroutine.diff` | goroutine 相关（规则待扩展） |
-| `context.diff` | context 相关（规则待扩展） |
-| `resource.diff` | 资源生命周期（规则待扩展） |
-| `db-lifecycle.diff` | 数据库生命周期（规则待扩展） |
-| `missing-test.diff` | 测试覆盖提示 |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--diff-file` | empty | Unified diff input. |
+| `--repo-path` | empty | Git repo or plain directory input. |
+| `--fixture` | empty | Fixture file name under `--fixtures-root`. |
+| `--fixtures-root` | `testdata/fixtures` | Fixture directory. |
+| `--skills-root` | `skills` | Skill repository root. |
+| `--runtime` | `container` | `container` or `local-fallback`. |
+| `--mode` | `rule-only` | `rule-only`, `dry-run`, `sandbox`, `fake-model`. |
+| `--staticcheck` | `false` | Run optional `staticcheck ./...` in sandbox mode. |
+| `--sqlite` | empty | SQLite DB path. |
+| `--output-dir` | `.` | Report output directory. |
 
----
+## Modes
 
-## 数据契约
+| Mode | Behavior |
+|------|----------|
+| `rule-only` | Loads the skill and runs deterministic `scripts/check.sh`. |
+| `dry-run` | Loads the skill, records a `dry_run` permission decision and a skipped sandbox run, but does not execute. |
+| `sandbox` | Runs `skill_run`, then permission-gated `go test ./...`, `go vet ./...`, and optional `staticcheck ./...`. |
+| `fake-model` | Same deterministic skill path as `rule-only`; no model API Key required. |
 
-审查流程中的核心实体定义见 [docs/data-contract.md](docs/data-contract.md)，包括：
+## SQLite Audit Data
 
-- `ReviewTask` / `ReviewInput` — 任务与归一化输入
-- `ParsedFile` / `ParsedHunk` — 解析后的文件与 hunk
-- `Finding` — 发现项（severity、category、confidence、dedupe_key 等）
-- `PermissionDecision` / `SandboxRun` — 治理与沙箱审计
-- `MetricsSummary` / `ReviewReport` — 指标与最终报告
+SQLite tables are created automatically:
 
-持久化规则：每个 task 对应唯一任务行；发现项、决策、运行记录均关联 task_id；报告可从存储行重建；敏感字面量在写入前脱敏。
+- `review_tasks`
+- `findings`
+- `permission_decisions`
+- `filter_decisions`
+- `sandbox_runs`
+- `artifacts`
+- `metrics`
+- `reports`
 
----
+Example query:
 
-## 后续规划
+```sql
+SELECT task_id, status, mode FROM review_tasks ORDER BY created_at DESC;
+SELECT command, action, reason FROM permission_decisions WHERE task_id = ?;
+SELECT command, status, timeout_ms, output_limit_bytes, duration_ms FROM sandbox_runs WHERE task_id = ?;
+```
 
-按 [docs/implementation-plan.md](docs/implementation-plan.md) 的里程碑顺序：
+## Fixtures
 
-1. **确定性 rule-only 流水线** — 主路径已可用，持续补充规则类别
-2. **持久化与报告** — 基础完成，完善 artifact 与报告摘要字段
-3. **治理与沙箱** — 接入容器/E2B 运行时，强化输出限制与失败处理
-4. **Skill 打包** — 丰富 `skills/code-review/` 规则文档与可执行脚本
-5. **夹具与验证** — 扩展规则后更新 fixture 预期，补齐集成测试
+`testdata/fixtures/` includes more than 8 runnable samples:
 
-**Definition of Done**（完成标准）：
+| Fixture | Expected focus |
+|---------|----------------|
+| `safe.diff` | No finding. |
+| `secret.diff` | `secret-leak` critical finding with redacted evidence. |
+| `panic.diff` | `panic-direct` high finding. |
+| `todo.diff` | `todo-marker` medium finding. |
+| `test-missing.diff` | `missing-test-hint` warning. |
+| `goroutine.diff` | `goroutine-leak` high finding. |
+| `context.diff` | `context-leak` high finding. |
+| `resource.diff` | `resource-leak` high finding. |
+| `db-lifecycle.diff` | `db-lifecycle` high finding. |
+| `dedupe.diff` | Duplicate finding noise reduction. |
+| `sandbox-fail.diff` | Nonzero sandbox exit is recorded and non-fatal. |
+| `sandbox-timeout.diff` | Timeout is recorded as `timed_out` and non-fatal. |
 
-- 所有示例 diff 均能产出报告
-- 发现项结构化且去重
-- 存储可按 task id 查询
-- 沙箱失败不导致审查崩溃
-- 报告与存储中无明文密钥泄露
+## Project Layout
 
----
+```text
+cmd/review-agent/       CLI adapter
+internal/agent/         framework-first orchestration
+internal/report/        JSON and Markdown rendering
+internal/review/        shared finding/diff types and legacy parser helpers
+internal/storage/sqlite SQLite audit store
+skills/code-review/     SKILL.md, rule docs, scripts/check.sh
+testdata/fixtures/      runnable diff fixtures
+docs/                   architecture, data contract, traceability docs
+examples/               sample review reports
+```
 
-## 文档索引
+## Documentation
 
-| 文档 | 说明 |
-|------|------|
-| [docs/README.md](docs/README.md) | 文档总索引与阅读顺序 |
-| [docs/architecture.md](docs/architecture.md) | 系统架构、框架集成映射、mode 定义、安全边界 |
-| [docs/implementation-plan.md](docs/implementation-plan.md) | M1–M5 里程碑、Definition of Done |
-| [docs/data-contract.md](docs/data-contract.md) | 实体字段；Target vs Current v0 实现状态 |
-| [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md) | Issue #2004 需求与验收追踪矩阵 |
-| [docs/fixtures-matrix.md](docs/fixtures-matrix.md) | 每个 diff fixture 的预期 rule_id 与 severity |
-| [docs/design-summary.md](docs/design-summary.md) | 300–500 字方案设计说明（Issue 交付物） |
-| [skills/code-review/SKILL.md](skills/code-review/SKILL.md) | 审查 Skill 使用说明 |
-| [testdata/fixtures/README.md](testdata/fixtures/README.md) | 夹具场景说明 |
-
----
+- [docs/framework-first-mvp.md](docs/framework-first-mvp.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/implementation-plan.md](docs/implementation-plan.md)
+- [docs/data-contract.md](docs/data-contract.md)
+- [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)
+- [docs/fixtures-matrix.md](docs/fixtures-matrix.md)
+- [docs/design-summary.md](docs/design-summary.md)
 
 ## License
 
-见仓库根目录 LICENSE 文件（如有）。
+See LICENSE if present in the repository root.

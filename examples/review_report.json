@@ -1,0 +1,66 @@
+{
+  "task_id": "task-b5a58f11ceb0-1782451188050581000",
+  "findings": [
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 1,
+      "title": "Potential secret appears in added code",
+      "evidence": "const apiKey=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    }
+  ],
+  "human_review_items": [],
+  "metrics": {
+    "total_duration_ms": 2212,
+    "sandbox_duration_ms": 2211,
+    "tool_call_count": 2,
+    "finding_count": 1,
+    "severity_counts": {
+      "critical": 1
+    },
+    "redaction_count": 1
+  },
+  "governance_summary": {
+    "permission_decisions": [
+      {
+        "command": "scripts/check.sh",
+        "action": "allow"
+      }
+    ]
+  },
+  "sandbox_summary": {
+    "runs": [
+      {
+        "command": "scripts/check.sh",
+        "runtime": "local-fallback",
+        "status": "ok",
+        "timeout_ms": 30000,
+        "output_limit_bytes": 65536,
+        "env_whitelist": "PATH,HOME,TMPDIR",
+        "stdout_digest": "fa3c0bc2fd5510a55cf7610b3e8f53570958d0b4c07430308949175d2cb69533",
+        "stderr_digest": "2a13af67601624cb4924e88c89583b6d14c362a01c585716097d241c0a47bd61",
+        "duration_ms": 2211
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "name": "review_report.json",
+      "kind": "report",
+      "path": "review_report.json"
+    },
+    {
+      "name": "review_report.md",
+      "kind": "report",
+      "path": "review_report.md"
+    }
+  ],
+  "summary": "1 findings, 0 warnings",
+  "created_at": "2026-06-26T13:19:50.26304+08:00"
+}
