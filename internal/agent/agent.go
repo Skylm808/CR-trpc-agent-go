@@ -38,6 +38,10 @@ const (
 	ModeRuleOnly = "rule-only"
 	// ModeDryRun 表示只演练治理和持久化链路。
 	ModeDryRun = "dry-run"
+	// ModeSandbox 表示执行确定性规则并保留沙箱审计摘要。
+	ModeSandbox = "sandbox"
+	// ModeFakeModel 表示不使用真实模型 API，复用确定性 Skill 链路。
+	ModeFakeModel = "fake-model"
 )
 
 const (
@@ -156,14 +160,23 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		}
 	}
 
-	result, runRecord, decision, err := a.runSkillChecks(ctx, taskID, diff)
+	toolCallCount := 2
+	var result review.Result
+	var runRecord sqlite.SandboxRunRecord
+	var decision sqlite.DecisionRecord
+	if mode == ModeDryRun {
+		toolCallCount = 1
+		result, runRecord, decision, err = a.runDryRun(ctx, taskID)
+	} else {
+		result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
+	}
 	if err != nil {
 		result = resultWithRunError(result, err)
 	}
 	result.TaskID = taskID
 	result.Created = time.Now()
 	result.Metrics.TotalDurationMS = time.Since(start).Milliseconds()
-	result.Metrics.ToolCallCount = 2
+	result.Metrics.ToolCallCount = toolCallCount
 	result.Metrics.SandboxDurationMS = runRecord.DurationMS
 	result.Metrics.FindingCount = len(result.Findings)
 	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
@@ -207,6 +220,45 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		}
 	}
 	return result, nil
+}
+
+// runDryRun 只加载 Skill 并记录跳过执行的治理/沙箱摘要。
+func (a *Agent) runDryRun(ctx context.Context, taskID string) (review.Result, sqlite.SandboxRunRecord, sqlite.DecisionRecord, error) {
+	loadArgs := []byte(`{"skill":"code-review"}`)
+	if _, err := a.loadTool.Call(ctx, loadArgs); err != nil {
+		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+	}
+	now := time.Now()
+	decision := sqlite.DecisionRecord{
+		TaskID:  taskID,
+		Command: defaultSkillCommand,
+		Action:  "dry_run",
+		Reason:  "executor skipped by dry-run mode",
+		At:      now,
+	}
+	runRecord := sqlite.SandboxRunRecord{
+		TaskID:           taskID,
+		Command:          defaultSkillCommand,
+		Runtime:          a.cfg.Runtime,
+		Status:           "skipped",
+		TimeoutMS:        a.cfg.Timeout.Milliseconds(),
+		OutputLimitBytes: a.cfg.OutputLimitBytes,
+		EnvWhitelist:     "PATH,HOME,TMPDIR",
+		At:               now,
+	}
+	return review.Result{
+		Warnings: []review.Finding{{
+			Severity:       "low",
+			Category:       "governance",
+			Title:          "Sandbox execution skipped by dry-run mode",
+			Evidence:       "dry-run",
+			Recommendation: "Run again with rule-only or sandbox mode before merging.",
+			Confidence:     "high",
+			Source:         "mode",
+			RuleID:         "dry-run-skipped-executor",
+			Status:         "needs_human_review",
+		}},
+	}, runRecord, decision, nil
 }
 
 // Close 释放 Agent 持有的存储连接。

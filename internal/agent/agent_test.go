@@ -209,6 +209,86 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	}
 }
 
+// TestAgentRunDryRunRecordsSkippedSandbox 固定 dry-run 语义：不进入 executor，
+// 但仍然生成报告并记录权限/沙箱 skipped 审计数据。
+func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeDryRun,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.Metrics.ToolCallCount != 1 {
+		t.Fatalf("dry-run should only load skill, got tool calls %d", result.Metrics.ToolCallCount)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Status != "skipped" {
+		t.Fatalf("expected skipped sandbox run, got %+v", runs)
+	}
+	decisions, err := store.DecisionsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load decisions: %v", err)
+	}
+	if len(decisions) != 1 || decisions[0].Action != "dry_run" {
+		t.Fatalf("expected dry_run permission decision, got %+v", decisions)
+	}
+}
+
+// TestAgentRunFakeModelUsesDeterministicSkill 固定 fake-model 语义：不需要真实模型
+// API Key，但仍走 deterministic skill_run 审查链路。
+func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.Findings) == 0 || result.Findings[0].Source != "skill_run" {
+		t.Fatalf("expected fake-model to use skill_run findings, got %+v", result.Findings)
+	}
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
