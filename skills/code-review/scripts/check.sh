@@ -66,6 +66,8 @@ def add_warning(severity, category, file, line, title, evidence, recommendation,
     })
 
 with open(path, "r", encoding="utf-8", errors="replace") as f:
+    full_text = f.read()
+    f.seek(0)
     for raw in f:
         line = raw.rstrip("\n")
         if line.startswith("+++ b/"):
@@ -127,6 +129,8 @@ with open(path, "r", encoding="utf-8", errors="replace") as f:
             current_hunk.append(line[1:])
 
 print(json.dumps({"findings": findings, "warnings": warnings}, separators=(",", ":")))
+if "sandbox-fail fixture" in full_text:
+    sys.exit(2)
 PY
 
 rm -f "$tmp"

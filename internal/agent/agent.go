@@ -158,7 +158,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 
 	result, runRecord, decision, err := a.runSkillChecks(ctx, taskID, diff)
 	if err != nil {
-		result.Metrics.ExceptionCounts = map[string]int{"skill_run": 1}
+		result = resultWithRunError(result, err)
 	}
 	result.TaskID = taskID
 	result.Created = time.Now()
@@ -168,6 +168,12 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	result.Metrics.FindingCount = len(result.Findings)
 	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
 	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
+	if result.Metrics.ExceptionCounts == nil {
+		result.Metrics.ExceptionCounts = map[string]int{}
+	}
+	if runRecord.Status == "failed" || runRecord.Status == "error" || runRecord.Status == "timed_out" {
+		incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
+	}
 	if decision.Action != string(tool.PermissionActionAllow) {
 		result.Metrics.PermissionBlocks = 1
 	}
@@ -200,7 +206,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 			return review.Result{}, err
 		}
 	}
-	return result, err
+	return result, nil
 }
 
 // Close 释放 Agent 持有的存储连接。
@@ -630,4 +636,32 @@ func reportArtifacts() []review.ArtifactSummary {
 		{Name: "review_report.json", Kind: "report", Path: "review_report.json"},
 		{Name: "review_report.md", Kind: "report", Path: "review_report.md"},
 	}
+}
+
+// resultWithRunError 把 skill_run 错误降级为人工复核 warning，保证评审流程继续产出报告。
+func resultWithRunError(result review.Result, err error) review.Result {
+	if result.Metrics.ExceptionCounts == nil {
+		result.Metrics.ExceptionCounts = map[string]int{}
+	}
+	incrementException(result.Metrics.ExceptionCounts, "skill_run")
+	result.Warnings = append(result.Warnings, review.Finding{
+		Severity:       "low",
+		Category:       "sandbox",
+		Title:          "Sandbox command failed",
+		Evidence:       review.RedactSecrets(err.Error()),
+		Recommendation: "Inspect sandbox stderr digest and rerun the command in an isolated workspace.",
+		Confidence:     "high",
+		Source:         "sandbox",
+		RuleID:         "sandbox-command-failed",
+		Status:         "needs_human_review",
+	})
+	return result
+}
+
+// incrementException 增加指定异常类型计数。
+func incrementException(counts map[string]int, key string) {
+	if counts == nil {
+		return
+	}
+	counts[key]++
 }

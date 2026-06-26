@@ -152,6 +152,63 @@ func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 	}
 }
 
+// TestAgentRunRecordsSandboxFailureWithoutCrashing 固定验收要求：
+// 沙箱脚本失败不能让整个评审失败，必须生成报告并落库失败 run。
+func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeLocalFallback,
+		SQLitePath:   dbPath,
+		OutputDir:    outDir,
+		Timeout:      5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		Fixture: "sandbox-fail.diff",
+		Mode:    ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run should not fail when sandbox command fails: %v", err)
+	}
+	if got := result.Metrics.ExceptionCounts["sandbox_failed"]; got != 1 {
+		t.Fatalf("expected sandbox_failed exception count, got %+v", result.Metrics.ExceptionCounts)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "review_report.json")); err != nil {
+		t.Fatalf("expected json report: %v", err)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Status != "failed" || runs[0].ExitCode == 0 {
+		t.Fatalf("expected failed sandbox run with nonzero exit, got %+v", runs)
+	}
+	metrics, err := store.MetricsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load metrics: %v", err)
+	}
+	if !strings.Contains(metrics.ExceptionCountsJSON, "sandbox_failed") {
+		t.Fatalf("expected persisted sandbox_failed metric, got %s", metrics.ExceptionCountsJSON)
+	}
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
