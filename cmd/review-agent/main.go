@@ -13,6 +13,8 @@ func main() {
 	flag.StringVar(&opts.OutputDir, "output-dir", ".", "directory for reports")
 	flag.StringVar(&opts.Mode, "mode", "rule-only", "review mode")
 	flag.StringVar(&opts.SQLitePath, "sqlite", "", "sqlite database path")
+	flag.StringVar(&opts.Runtime, "runtime", "container", "executor runtime: container or local-fallback")
+	flag.StringVar(&opts.SkillsRoot, "skills-root", "skills", "path to skills root")
 	flag.Parse()
 
 	if err := Run(opts); err != nil {
@@ -20,4 +22,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-

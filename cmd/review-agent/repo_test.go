@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
 )
 
 func TestRunCanUseRepoPathForDiffGeneration(t *testing.T) {
@@ -14,9 +16,11 @@ func TestRunCanUseRepoPathForDiffGeneration(t *testing.T) {
 
 	out := t.TempDir()
 	opts := Options{
-		RepoPath:  repo,
-		OutputDir: out,
-		Mode:      "rule-only",
+		RepoPath:   repo,
+		OutputDir:  out,
+		Mode:       cragent.ModeRuleOnly,
+		Runtime:    cragent.RuntimeLocalFallback,
+		SkillsRoot: filepath.Join("..", "..", "skills"),
 	}
 	if err := Run(opts); err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -25,4 +29,3 @@ func TestRunCanUseRepoPathForDiffGeneration(t *testing.T) {
 		t.Fatalf("expected json report: %v", err)
 	}
 }
-

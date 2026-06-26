@@ -19,7 +19,7 @@ type Store struct {
 
 // Task is the canonical persisted review task record.
 type Task struct {
-	ID         string
+	ID          string
 	InputType   string
 	InputRef    string
 	InputDigest string
@@ -49,39 +49,47 @@ type DecisionRecord struct {
 
 // SandboxRunRecord captures one sandbox execution attempt.
 type SandboxRunRecord struct {
-	TaskID  string
-	Command string
-	Status  string
-	Output  string
-	At      time.Time
+	TaskID           string
+	Command          string
+	Runtime          string
+	Status           string
+	TimeoutMS        int64
+	OutputLimitBytes int
+	EnvWhitelist     string
+	ExitCode         int
+	StdoutDigest     string
+	StderrDigest     string
+	DurationMS       int64
+	Output           string
+	At               time.Time
 }
 
 // MetricsRecord stores the aggregated review telemetry for a task.
 type MetricsRecord struct {
-	TaskID              string
-	TotalDurationMS     int64
-	SandboxDurationMS   int64
-	ToolCallCount       int
+	TaskID               string
+	TotalDurationMS      int64
+	SandboxDurationMS    int64
+	ToolCallCount        int
 	PermissionBlockCount int
-	FindingCount        int
-	SeverityCountsJSON  string
+	FindingCount         int
+	SeverityCountsJSON   string
 	ExceptionCountsJSON  string
-	RedactionCount      int
-	At                  time.Time
+	RedactionCount       int
+	At                   time.Time
 }
 
 // MetricsSummary is the query shape returned by MetricsByTaskID.
 type MetricsSummary struct {
-	TaskID string
-	TotalDurationMS int64
-	SandboxDurationMS int64
-	ToolCallCount int
+	TaskID               string
+	TotalDurationMS      int64
+	SandboxDurationMS    int64
+	ToolCallCount        int
 	PermissionBlockCount int
-	FindingCount int
-	SeverityCountsJSON string
-	ExceptionCountsJSON string
-	RedactionCount int
-	At time.Time
+	FindingCount         int
+	SeverityCountsJSON   string
+	ExceptionCountsJSON  string
+	RedactionCount       int
+	At                   time.Time
 }
 
 // Open creates or opens the SQLite database at the provided path.
@@ -148,7 +156,15 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id TEXT NOT NULL,
   command TEXT NOT NULL,
+  runtime TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
+  timeout_ms INTEGER NOT NULL DEFAULT 0,
+  output_limit_bytes INTEGER NOT NULL DEFAULT 0,
+  env_whitelist TEXT NOT NULL DEFAULT '',
+  exit_code INTEGER NOT NULL DEFAULT 0,
+  stdout_digest TEXT NOT NULL DEFAULT '',
+  stderr_digest TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER NOT NULL DEFAULT 0,
   output TEXT,
   created_at TEXT NOT NULL
 );
@@ -289,10 +305,60 @@ VALUES(?, ?, ?, ?, ?)
 // SaveSandboxRun writes one sandbox attempt for later troubleshooting.
 func (s *Store) SaveSandboxRun(ctx context.Context, rec SandboxRunRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sandbox_runs(task_id, command, status, output, created_at)
-VALUES(?, ?, ?, ?, ?)
-`, rec.TaskID, rec.Command, rec.Status, rec.Output, rec.At.UTC().Format(time.RFC3339Nano))
+INSERT INTO sandbox_runs(task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Command, rec.Runtime, rec.Status, rec.TimeoutMS, rec.OutputLimitBytes, rec.EnvWhitelist, rec.ExitCode, rec.StdoutDigest, rec.StderrDigest, rec.DurationMS, rec.Output, rec.At.UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+// DecisionsByTaskID 按写入顺序加载某个任务的权限决策记录。
+func (s *Store) DecisionsByTaskID(ctx context.Context, taskID string) ([]DecisionRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT task_id, command, action, reason, created_at
+FROM permission_decisions WHERE task_id=?
+ORDER BY id
+`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []DecisionRecord
+	for rows.Next() {
+		var rec DecisionRecord
+		var createdAt string
+		if err := rows.Scan(&rec.TaskID, &rec.Command, &rec.Action, &rec.Reason, &createdAt); err != nil {
+			return nil, err
+		}
+		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// SandboxRunsByTaskID 按写入顺序加载某个任务的沙箱执行记录。
+func (s *Store) SandboxRunsByTaskID(ctx context.Context, taskID string) ([]SandboxRunRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at
+FROM sandbox_runs WHERE task_id=?
+ORDER BY id
+`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SandboxRunRecord
+	for rows.Next() {
+		var rec SandboxRunRecord
+		var createdAt string
+		if err := rows.Scan(&rec.TaskID, &rec.Command, &rec.Runtime, &rec.Status, &rec.TimeoutMS, &rec.OutputLimitBytes, &rec.EnvWhitelist, &rec.ExitCode, &rec.StdoutDigest, &rec.StderrDigest, &rec.DurationMS, &rec.Output, &createdAt); err != nil {
+			return nil, err
+		}
+		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, rec)
+	}
+	return out, rows.Err()
 }
 
 // SaveMetrics stores the aggregated telemetry snapshot for a task.

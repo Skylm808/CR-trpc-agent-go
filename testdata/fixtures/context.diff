@@ -5,6 +5,7 @@ index 1111111..2222222 100644
 @@ -1,2 +1,6 @@
  package foo
 +
-+func Handle(ctx context.Context) {
-+	_ = ctx
++func Handle() {
++	_, cancel := context.WithTimeout(context.Background(), 0)
++	_ = cancel
 +}
