@@ -24,6 +24,7 @@ import (
 	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	toolcodeexec "trpc.group/trpc-go/trpc-agent-go/tool/codeexec"
 	toolskill "trpc.group/trpc-go/trpc-agent-go/tool/skill"
 )
 
@@ -85,11 +86,12 @@ type Store interface {
 
 // Agent 持有 trpc-agent-go 工具和本项目持久化实现。
 type Agent struct {
-	cfg      Config
-	loadTool tool.CallableTool
-	runTool  tool.CallableTool
-	policy   tool.PermissionPolicy
-	store    Store
+	cfg       Config
+	loadTool  tool.CallableTool
+	runTool   tool.CallableTool
+	checkTool tool.CallableTool
+	policy    tool.PermissionPolicy
+	store     Store
 }
 
 // New 创建一个框架优先的 CR Agent。
@@ -128,11 +130,12 @@ func New(cfg Config) (*Agent, error) {
 	)
 
 	return &Agent{
-		cfg:      cfg,
-		loadTool: toolskill.NewLoadTool(repo),
-		runTool:  runTool,
-		policy:   defaultPermissionPolicy(),
-		store:    store,
+		cfg:       cfg,
+		loadTool:  toolskill.NewLoadTool(repo),
+		runTool:   runTool,
+		checkTool: toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
+		policy:    defaultPermissionPolicy(),
+		store:     store,
 	}, nil
 }
 
@@ -170,6 +173,14 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	} else {
 		result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
 	}
+	decisions := []sqlite.DecisionRecord{decision}
+	runs := []sqlite.SandboxRunRecord{runRecord}
+	if mode == ModeSandbox && strings.TrimSpace(req.RepoPath) != "" {
+		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, req.RepoPath)
+		decisions = append(decisions, checkDecisions...)
+		runs = append(runs, checkRuns...)
+		toolCallCount += len(checkRuns)
+	}
 	if err != nil {
 		result = resultWithRunError(result, err)
 	}
@@ -177,22 +188,24 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	result.Created = time.Now()
 	result.Metrics.TotalDurationMS = time.Since(start).Milliseconds()
 	result.Metrics.ToolCallCount = toolCallCount
-	result.Metrics.SandboxDurationMS = runRecord.DurationMS
+	result.Metrics.SandboxDurationMS = totalSandboxDuration(runs)
 	result.Metrics.FindingCount = len(result.Findings)
 	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
 	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
 	if result.Metrics.ExceptionCounts == nil {
 		result.Metrics.ExceptionCounts = map[string]int{}
 	}
-	if runRecord.Status == "failed" || runRecord.Status == "error" || runRecord.Status == "timed_out" {
-		incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
+	for _, run := range runs {
+		if run.Status == "failed" || run.Status == "error" || run.Status == "timed_out" {
+			incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
+		}
 	}
 	if decision.Action != string(tool.PermissionActionAllow) {
 		result.Metrics.PermissionBlocks = 1
 	}
 	result.HumanReviewItems = humanReviewItems(result.Warnings)
-	result.GovernanceSummary = governanceSummary(decision, result.Metrics.PermissionBlocks)
-	result.SandboxSummary = sandboxSummary(runRecord)
+	result.GovernanceSummary = governanceSummary(decisions, result.Metrics.PermissionBlocks)
+	result.SandboxSummary = sandboxSummary(runs)
 	result.Artifacts = reportArtifacts()
 	if result.Summary == "" {
 		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
@@ -207,7 +220,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		return review.Result{}, err
 	}
 	if a.store != nil {
-		if err := a.persist(ctx, taskID, result, decision, runRecord, jsonReport, []byte(md)); err != nil {
+		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md)); err != nil {
 			return review.Result{}, err
 		}
 		if err := a.store.SaveTask(ctx, sqlite.Task{
@@ -319,8 +332,84 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 		if req.ToolName == "skill_run" && strings.Contains(string(req.Arguments), defaultSkillCommand) {
 			return tool.AllowPermission(), nil
 		}
+		if req.ToolName == "execute_code" &&
+			(strings.Contains(string(req.Arguments), "go test ./...") ||
+				strings.Contains(string(req.Arguments), "go vet ./...")) {
+			return tool.AllowPermission(), nil
+		}
 		return tool.AskPermission("unrecognized tool command requires human review"), nil
 	})
+}
+
+// runGoSandboxChecks 在 sandbox 模式下执行 Go 项目的最小静态/测试检查。
+func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]sqlite.DecisionRecord, []sqlite.SandboxRunRecord) {
+	commands := []string{"go test ./...", "go vet ./..."}
+	decisions := make([]sqlite.DecisionRecord, 0, len(commands))
+	runs := make([]sqlite.SandboxRunRecord, 0, len(commands))
+	for _, command := range commands {
+		decision, run := a.runGoSandboxCommand(ctx, taskID, repoPath, command)
+		decisions = append(decisions, decision)
+		runs = append(runs, run)
+	}
+	return decisions, runs
+}
+
+// runGoSandboxCommand 对单个 Go 检查命令做权限检查并通过 codeexec 执行。
+func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (sqlite.DecisionRecord, sqlite.SandboxRunRecord) {
+	args, _ := json.Marshal(map[string]any{
+		"code_blocks": []map[string]string{{
+			"language": "bash",
+			"code":     "cd " + shellQuote(repoPath) + " && " + command,
+		}},
+		"execution_id": taskID + "-" + strings.ReplaceAll(command, " ", "-"),
+	})
+	permReq := &tool.PermissionRequest{
+		Tool:        a.checkTool,
+		ToolName:    a.checkTool.Declaration().Name,
+		Declaration: a.checkTool.Declaration(),
+		Arguments:   args,
+	}
+	perm, err := a.policy.CheckToolPermission(ctx, permReq)
+	if err != nil {
+		perm = tool.DenyPermission(err.Error())
+	}
+	perm, err = tool.NormalizePermissionDecision(perm)
+	if err != nil {
+		perm = tool.DenyPermission(err.Error())
+	}
+	decision := sqlite.DecisionRecord{
+		TaskID: taskID, Command: command,
+		Action: string(perm.Action), Reason: perm.Reason, At: time.Now(),
+	}
+	run := sqlite.SandboxRunRecord{
+		TaskID: taskID, Command: command, Runtime: a.cfg.Runtime,
+		Status: "skipped", TimeoutMS: a.cfg.Timeout.Milliseconds(),
+		OutputLimitBytes: a.cfg.OutputLimitBytes,
+		EnvWhitelist:     "PATH,HOME,TMPDIR",
+		At:               time.Now(),
+	}
+	if perm.Action != tool.PermissionActionAllow {
+		run.Status = string(perm.Action)
+		return decision, run
+	}
+
+	start := time.Now()
+	raw, err := a.checkTool.Call(ctx, args)
+	run.DurationMS = time.Since(start).Milliseconds()
+	if err != nil {
+		run.Status = "error"
+		run.StderrDigest = digestString(err.Error())
+		return decision, run
+	}
+	output := codeExecOutput(raw)
+	run.StdoutDigest = digestString(output)
+	if strings.Contains(output, "Error executing code block") {
+		run.Status = "failed"
+		run.ExitCode = 1
+		return decision, run
+	}
+	run.Status = "ok"
+	return decision, run
 }
 
 // runSkillChecks 通过 skill_load 与 skill_run 执行 code-review Skill。
@@ -456,9 +545,14 @@ func sanitizeFinding(f review.Finding) review.Finding {
 }
 
 // persist 保存一次审查的治理、沙箱、finding、指标和报告数据。
-func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decision sqlite.DecisionRecord, run sqlite.SandboxRunRecord, jsonReport, markdownReport []byte) error {
-	if err := a.store.SaveDecision(ctx, decision); err != nil {
-		return err
+func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []sqlite.DecisionRecord, runs []sqlite.SandboxRunRecord, jsonReport, markdownReport []byte) error {
+	for _, decision := range decisions {
+		if decision.Command == "" && decision.Action == "" {
+			continue
+		}
+		if err := a.store.SaveDecision(ctx, decision); err != nil {
+			return err
+		}
 	}
 	if result.Metrics.RedactionCount > 0 {
 		if err := a.store.SaveFilterDecision(ctx, sqlite.FilterDecisionRecord{
@@ -471,8 +565,13 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
-	if err := a.store.SaveSandboxRun(ctx, run); err != nil {
-		return err
+	for _, run := range runs {
+		if run.Command == "" && run.Status == "" {
+			continue
+		}
+		if err := a.store.SaveSandboxRun(ctx, run); err != nil {
+			return err
+		}
 	}
 	for _, finding := range result.Findings {
 		if err := a.store.SaveFinding(ctx, taskID, finding); err != nil {
@@ -614,6 +713,26 @@ func digestString(data string) string {
 	return digestBytes([]byte(data))
 }
 
+// codeExecOutput 从官方 codeexec tool 返回值中提取 stdout 文本。
+func codeExecOutput(raw any) string {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return ""
+	}
+	var out struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return ""
+	}
+	return out.Output
+}
+
+// shellQuote 对本地路径做 POSIX 单引号转义。
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
 // severityCounts 汇总 findings 与 warnings 的严重级别分布。
 func severityCounts(findings, warnings []review.Finding) map[string]int {
 	out := map[string]int{}
@@ -649,37 +768,42 @@ func humanReviewItems(warnings []review.Finding) []review.Finding {
 }
 
 // governanceSummary 将权限决策转换为报告摘要。
-func governanceSummary(decision sqlite.DecisionRecord, blocks int) review.GovernanceSummary {
-	if decision.Command == "" && decision.Action == "" {
-		return review.GovernanceSummary{PermissionBlocks: blocks}
-	}
-	return review.GovernanceSummary{
-		PermissionBlocks: blocks,
-		PermissionDecisions: []review.PermissionDecisionSummary{{
+func governanceSummary(decisions []sqlite.DecisionRecord, blocks int) review.GovernanceSummary {
+	out := review.GovernanceSummary{PermissionBlocks: blocks}
+	for _, decision := range decisions {
+		if decision.Command == "" && decision.Action == "" {
+			continue
+		}
+		out.PermissionDecisions = append(out.PermissionDecisions, review.PermissionDecisionSummary{
 			Command: decision.Command,
 			Action:  decision.Action,
 			Reason:  decision.Reason,
-		}},
+		})
 	}
+	return out
 }
 
 // sandboxSummary 将沙箱运行记录转换为报告摘要。
-func sandboxSummary(run sqlite.SandboxRunRecord) review.SandboxSummary {
-	if run.Command == "" {
-		return review.SandboxSummary{}
+func sandboxSummary(runs []sqlite.SandboxRunRecord) review.SandboxSummary {
+	out := review.SandboxSummary{}
+	for _, run := range runs {
+		if run.Command == "" {
+			continue
+		}
+		out.Runs = append(out.Runs, review.SandboxRunSummary{
+			Command:          run.Command,
+			Runtime:          run.Runtime,
+			Status:           run.Status,
+			TimeoutMS:        run.TimeoutMS,
+			OutputLimitBytes: run.OutputLimitBytes,
+			EnvWhitelist:     run.EnvWhitelist,
+			ExitCode:         run.ExitCode,
+			StdoutDigest:     run.StdoutDigest,
+			StderrDigest:     run.StderrDigest,
+			DurationMS:       run.DurationMS,
+		})
 	}
-	return review.SandboxSummary{Runs: []review.SandboxRunSummary{{
-		Command:          run.Command,
-		Runtime:          run.Runtime,
-		Status:           run.Status,
-		TimeoutMS:        run.TimeoutMS,
-		OutputLimitBytes: run.OutputLimitBytes,
-		EnvWhitelist:     run.EnvWhitelist,
-		ExitCode:         run.ExitCode,
-		StdoutDigest:     run.StdoutDigest,
-		StderrDigest:     run.StderrDigest,
-		DurationMS:       run.DurationMS,
-	}}}
+	return out
 }
 
 // reportArtifacts 声明本地报告文件产物，后续可替换为 artifact service 引用。
@@ -688,6 +812,15 @@ func reportArtifacts() []review.ArtifactSummary {
 		{Name: "review_report.json", Kind: "report", Path: "review_report.json"},
 		{Name: "review_report.md", Kind: "report", Path: "review_report.md"},
 	}
+}
+
+// totalSandboxDuration 汇总多条沙箱运行耗时。
+func totalSandboxDuration(runs []sqlite.SandboxRunRecord) int64 {
+	var total int64
+	for _, run := range runs {
+		total += run.DurationMS
+	}
+	return total
 }
 
 // resultWithRunError 把 skill_run 错误降级为人工复核 warning，保证评审流程继续产出报告。

@@ -289,6 +289,63 @@ func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
 	}
 }
 
+// TestAgentRunSandboxModeExecutesGoChecks 固定 sandbox 模式的最小 Go 项目检查：
+// go test 与 go vet 必须先生成权限决策，再通过官方 codeexec 工具执行并落库。
+func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/demo\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package demo\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo_test.go"), []byte("package demo\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 3 { t.Fatal(\"bad\") } }\n"), 0o644); err != nil {
+		t.Fatalf("write foo_test.go: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  t.TempDir(),
+		Timeout:    10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo,
+		Mode:     ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	decisions, err := store.DecisionsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load decisions: %v", err)
+	}
+	assertDecisionForCommand(t, decisions, "go test ./...")
+	assertDecisionForCommand(t, decisions, "go vet ./...")
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	assertRunForCommand(t, runs, "go test ./...")
+	assertRunForCommand(t, runs, "go vet ./...")
+}
+
 // repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -307,4 +364,26 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = next
 	}
+}
+
+// assertDecisionForCommand 检查指定命令存在 allow 权限决策。
+func assertDecisionForCommand(t *testing.T, decisions []sqlite.DecisionRecord, command string) {
+	t.Helper()
+	for _, decision := range decisions {
+		if decision.Command == command && decision.Action == "allow" {
+			return
+		}
+	}
+	t.Fatalf("expected allow decision for %q, got %+v", command, decisions)
+}
+
+// assertRunForCommand 检查指定命令存在成功沙箱记录。
+func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command string) {
+	t.Helper()
+	for _, run := range runs {
+		if run.Command == command && run.Status == "ok" && run.DurationMS >= 0 {
+			return
+		}
+	}
+	t.Fatalf("expected ok sandbox run for %q, got %+v", command, runs)
 }
