@@ -1,3 +1,5 @@
+// Package review contains the deterministic diff parser, rule engine,
+// and shared data structures for the first version of the CR agent.
 package review
 
 import (
@@ -11,6 +13,7 @@ import (
 	"time"
 )
 
+// Result is the normalized output of one review run.
 type Result struct {
 	TaskID   string     `json:"task_id"`
 	Findings []Finding  `json:"findings"`
@@ -20,6 +23,8 @@ type Result struct {
 	Created  time.Time  `json:"created_at,omitempty"`
 }
 
+// Metrics captures the coarse review telemetry that is safe to persist and
+// surface in reports.
 type Metrics struct {
 	TotalDurationMS    int64            `json:"total_duration_ms,omitempty"`
 	SandboxDurationMS  int64            `json:"sandbox_duration_ms,omitempty"`
@@ -31,6 +36,7 @@ type Metrics struct {
 	RedactionCount     int              `json:"redaction_count,omitempty"`
 }
 
+// Finding is a structured review issue emitted by the rule engine.
 type Finding struct {
 	Severity       string `json:"severity"`
 	Category       string `json:"category"`
@@ -45,6 +51,8 @@ type Finding struct {
 	Status         string `json:"status,omitempty"`
 }
 
+// DedupeKey returns a stable key used to collapse repeated findings that
+// point at the same file, line, category, and rule.
 func (f Finding) DedupeKey() string {
 	sum := sha1.Sum([]byte(strings.Join([]string{
 		strings.ToLower(strings.TrimSpace(f.File)),
@@ -55,10 +63,12 @@ func (f Finding) DedupeKey() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ParsedDiff is the normalized representation of a unified diff.
 type ParsedDiff struct {
 	Files []ParsedFile `json:"files"`
 }
 
+// ParsedFile describes one changed file in the diff.
 type ParsedFile struct {
 	Path        string  `json:"path"`
 	Language    string  `json:"language"`
@@ -68,6 +78,7 @@ type ParsedFile struct {
 	Hunks       []Hunk  `json:"hunks"`
 }
 
+// Hunk represents one diff hunk with line-level context and candidate lines.
 type Hunk struct {
 	File          string   `json:"file"`
 	OldStart      int      `json:"old_start"`
@@ -79,6 +90,7 @@ type Hunk struct {
 	Lines         []Line   `json:"lines,omitempty"`
 }
 
+// Line captures one line inside a hunk together with old and new line numbers.
 type Line struct {
 	OldLine int    `json:"old_line,omitempty"`
 	NewLine int    `json:"new_line,omitempty"`
@@ -86,6 +98,8 @@ type Line struct {
 	Text    string `json:"text"`
 }
 
+// RedactSecrets replaces common secret-like values before they are written
+// into findings, reports, or storage.
 func RedactSecrets(input string) string {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)`),
@@ -101,6 +115,8 @@ func RedactSecrets(input string) string {
 	return out
 }
 
+// DedupeFindings keeps the first occurrence of each unique finding key and
+// returns a stable, sorted slice.
 func DedupeFindings(findings []Finding) []Finding {
 	seen := map[string]struct{}{}
 	out := make([]Finding, 0, len(findings))
@@ -124,6 +140,8 @@ func DedupeFindings(findings []Finding) []Finding {
 	return out
 }
 
+// MustJSON marshals a value as pretty JSON and intentionally ignores the
+// returned error because it is only used for internal telemetry snapshots.
 func MustJSON(v any) []byte {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return b

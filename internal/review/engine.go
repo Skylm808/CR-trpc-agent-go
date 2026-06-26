@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Analysis is the internal working set produced while applying rules.
 type Analysis struct {
 	TaskID   string
 	Findings []Finding
@@ -16,6 +17,8 @@ type Analysis struct {
 	Diff     ParsedDiff
 }
 
+// AnalyzeDiff parses the diff, runs rules, deduplicates the output, and
+// attaches a lightweight telemetry snapshot to the result.
 func AnalyzeDiff(input string) (Result, error) {
 	start := time.Now()
 	parsed, err := ParseUnifiedDiff(input)
@@ -48,6 +51,8 @@ func AnalyzeDiff(input string) (Result, error) {
 func runRules(diff ParsedDiff) Analysis {
 	var out Analysis
 	out.Diff = diff
+	// Secret-shaped literals are treated as high-risk regardless of file
+	// type, because the first version is biased toward safety.
 	secretToken := regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`)
 	for _, file := range diff.Files {
 		for _, hunk := range file.Hunks {
@@ -59,6 +64,8 @@ func runRules(diff ParsedDiff) Analysis {
 				if file.Path == "" {
 					continue
 				}
+				// TODO/FIXME markers are not blocking by themselves, but they
+				// are useful medium-severity maintainability findings.
 				if strings.Contains(text, "TODO(") || strings.Contains(text, "FIXME") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:      "medium",
@@ -75,8 +82,12 @@ func runRules(diff ParsedDiff) Analysis {
 					})
 				}
 				if file.IsTestFile {
+					// Test files are exempt from the missing-test hint because
+					// they are already the test surface.
 					continue
 				}
+				// Direct panic paths are flagged because the agent targets Go
+				// review, where explicit error handling is preferred in shared code.
 				if strings.HasPrefix(text, "func ") && strings.Contains(text, "panic(") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:      "high",
@@ -92,6 +103,8 @@ func runRules(diff ParsedDiff) Analysis {
 						Status:        "finding",
 					})
 				}
+				// A new function with no obvious error path is a weak signal that
+				// the change might need a focused test, so keep it as a warning.
 				if strings.HasPrefix(text, "func ") && !strings.Contains(text, "error") {
 					out.Warnings = append(out.Warnings, Finding{
 						Severity:      "low",
@@ -107,6 +120,8 @@ func runRules(diff ParsedDiff) Analysis {
 						Status:        "warning",
 					})
 				}
+				// Literal secrets are reported as critical findings and the
+				// evidence is redacted before storage or reporting.
 				if strings.Contains(strings.ToLower(text), "password") ||
 					strings.Contains(strings.ToLower(text), "token") ||
 					strings.Contains(strings.ToLower(text), "secret") ||
@@ -133,6 +148,7 @@ func runRules(diff ParsedDiff) Analysis {
 
 var ErrEmptyInput = errors.New("empty review input")
 
+// BuildReport is the external entry point used by the CLI and tests.
 func BuildReport(input string) (Result, error) {
 	if strings.TrimSpace(input) == "" {
 		return Result{}, ErrEmptyInput
@@ -140,6 +156,7 @@ func BuildReport(input string) (Result, error) {
 	return AnalyzeDiff(input)
 }
 
+// PackageFromPath derives a Go package-like name from a file path.
 func PackageFromPath(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(base, filepath.Ext(base))
