@@ -64,6 +64,25 @@ type SandboxRunRecord struct {
 	At               time.Time
 }
 
+// FilterDecisionRecord captures one filter or redaction decision.
+type FilterDecisionRecord struct {
+	TaskID string
+	Target string
+	Action string
+	Reason string
+	At     time.Time
+}
+
+// ArtifactRecord captures one persisted review artifact reference.
+type ArtifactRecord struct {
+	TaskID string
+	Name   string
+	Kind   string
+	Path   string
+	Digest string
+	At     time.Time
+}
+
 // MetricsRecord stores the aggregated review telemetry for a task.
 type MetricsRecord struct {
 	TaskID               string
@@ -152,6 +171,14 @@ CREATE TABLE IF NOT EXISTS permission_decisions (
   reason TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS filter_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  target TEXT NOT NULL,
+  action TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sandbox_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id TEXT NOT NULL,
@@ -166,6 +193,15 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
   stderr_digest TEXT NOT NULL DEFAULT '',
   duration_ms INTEGER NOT NULL DEFAULT 0,
   output TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  path TEXT,
+  digest TEXT,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metrics (
@@ -311,6 +347,24 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return err
 }
 
+// SaveFilterDecision writes one filter or redaction decision for auditability.
+func (s *Store) SaveFilterDecision(ctx context.Context, rec FilterDecisionRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO filter_decisions(task_id, target, action, reason, created_at)
+VALUES(?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Target, rec.Action, rec.Reason, rec.At.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// SaveArtifact writes one persisted artifact reference for a task.
+func (s *Store) SaveArtifact(ctx context.Context, rec ArtifactRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO artifacts(task_id, name, kind, path, digest, created_at)
+VALUES(?, ?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Name, rec.Kind, rec.Path, rec.Digest, rec.At.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
 // DecisionsByTaskID 按写入顺序加载某个任务的权限决策记录。
 func (s *Store) DecisionsByTaskID(ctx context.Context, taskID string) ([]DecisionRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -353,6 +407,56 @@ ORDER BY id
 		var rec SandboxRunRecord
 		var createdAt string
 		if err := rows.Scan(&rec.TaskID, &rec.Command, &rec.Runtime, &rec.Status, &rec.TimeoutMS, &rec.OutputLimitBytes, &rec.EnvWhitelist, &rec.ExitCode, &rec.StdoutDigest, &rec.StderrDigest, &rec.DurationMS, &rec.Output, &createdAt); err != nil {
+			return nil, err
+		}
+		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// FilterDecisionsByTaskID 按写入顺序加载某个任务的过滤/脱敏决策。
+func (s *Store) FilterDecisionsByTaskID(ctx context.Context, taskID string) ([]FilterDecisionRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT task_id, target, action, reason, created_at
+FROM filter_decisions WHERE task_id=?
+ORDER BY id
+`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []FilterDecisionRecord
+	for rows.Next() {
+		var rec FilterDecisionRecord
+		var createdAt string
+		if err := rows.Scan(&rec.TaskID, &rec.Target, &rec.Action, &rec.Reason, &createdAt); err != nil {
+			return nil, err
+		}
+		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+// ArtifactsByTaskID 按写入顺序加载某个任务的持久化产物。
+func (s *Store) ArtifactsByTaskID(ctx context.Context, taskID string) ([]ArtifactRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT task_id, name, kind, path, digest, created_at
+FROM artifacts WHERE task_id=?
+ORDER BY id
+`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ArtifactRecord
+	for rows.Next() {
+		var rec ArtifactRecord
+		var createdAt string
+		if err := rows.Scan(&rec.TaskID, &rec.Name, &rec.Kind, &rec.Path, &rec.Digest, &createdAt); err != nil {
 			return nil, err
 		}
 		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)

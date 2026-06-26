@@ -56,6 +56,16 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if strings.Contains(string(jsonReport), "sk-1234567890abcdef") {
 		t.Fatalf("json report leaked raw secret: %s", jsonReport)
 	}
+	for _, want := range []string{
+		"\"governance_summary\"",
+		"\"sandbox_summary\"",
+		"\"artifacts\"",
+		"\"human_review_items\"",
+	} {
+		if !strings.Contains(string(jsonReport), want) {
+			t.Fatalf("expected json report to include %s, got %s", want, jsonReport)
+		}
+	}
 
 	store, err := sqlite.Open(dbPath)
 	if err != nil {
@@ -91,6 +101,20 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	}
 	if len(runs) == 0 || runs[0].TimeoutMS == 0 || runs[0].OutputLimitBytes == 0 {
 		t.Fatalf("expected bounded sandbox run record, got %+v", runs)
+	}
+	filterDecisions, err := store.FilterDecisionsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load filter decisions: %v", err)
+	}
+	if len(filterDecisions) == 0 || filterDecisions[0].Action != "redact" {
+		t.Fatalf("expected redaction filter decision, got %+v", filterDecisions)
+	}
+	artifacts, err := store.ArtifactsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load artifacts: %v", err)
+	}
+	if len(artifacts) < 2 || artifacts[0].Name == "" {
+		t.Fatalf("expected report artifacts, got %+v", artifacts)
 	}
 }
 

@@ -69,7 +69,9 @@ type Store interface {
 	SaveTask(context.Context, sqlite.Task) error
 	SaveFinding(context.Context, string, review.Finding) error
 	SaveDecision(context.Context, sqlite.DecisionRecord) error
+	SaveFilterDecision(context.Context, sqlite.FilterDecisionRecord) error
 	SaveSandboxRun(context.Context, sqlite.SandboxRunRecord) error
+	SaveArtifact(context.Context, sqlite.ArtifactRecord) error
 	SaveMetrics(context.Context, sqlite.MetricsRecord) error
 	SaveReport(context.Context, string, []byte, []byte) error
 	Close() error
@@ -162,10 +164,15 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	result.Metrics.ToolCallCount = 2
 	result.Metrics.SandboxDurationMS = runRecord.DurationMS
 	result.Metrics.FindingCount = len(result.Findings)
+	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
 	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
 	if decision.Action != string(tool.PermissionActionAllow) {
 		result.Metrics.PermissionBlocks = 1
 	}
+	result.HumanReviewItems = humanReviewItems(result.Warnings)
+	result.GovernanceSummary = governanceSummary(decision, result.Metrics.PermissionBlocks)
+	result.SandboxSummary = sandboxSummary(runRecord)
+	result.Artifacts = reportArtifacts()
 	if result.Summary == "" {
 		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
 	}
@@ -393,6 +400,17 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 	if err := a.store.SaveDecision(ctx, decision); err != nil {
 		return err
 	}
+	if result.Metrics.RedactionCount > 0 {
+		if err := a.store.SaveFilterDecision(ctx, sqlite.FilterDecisionRecord{
+			TaskID: taskID,
+			Target: "finding.evidence",
+			Action: "redact",
+			Reason: "secret pattern",
+			At:     time.Now(),
+		}); err != nil {
+			return err
+		}
+	}
 	if err := a.store.SaveSandboxRun(ctx, run); err != nil {
 		return err
 	}
@@ -413,6 +431,25 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		At:                   time.Now(),
 	}); err != nil {
 		return err
+	}
+	for _, artifact := range result.Artifacts {
+		digest := artifact.Digest
+		if artifact.Name == "review_report.json" {
+			digest = digestBytes(jsonReport)
+		}
+		if artifact.Name == "review_report.md" {
+			digest = digestBytes(markdownReport)
+		}
+		if err := a.store.SaveArtifact(ctx, sqlite.ArtifactRecord{
+			TaskID: taskID,
+			Name:   artifact.Name,
+			Kind:   artifact.Kind,
+			Path:   artifact.Path,
+			Digest: digest,
+			At:     time.Now(),
+		}); err != nil {
+			return err
+		}
 	}
 	return a.store.SaveReport(ctx, taskID, jsonReport, markdownReport)
 }
@@ -510,4 +547,68 @@ func severityCounts(findings, warnings []review.Finding) map[string]int {
 		out[f.Severity]++
 	}
 	return out
+}
+
+// redactionCount 统计报告证据中出现的脱敏占位符数量。
+func redactionCount(findings, warnings []review.Finding) int {
+	total := 0
+	for _, finding := range append(findings, warnings...) {
+		if strings.Contains(finding.Evidence, "[REDACTED]") {
+			total++
+		}
+	}
+	return total
+}
+
+// humanReviewItems 从 warnings 中挑出需要人工处理的项目。
+func humanReviewItems(warnings []review.Finding) []review.Finding {
+	var out []review.Finding
+	for _, warning := range warnings {
+		if warning.Status == "needs_human_review" || warning.Status == "ask" {
+			out = append(out, warning)
+		}
+	}
+	return review.DedupeFindings(out)
+}
+
+// governanceSummary 将权限决策转换为报告摘要。
+func governanceSummary(decision sqlite.DecisionRecord, blocks int) review.GovernanceSummary {
+	if decision.Command == "" && decision.Action == "" {
+		return review.GovernanceSummary{PermissionBlocks: blocks}
+	}
+	return review.GovernanceSummary{
+		PermissionBlocks: blocks,
+		PermissionDecisions: []review.PermissionDecisionSummary{{
+			Command: decision.Command,
+			Action:  decision.Action,
+			Reason:  decision.Reason,
+		}},
+	}
+}
+
+// sandboxSummary 将沙箱运行记录转换为报告摘要。
+func sandboxSummary(run sqlite.SandboxRunRecord) review.SandboxSummary {
+	if run.Command == "" {
+		return review.SandboxSummary{}
+	}
+	return review.SandboxSummary{Runs: []review.SandboxRunSummary{{
+		Command:          run.Command,
+		Runtime:          run.Runtime,
+		Status:           run.Status,
+		TimeoutMS:        run.TimeoutMS,
+		OutputLimitBytes: run.OutputLimitBytes,
+		EnvWhitelist:     run.EnvWhitelist,
+		ExitCode:         run.ExitCode,
+		StdoutDigest:     run.StdoutDigest,
+		StderrDigest:     run.StderrDigest,
+		DurationMS:       run.DurationMS,
+	}}}
+}
+
+// reportArtifacts 声明本地报告文件产物，后续可替换为 artifact service 引用。
+func reportArtifacts() []review.ArtifactSummary {
+	return []review.ArtifactSummary{
+		{Name: "review_report.json", Kind: "report", Path: "review_report.json"},
+		{Name: "review_report.md", Kind: "report", Path: "review_report.md"},
+	}
 }

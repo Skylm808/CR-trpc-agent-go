@@ -15,25 +15,77 @@ import (
 
 // Result is the normalized output of one review run.
 type Result struct {
-	TaskID   string     `json:"task_id"`
-	Findings []Finding  `json:"findings"`
-	Warnings []Finding  `json:"warnings,omitempty"`
-	Metrics  Metrics    `json:"metrics,omitempty"`
-	Summary  string     `json:"summary,omitempty"`
-	Created  time.Time  `json:"created_at,omitempty"`
+	TaskID            string            `json:"task_id"`
+	Findings          []Finding         `json:"findings"`
+	Warnings          []Finding         `json:"warnings,omitempty"`
+	HumanReviewItems  []Finding         `json:"human_review_items"`
+	Metrics           Metrics           `json:"metrics,omitempty"`
+	GovernanceSummary GovernanceSummary `json:"governance_summary"`
+	SandboxSummary    SandboxSummary    `json:"sandbox_summary"`
+	Artifacts         []ArtifactSummary `json:"artifacts"`
+	Summary           string            `json:"summary,omitempty"`
+	Created           time.Time         `json:"created_at,omitempty"`
 }
 
 // Metrics captures the coarse review telemetry that is safe to persist and
 // surface in reports.
 type Metrics struct {
-	TotalDurationMS    int64            `json:"total_duration_ms,omitempty"`
-	SandboxDurationMS  int64            `json:"sandbox_duration_ms,omitempty"`
-	ToolCallCount      int              `json:"tool_call_count,omitempty"`
-	PermissionBlocks   int              `json:"permission_block_count,omitempty"`
-	FindingCount       int              `json:"finding_count,omitempty"`
-	SeverityCounts     map[string]int   `json:"severity_counts,omitempty"`
-	ExceptionCounts    map[string]int   `json:"exception_counts,omitempty"`
-	RedactionCount     int              `json:"redaction_count,omitempty"`
+	TotalDurationMS   int64          `json:"total_duration_ms,omitempty"`
+	SandboxDurationMS int64          `json:"sandbox_duration_ms,omitempty"`
+	ToolCallCount     int            `json:"tool_call_count,omitempty"`
+	PermissionBlocks  int            `json:"permission_block_count,omitempty"`
+	FindingCount      int            `json:"finding_count,omitempty"`
+	SeverityCounts    map[string]int `json:"severity_counts,omitempty"`
+	ExceptionCounts   map[string]int `json:"exception_counts,omitempty"`
+	RedactionCount    int            `json:"redaction_count,omitempty"`
+}
+
+// GovernanceSummary 汇总权限与过滤策略在一次审查中的决策。
+type GovernanceSummary struct {
+	PermissionDecisions []PermissionDecisionSummary `json:"permission_decisions,omitempty"`
+	FilterDecisions     []FilterDecisionSummary     `json:"filter_decisions,omitempty"`
+	PermissionBlocks    int                         `json:"permission_blocks,omitempty"`
+}
+
+// PermissionDecisionSummary 是报告层可展示的权限决策摘要。
+type PermissionDecisionSummary struct {
+	Command string `json:"command"`
+	Action  string `json:"action"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// FilterDecisionSummary 是报告层可展示的过滤/脱敏决策摘要。
+type FilterDecisionSummary struct {
+	Target string `json:"target"`
+	Action string `json:"action"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// SandboxSummary 汇总沙箱执行尝试和失败状态。
+type SandboxSummary struct {
+	Runs []SandboxRunSummary `json:"runs,omitempty"`
+}
+
+// SandboxRunSummary 是报告层可展示的单次沙箱执行摘要。
+type SandboxRunSummary struct {
+	Command          string `json:"command"`
+	Runtime          string `json:"runtime"`
+	Status           string `json:"status"`
+	TimeoutMS        int64  `json:"timeout_ms"`
+	OutputLimitBytes int    `json:"output_limit_bytes"`
+	EnvWhitelist     string `json:"env_whitelist,omitempty"`
+	ExitCode         int    `json:"exit_code,omitempty"`
+	StdoutDigest     string `json:"stdout_digest,omitempty"`
+	StderrDigest     string `json:"stderr_digest,omitempty"`
+	DurationMS       int64  `json:"duration_ms"`
+}
+
+// ArtifactSummary 描述报告中引用的持久化产物。
+type ArtifactSummary struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Path   string `json:"path,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 // Finding is a structured review issue emitted by the rule engine.
@@ -44,7 +96,7 @@ type Finding struct {
 	Line           int    `json:"line"`
 	Title          string `json:"title"`
 	Evidence       string `json:"evidence,omitempty"`
-	Recommendation  string `json:"recommendation,omitempty"`
+	Recommendation string `json:"recommendation,omitempty"`
 	Confidence     string `json:"confidence,omitempty"`
 	Source         string `json:"source"`
 	RuleID         string `json:"rule_id"`
@@ -70,24 +122,24 @@ type ParsedDiff struct {
 
 // ParsedFile describes one changed file in the diff.
 type ParsedFile struct {
-	Path        string  `json:"path"`
-	Language    string  `json:"language"`
-	PackageName string  `json:"package_name,omitempty"`
-	IsTestFile  bool    `json:"is_test_file"`
-	ChangeType  string  `json:"change_type,omitempty"`
-	Hunks       []Hunk  `json:"hunks"`
+	Path        string `json:"path"`
+	Language    string `json:"language"`
+	PackageName string `json:"package_name,omitempty"`
+	IsTestFile  bool   `json:"is_test_file"`
+	ChangeType  string `json:"change_type,omitempty"`
+	Hunks       []Hunk `json:"hunks"`
 }
 
 // Hunk represents one diff hunk with line-level context and candidate lines.
 type Hunk struct {
-	File          string   `json:"file"`
-	OldStart      int      `json:"old_start"`
-	OldLines      int      `json:"old_lines"`
-	NewStart      int      `json:"new_start"`
-	NewLines      int      `json:"new_lines"`
-	Context       []string `json:"context,omitempty"`
-	CandidateLines []int   `json:"candidate_lines,omitempty"`
-	Lines         []Line   `json:"lines,omitempty"`
+	File           string   `json:"file"`
+	OldStart       int      `json:"old_start"`
+	OldLines       int      `json:"old_lines"`
+	NewStart       int      `json:"new_start"`
+	NewLines       int      `json:"new_lines"`
+	Context        []string `json:"context,omitempty"`
+	CandidateLines []int    `json:"candidate_lines,omitempty"`
+	Lines          []Line   `json:"lines,omitempty"`
 }
 
 // Line captures one line inside a hunk together with old and new line numbers.
