@@ -1,6 +1,6 @@
 # 数据契约
 
-本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认持久化后端，并在 Agent 层保留 `Store` interface，后续可以迁移到独立 SQL 后端或接入 `session/sqlite`。
+本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认持久化后端，并在 `internal/storage/store.go` 保留 `Store` interface，后续可以迁移到独立 SQL 后端或接入 `session/sqlite`。
 
 ## ReviewTask
 
@@ -166,7 +166,7 @@
 
 ## Store Interface
 
-当前 `Store` interface 位于 `internal/agent`，为了避免 Agent 直接耦合 SQLite 包类型，后续建议迁移到 `internal/storage/store.go`：
+当前 `Store` interface 位于 `internal/storage/store.go`。Agent 依赖该接口，SQLite 只是默认实现：
 
 ```go
 type Store interface {

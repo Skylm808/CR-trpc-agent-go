@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Analysis is the internal working set produced while applying rules.
+// Analysis 是规则执行过程中生成的内部工作集。
 type Analysis struct {
 	TaskID   string
 	Findings []Finding
@@ -17,8 +17,7 @@ type Analysis struct {
 	Diff     ParsedDiff
 }
 
-// AnalyzeDiff parses the diff, runs rules, deduplicates the output, and
-// attaches a lightweight telemetry snapshot to the result.
+// AnalyzeDiff 负责解析 diff、执行规则、去重输出，并为结果附加轻量遥测快照。
 func AnalyzeDiff(input string) (Result, error) {
 	start := time.Now()
 	parsed, err := ParseUnifiedDiff(input)
@@ -51,8 +50,7 @@ func AnalyzeDiff(input string) (Result, error) {
 func runRules(diff ParsedDiff) Analysis {
 	var out Analysis
 	out.Diff = diff
-	// Secret-shaped literals are treated as high-risk regardless of file
-	// type, because the first version is biased toward safety.
+	// 形似 secret 的字面量无论文件类型都视为高风险，因为第一版更偏向安全。
 	secretToken := regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`)
 	for _, file := range diff.Files {
 		for _, hunk := range file.Hunks {
@@ -65,8 +63,7 @@ func runRules(diff ParsedDiff) Analysis {
 				if file.Path == "" {
 					continue
 				}
-				// TODO/FIXME markers are not blocking by themselves, but they
-				// are useful medium-severity maintainability findings.
+				// TODO/FIXME 标记本身不阻断，但作为中等严重级别的可维护性问题很有价值。
 				if strings.Contains(text, "TODO(") || strings.Contains(text, "FIXME") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:       "medium",
@@ -82,8 +79,7 @@ func runRules(diff ParsedDiff) Analysis {
 						Status:         "finding",
 					})
 				}
-				// Direct panic paths are flagged because the agent targets Go
-				// review, where explicit error handling is preferred in shared code.
+				// 直接 panic 的路径会被标记，因为这个 Agent 面向 Go 代码审查，共享代码更偏好显式错误处理。
 				if strings.Contains(text, "panic(") && !hasRuleInFile(out.Findings, file.Path, "panic-direct") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:       "high",
@@ -100,12 +96,10 @@ func runRules(diff ParsedDiff) Analysis {
 					})
 				}
 				if file.IsTestFile {
-					// Test files are exempt from the missing-test hint because
-					// they are already the test surface.
+					// 测试文件本身就是测试面，因此跳过缺失测试提示。
 					continue
 				}
-				// A new function with no obvious error path is a weak signal that
-				// the change might need a focused test, so keep it as a warning.
+				// 新函数如果没有明显错误路径，通常意味着可能需要专门测试，因此保留为 warning。
 				if strings.HasPrefix(text, "func ") && !strings.Contains(text, "error") {
 					out.Warnings = append(out.Warnings, Finding{
 						Severity:       "low",
@@ -191,8 +185,7 @@ func runRules(diff ParsedDiff) Analysis {
 						})
 					}
 				}
-				// Literal secrets are reported as critical findings and the
-				// evidence is redacted before storage or reporting.
+				// 字面量 secret 会按 critical 级别报告，并在落库或出报告前脱敏 evidence。
 				if strings.Contains(strings.ToLower(text), "password") ||
 					strings.Contains(strings.ToLower(text), "token") ||
 					strings.Contains(strings.ToLower(text), "secret") ||
@@ -217,8 +210,7 @@ func runRules(diff ParsedDiff) Analysis {
 	return out
 }
 
-// hunkJoinedText collapses one hunk into a lower-friction search surface for
-// simple lifecycle rules that need to see more than the current line.
+// hunkJoinedText 将一个 hunk 压缩成更容易搜索的文本，供需要跨行判断的简单生命周期规则使用。
 func hunkJoinedText(hunk Hunk) string {
 	var b strings.Builder
 	for _, line := range hunk.Lines {
@@ -228,8 +220,7 @@ func hunkJoinedText(hunk Hunk) string {
 	return b.String()
 }
 
-// containsAny checks whether the joined hunk text contains any of the
-// provided substrings.
+// containsAny 检查拼接后的 hunk 文本是否包含任一给定子串。
 func containsAny(text string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(text, needle) {
@@ -251,7 +242,7 @@ func hasRuleInFile(findings []Finding, file string, ruleID string) bool {
 
 var ErrEmptyInput = errors.New("empty review input")
 
-// BuildReport is the external entry point used by the CLI and tests.
+// BuildReport 是 CLI 和测试使用的外部入口。
 func BuildReport(input string) (Result, error) {
 	if strings.TrimSpace(input) == "" {
 		return Result{}, ErrEmptyInput
@@ -259,7 +250,7 @@ func BuildReport(input string) (Result, error) {
 	return AnalyzeDiff(input)
 }
 
-// PackageFromPath derives a Go package-like name from a file path.
+// PackageFromPath 根据文件路径推导出类似 Go package 的名称。
 func PackageFromPath(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(base, filepath.Ext(base))

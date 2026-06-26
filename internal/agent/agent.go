@@ -1,5 +1,4 @@
-// Package agent 编排基于 trpc-agent-go Skill、权限策略、执行器和存储的
-// 自动代码评审链路。
+// Package agent 编排基于 trpc-agent-go Skill、权限策略、执行器和存储的自动代码评审链路。
 package agent
 
 import (
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 	dockercontainer "github.com/docker/docker/api/types/container"
 
@@ -76,19 +76,6 @@ type Request struct {
 	Mode     string
 }
 
-// Store 是 Agent 需要的最小持久化接口，便于后续替换不同 SQL 后端。
-type Store interface {
-	SaveTask(context.Context, sqlite.Task) error
-	SaveFinding(context.Context, string, review.Finding) error
-	SaveDecision(context.Context, sqlite.DecisionRecord) error
-	SaveFilterDecision(context.Context, sqlite.FilterDecisionRecord) error
-	SaveSandboxRun(context.Context, sqlite.SandboxRunRecord) error
-	SaveArtifact(context.Context, sqlite.ArtifactRecord) error
-	SaveMetrics(context.Context, sqlite.MetricsRecord) error
-	SaveReport(context.Context, string, []byte, []byte) error
-	Close() error
-}
-
 // Agent 持有 trpc-agent-go 工具和本项目持久化实现。
 type Agent struct {
 	cfg       Config
@@ -96,7 +83,7 @@ type Agent struct {
 	runTool   tool.CallableTool
 	checkTool tool.CallableTool
 	policy    tool.PermissionPolicy
-	store     Store
+	store     storage.Store
 }
 
 // New 创建一个框架优先的 CR Agent。
@@ -115,7 +102,7 @@ func New(cfg Config) (*Agent, error) {
 		return nil, err
 	}
 
-	var store Store
+	var store storage.Store
 	if cfg.SQLitePath != "" {
 		store, err = sqlite.Open(cfg.SQLitePath)
 		if err != nil {
@@ -158,7 +145,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	}
 
 	if a.store != nil {
-		if err := a.store.SaveTask(ctx, sqlite.Task{
+		if err := a.store.SaveTask(ctx, storage.Task{
 			ID: taskID, InputType: "diff", InputRef: inputRef,
 			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
 			Status: "running", Mode: mode, CreatedAt: start,
@@ -170,16 +157,16 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 
 	toolCallCount := 2
 	var result review.Result
-	var runRecord sqlite.SandboxRunRecord
-	var decision sqlite.DecisionRecord
+	var runRecord storage.SandboxRunRecord
+	var decision storage.DecisionRecord
 	if mode == ModeDryRun {
 		toolCallCount = 1
 		result, runRecord, decision, err = a.runDryRun(ctx, taskID)
 	} else {
 		result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
 	}
-	decisions := []sqlite.DecisionRecord{decision}
-	runs := []sqlite.SandboxRunRecord{runRecord}
+	decisions := []storage.DecisionRecord{decision}
+	runs := []storage.SandboxRunRecord{runRecord}
 	if mode == ModeSandbox && strings.TrimSpace(req.RepoPath) != "" {
 		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, req.RepoPath)
 		decisions = append(decisions, checkDecisions...)
@@ -228,7 +215,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md)); err != nil {
 			return review.Result{}, err
 		}
-		if err := a.store.SaveTask(ctx, sqlite.Task{
+		if err := a.store.SaveTask(ctx, storage.Task{
 			ID: taskID, InputType: "diff", InputRef: inputRef,
 			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
 			Status: "done", Mode: mode, CreatedAt: start,
@@ -241,20 +228,20 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 }
 
 // runDryRun 只加载 Skill 并记录跳过执行的治理/沙箱摘要。
-func (a *Agent) runDryRun(ctx context.Context, taskID string) (review.Result, sqlite.SandboxRunRecord, sqlite.DecisionRecord, error) {
+func (a *Agent) runDryRun(ctx context.Context, taskID string) (review.Result, storage.SandboxRunRecord, storage.DecisionRecord, error) {
 	loadArgs := []byte(`{"skill":"code-review"}`)
 	if _, err := a.loadTool.Call(ctx, loadArgs); err != nil {
-		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 	now := time.Now()
-	decision := sqlite.DecisionRecord{
+	decision := storage.DecisionRecord{
 		TaskID:  taskID,
 		Command: defaultSkillCommand,
 		Action:  "dry_run",
 		Reason:  "executor skipped by dry-run mode",
 		At:      now,
 	}
-	runRecord := sqlite.SandboxRunRecord{
+	runRecord := storage.SandboxRunRecord{
 		TaskID:           taskID,
 		Command:          defaultSkillCommand,
 		Runtime:          a.cfg.Runtime,
@@ -361,14 +348,14 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 }
 
 // runGoSandboxChecks 在 sandbox 模式下执行 Go 项目的最小静态/测试检查。
-func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]sqlite.DecisionRecord, []sqlite.SandboxRunRecord) {
+func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]storage.DecisionRecord, []storage.SandboxRunRecord) {
 	commands := []string{"go test ./...", "go vet ./..."}
 	if a.cfg.EnableStaticcheck {
 		// staticcheck 是可选检查，只有显式开启时才进入权限和沙箱链路。
 		commands = append(commands, "staticcheck ./...")
 	}
-	decisions := make([]sqlite.DecisionRecord, 0, len(commands))
-	runs := make([]sqlite.SandboxRunRecord, 0, len(commands))
+	decisions := make([]storage.DecisionRecord, 0, len(commands))
+	runs := make([]storage.SandboxRunRecord, 0, len(commands))
 	for _, command := range commands {
 		decision, run := a.runGoSandboxCommand(ctx, taskID, repoPath, command)
 		decisions = append(decisions, decision)
@@ -378,7 +365,7 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 }
 
 // runGoSandboxCommand 对单个 Go 检查命令做权限检查并通过 codeexec 执行。
-func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (sqlite.DecisionRecord, sqlite.SandboxRunRecord) {
+func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
 	args, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
@@ -400,11 +387,11 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	if err != nil {
 		perm = tool.DenyPermission(err.Error())
 	}
-	decision := sqlite.DecisionRecord{
+	decision := storage.DecisionRecord{
 		TaskID: taskID, Command: command,
 		Action: string(perm.Action), Reason: perm.Reason, At: time.Now(),
 	}
-	run := sqlite.SandboxRunRecord{
+	run := storage.SandboxRunRecord{
 		TaskID: taskID, Command: command, Runtime: a.cfg.Runtime,
 		Status: "skipped", TimeoutMS: a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
@@ -436,10 +423,10 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 }
 
 // runSkillChecks 通过 skill_load 与 skill_run 执行 code-review Skill。
-func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) (review.Result, sqlite.SandboxRunRecord, sqlite.DecisionRecord, error) {
+func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) (review.Result, storage.SandboxRunRecord, storage.DecisionRecord, error) {
 	loadArgs := []byte(`{"skill":"code-review"}`)
 	if _, err := a.loadTool.Call(ctx, loadArgs); err != nil {
-		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 
 	runArgs, err := json.Marshal(map[string]any{
@@ -449,7 +436,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		"timeout": int(a.cfg.Timeout.Seconds()),
 	})
 	if err != nil {
-		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 
 	permReq := &tool.PermissionRequest{
@@ -460,17 +447,17 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 	}
 	perm, err := a.policy.CheckToolPermission(ctx, permReq)
 	if err != nil {
-		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 	perm, err = tool.NormalizePermissionDecision(perm)
 	if err != nil {
-		return review.Result{}, sqlite.SandboxRunRecord{}, sqlite.DecisionRecord{}, err
+		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
-	decision := sqlite.DecisionRecord{
+	decision := storage.DecisionRecord{
 		TaskID: taskID, Command: defaultSkillCommand,
 		Action: string(perm.Action), Reason: perm.Reason, At: time.Now(),
 	}
-	runRecord := sqlite.SandboxRunRecord{
+	runRecord := storage.SandboxRunRecord{
 		TaskID: taskID, Command: defaultSkillCommand,
 		Runtime: a.cfg.Runtime, TimeoutMS: a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
@@ -570,7 +557,7 @@ func sanitizeFinding(f review.Finding) review.Finding {
 }
 
 // persist 保存一次审查的治理、沙箱、finding、指标和报告数据。
-func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []sqlite.DecisionRecord, runs []sqlite.SandboxRunRecord, jsonReport, markdownReport []byte) error {
+func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport []byte) error {
 	for _, decision := range decisions {
 		if decision.Command == "" && decision.Action == "" {
 			continue
@@ -580,7 +567,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		}
 	}
 	if result.Metrics.RedactionCount > 0 {
-		if err := a.store.SaveFilterDecision(ctx, sqlite.FilterDecisionRecord{
+		if err := a.store.SaveFilterDecision(ctx, storage.FilterDecisionRecord{
 			TaskID: taskID,
 			Target: "finding.evidence",
 			Action: "redact",
@@ -603,7 +590,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
-	if err := a.store.SaveMetrics(ctx, sqlite.MetricsRecord{
+	if err := a.store.SaveMetrics(ctx, storage.MetricsRecord{
 		TaskID: taskID, TotalDurationMS: result.Metrics.TotalDurationMS,
 		SandboxDurationMS:    result.Metrics.SandboxDurationMS,
 		ToolCallCount:        result.Metrics.ToolCallCount,
@@ -624,7 +611,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		if artifact.Name == "review_report.md" {
 			digest = digestBytes(markdownReport)
 		}
-		if err := a.store.SaveArtifact(ctx, sqlite.ArtifactRecord{
+		if err := a.store.SaveArtifact(ctx, storage.ArtifactRecord{
 			TaskID: taskID,
 			Name:   artifact.Name,
 			Kind:   artifact.Kind,
@@ -816,7 +803,7 @@ func humanReviewItems(warnings []review.Finding) []review.Finding {
 }
 
 // governanceSummary 将权限决策转换为报告摘要。
-func governanceSummary(decisions []sqlite.DecisionRecord, blocks int) review.GovernanceSummary {
+func governanceSummary(decisions []storage.DecisionRecord, blocks int) review.GovernanceSummary {
 	out := review.GovernanceSummary{PermissionBlocks: blocks}
 	for _, decision := range decisions {
 		if decision.Command == "" && decision.Action == "" {
@@ -832,7 +819,7 @@ func governanceSummary(decisions []sqlite.DecisionRecord, blocks int) review.Gov
 }
 
 // sandboxSummary 将沙箱运行记录转换为报告摘要。
-func sandboxSummary(runs []sqlite.SandboxRunRecord) review.SandboxSummary {
+func sandboxSummary(runs []storage.SandboxRunRecord) review.SandboxSummary {
 	out := review.SandboxSummary{}
 	for _, run := range runs {
 		if run.Command == "" {
@@ -863,7 +850,7 @@ func reportArtifacts() []review.ArtifactSummary {
 }
 
 // totalSandboxDuration 汇总多条沙箱运行耗时。
-func totalSandboxDuration(runs []sqlite.SandboxRunRecord) int64 {
+func totalSandboxDuration(runs []storage.SandboxRunRecord) int64 {
 	var total int64
 	for _, run := range runs {
 		total += run.DurationMS

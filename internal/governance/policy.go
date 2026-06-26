@@ -1,45 +1,45 @@
-// Package governance contains the first-version command permission policy.
+// Package governance 包含第一版命令权限策略。
 package governance
 
 import (
 	"strings"
 )
 
-// Action is the normalized governance decision for a command.
+// Action 是命令对应的标准化治理决策。
 type Action string
 
 const (
-	// Allow lets the command proceed.
+	// Allow 允许命令继续执行。
 	Allow Action = "allow"
-	// Deny blocks the command without asking for human approval.
-	Deny  Action = "deny"
-	// Ask marks a command as requiring approval before execution.
-	Ask   Action = "ask"
-	// NeedsHumanReview reserves a decision state for future interactive flows.
+	// Deny 阻止命令执行，不再请求人工审批。
+	Deny Action = "deny"
+	// Ask 表示该命令在执行前需要审批。
+	Ask Action = "ask"
+	// NeedsHumanReview 为后续交互式流程预留决策状态。
 	NeedsHumanReview Action = "needs_human_review"
 )
 
-// CommandRequest describes a command before it reaches the sandbox runner.
+// CommandRequest 描述进入沙箱执行器之前的命令。
 type CommandRequest struct {
 	Command string
 	Source  string
 }
 
-// Decision is the policy result that downstream code can persist or enforce.
+// Decision 是下游代码可以持久化或强制执行的策略结果。
 type Decision struct {
 	Action Action
 	Reason string
 }
 
-// Policy is the deterministic permission policy used by the prototype.
+// Policy 是原型使用的确定性权限策略。
 type Policy struct{}
 
-// DefaultPolicy returns the conservative first-version policy.
+// DefaultPolicy 返回保守的第一版策略。
 func DefaultPolicy() Policy {
 	return Policy{}
 }
 
-// Decide classifies a command as allowed, denied, or requiring review.
+// Decide 将命令分类为允许、拒绝或需要复核。
 func (Policy) Decide(req CommandRequest) Decision {
 	cmd := strings.ToLower(strings.TrimSpace(req.Command))
 	switch {

@@ -62,9 +62,8 @@ M5  验收交付与评测                         ⬜
 
 建议后续小改：
 
-1. 将 `Store` interface 从 `internal/agent` 抽到 `internal/storage/store.go`。
-2. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
-3. 增加 report conclusion 字段，便于 CI 汇总。
+1. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
+2. 增加 report conclusion 字段，便于 CI 汇总。
 
 ## M4：真实沙箱、治理与遥测增强 🔶
 
@@ -111,9 +110,8 @@ M5  验收交付与评测                         ⬜
 ## 下一阶段推荐顺序
 
 1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
-2. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
-3. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
-4. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
+2. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
+3. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
 
 ## Definition of Done
 

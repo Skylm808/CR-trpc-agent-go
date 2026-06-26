@@ -165,7 +165,7 @@ func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 }
 
 // TestAgentRunPersistsWarningsForReplay 固定数据库回放契约：低置信度 warning
-// 不能只存在于报告 JSON 中，也要作为结构化 review item 可按 task_id 查询。
+// 不能只存在于报告 JSON 中，也要作为结构化审查项可按 task_id 查询。
 func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 	t.Parallel()
 
@@ -620,8 +620,8 @@ func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 }
 
 // TestAgentRunContainerRuntimeExecutesGoChecks 是真实 Docker 集成测试。
-// 默认跳过，设置 CR_AGENT_RUN_CONTAINER_TESTS=1 后验证 container runtime、
-// repo bind mount、PermissionPolicy、go test/go vet 和 SQLite 审计记录。
+// 默认跳过，设置 CR_AGENT_RUN_CONTAINER_TESTS=1 后验证容器运行时、
+// repo 绑定挂载、PermissionPolicy、go test/go vet 和 SQLite 审计记录。
 func TestAgentRunContainerRuntimeExecutesGoChecks(t *testing.T) {
 	if os.Getenv("CR_AGENT_RUN_CONTAINER_TESTS") != "1" {
 		t.Skip("set CR_AGENT_RUN_CONTAINER_TESTS=1 to run Docker container integration test")

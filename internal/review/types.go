@@ -1,5 +1,4 @@
-// Package review contains the deterministic diff parser, rule engine,
-// and shared data structures for the first version of the CR agent.
+// Package review 包含第一版 CR Agent 使用的确定性 diff 解析器、规则引擎和共享数据结构。
 package review
 
 import (
@@ -13,7 +12,7 @@ import (
 	"time"
 )
 
-// Result is the normalized output of one review run.
+// Result 是一次审查运行的标准化输出。
 type Result struct {
 	TaskID            string            `json:"task_id"`
 	Findings          []Finding         `json:"findings"`
@@ -27,8 +26,7 @@ type Result struct {
 	Created           time.Time         `json:"created_at,omitempty"`
 }
 
-// Metrics captures the coarse review telemetry that is safe to persist and
-// surface in reports.
+// Metrics 保存可安全持久化并在报告中展示的粗粒度审查遥测。
 type Metrics struct {
 	TotalDurationMS   int64          `json:"total_duration_ms,omitempty"`
 	SandboxDurationMS int64          `json:"sandbox_duration_ms,omitempty"`
@@ -40,7 +38,7 @@ type Metrics struct {
 	RedactionCount    int            `json:"redaction_count,omitempty"`
 }
 
-// GovernanceSummary 汇总权限与过滤策略在一次审查中的决策。
+// GovernanceSummary 汇总一次审查中的权限与过滤策略决策。
 type GovernanceSummary struct {
 	PermissionDecisions []PermissionDecisionSummary `json:"permission_decisions,omitempty"`
 	FilterDecisions     []FilterDecisionSummary     `json:"filter_decisions,omitempty"`
@@ -88,7 +86,7 @@ type ArtifactSummary struct {
 	Digest string `json:"digest,omitempty"`
 }
 
-// Finding is a structured review issue emitted by the rule engine.
+// Finding 是规则引擎输出的结构化审查问题。
 type Finding struct {
 	Severity       string `json:"severity"`
 	Category       string `json:"category"`
@@ -103,8 +101,7 @@ type Finding struct {
 	Status         string `json:"status,omitempty"`
 }
 
-// DedupeKey returns a stable key used to collapse repeated findings that
-// point at the same file, line, category, and rule.
+// DedupeKey 返回一个稳定 key，用于合并指向同一文件、行、类别和规则的重复 finding。
 func (f Finding) DedupeKey() string {
 	sum := sha1.Sum([]byte(strings.Join([]string{
 		strings.ToLower(strings.TrimSpace(f.File)),
@@ -115,12 +112,12 @@ func (f Finding) DedupeKey() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ParsedDiff is the normalized representation of a unified diff.
+// ParsedDiff 是统一 diff 的标准化表示。
 type ParsedDiff struct {
 	Files []ParsedFile `json:"files"`
 }
 
-// ParsedFile describes one changed file in the diff.
+// ParsedFile 描述 diff 中的一份变更文件。
 type ParsedFile struct {
 	Path        string `json:"path"`
 	Language    string `json:"language"`
@@ -130,7 +127,7 @@ type ParsedFile struct {
 	Hunks       []Hunk `json:"hunks"`
 }
 
-// Hunk represents one diff hunk with line-level context and candidate lines.
+// Hunk 表示一个 diff hunk，包含行级上下文和候选行号。
 type Hunk struct {
 	File           string   `json:"file"`
 	OldStart       int      `json:"old_start"`
@@ -142,7 +139,7 @@ type Hunk struct {
 	Lines          []Line   `json:"lines,omitempty"`
 }
 
-// Line captures one line inside a hunk together with old and new line numbers.
+// Line 保存 hunk 中的一行以及旧行号和新行号。
 type Line struct {
 	OldLine int    `json:"old_line,omitempty"`
 	NewLine int    `json:"new_line,omitempty"`
@@ -150,8 +147,7 @@ type Line struct {
 	Text    string `json:"text"`
 }
 
-// RedactSecrets replaces common secret-like values before they are written
-// into findings, reports, or storage.
+// RedactSecrets 在写入 findings、报告或存储之前，替换常见的敏感信息形态值。
 func RedactSecrets(input string) string {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)`),
@@ -167,8 +163,7 @@ func RedactSecrets(input string) string {
 	return out
 }
 
-// DedupeFindings keeps the first occurrence of each unique finding key and
-// returns a stable, sorted slice.
+// DedupeFindings 保留每个唯一 finding key 的第一次出现，并返回稳定排序后的切片。
 func DedupeFindings(findings []Finding) []Finding {
 	seen := map[string]struct{}{}
 	out := make([]Finding, 0, len(findings))
@@ -192,8 +187,7 @@ func DedupeFindings(findings []Finding) []Finding {
 	return out
 }
 
-// MustJSON marshals a value as pretty JSON and intentionally ignores the
-// returned error because it is only used for internal telemetry snapshots.
+// MustJSON 将值格式化为 pretty JSON，并刻意忽略错误，因为它只用于内部遥测快照。
 func MustJSON(v any) []byte {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return b

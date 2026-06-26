@@ -81,9 +81,8 @@
 ## 下一步
 
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
-2. 抽出 `internal/storage/store.go`。
-3. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
-4. 为隐藏样本扩展外部 expected matrix 输入。
+2. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+3. 为隐藏样本扩展外部 expected matrix 输入。
 
 ## 相关文档
 

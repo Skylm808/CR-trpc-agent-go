@@ -18,7 +18,7 @@ func TestSkillFilesExist(t *testing.T) {
 
 // TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable 固定容器兼容性：
 // 默认生产容器需要 Go 工具链执行 go test/go vet，Skill 脚本在没有
-// python3 时也必须能通过 Go fallback 输出结构化 findings。
+// python3 时也必须能通过 Go 回退输出结构化 findings。
 func TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable(t *testing.T) {
 	t.Parallel()
 

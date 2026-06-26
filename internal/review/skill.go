@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 )
 
-// SkillRoot locates the checked-in code-review skill from common test and CLI
-// working directories.
+// SkillRoot 从常见的测试和 CLI 工作目录中定位仓库内置的 code-review Skill。
 func SkillRoot() (string, error) {
 	candidates := []string{
 		filepath.Join("skills", "code-review"),
@@ -15,8 +14,7 @@ func SkillRoot() (string, error) {
 		filepath.Join("..", "..", "skills", "code-review"),
 	}
 	for _, p := range candidates {
-		// Tests may run from the package directory, while the CLI usually runs
-		// from the repository root, so try a small set of relative locations.
+		// 测试可能在包目录下运行，而 CLI 通常在仓库根目录下运行，所以这里尝试几个相对路径。
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
 		}

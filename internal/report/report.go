@@ -1,5 +1,4 @@
-// Package report renders the structured review result into JSON and Markdown
-// artifacts for users and CI systems.
+// Package report 将结构化审查结果渲染为 JSON 和 Markdown 产物，供用户和 CI 系统使用。
 package report
 
 import (
@@ -10,14 +9,14 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// BuildJSON serializes the review result after deduplicating findings.
+// BuildJSON 会先去重 findings，再序列化审查结果。
 func BuildJSON(result review.Result) ([]byte, error) {
 	result.Findings = review.DedupeFindings(result.Findings)
 	result.HumanReviewItems = humanReviewItems(result)
 	return json.MarshalIndent(result, "", "  ")
 }
 
-// BuildMarkdown formats the review result into a readable Markdown summary.
+// BuildMarkdown 将审查结果格式化为可读的 Markdown 摘要。
 func BuildMarkdown(result review.Result) string {
 	findings := review.DedupeFindings(result.Findings)
 	var b strings.Builder
@@ -60,7 +59,7 @@ func BuildMarkdown(result review.Result) string {
 	return b.String()
 }
 
-// humanReviewItems 汇总需要人工复核的 warnings 与显式 human review 项。
+// humanReviewItems 汇总需要人工复核的 warnings 和显式人工复核项。
 func humanReviewItems(result review.Result) []review.Finding {
 	items := append([]review.Finding(nil), result.HumanReviewItems...)
 	for _, warning := range result.Warnings {
