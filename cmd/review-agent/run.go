@@ -17,6 +17,7 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 )
 
+// Options holds the user-facing CLI settings for one review run.
 type Options struct {
 	DiffFile  string
 	RepoPath   string
@@ -26,6 +27,8 @@ type Options struct {
 	RunChecks  bool
 }
 
+// Run executes the first-version review pipeline from input collection through
+// report generation and optional SQLite persistence.
 func Run(opts Options) error {
 	if opts.DiffFile == "" && opts.RepoPath == "" {
 		return errors.New("diff file or repo path is required")
@@ -65,6 +68,8 @@ func Run(opts Options) error {
 		return err
 	}
 	if opts.RunChecks {
+		// The first version treats sandbox checks as best-effort validation:
+		// failures are recorded later, but do not stop report generation.
 		runner := sandbox.Runner{
 			Timeout: 5 * time.Second,
 			Policy:  governance.DefaultPolicy(),
@@ -81,6 +86,8 @@ func Run(opts Options) error {
 		}
 	}
 	if opts.SQLitePath != "" {
+		// Persistence is optional so the rule-only path remains easy to run in
+		// local fixtures without creating a database.
 		store, err := sqlite.Open(opts.SQLitePath)
 		if err != nil {
 			return err
@@ -121,6 +128,8 @@ func Run(opts Options) error {
 			return err
 		}
 		if opts.RunChecks {
+			// Store the governance and sandbox records after metrics so a task
+			// query can reconstruct the review trail.
 			if err := store.SaveDecision(context.Background(), sqlite.DecisionRecord{
 				TaskID: task.ID,
 				Command: "go test ./...",
@@ -144,6 +153,8 @@ func Run(opts Options) error {
 	return nil
 }
 
+// diffFromRepo returns a unified diff for a git repository or a synthetic diff
+// for a plain fixture directory.
 func diffFromRepo(repoPath string) ([]byte, error) {
 	if repoPath == "" {
 		return nil, errors.New("repo path is required")
@@ -181,6 +192,7 @@ func diffFromRepo(repoPath string) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
+// firstNonEmpty returns the first non-blank string in order.
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
