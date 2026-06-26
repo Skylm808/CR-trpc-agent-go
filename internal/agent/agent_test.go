@@ -619,6 +619,66 @@ func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 	assertAnyRunForCommand(t, runs, "staticcheck ./...")
 }
 
+// TestAgentRunContainerRuntimeExecutesGoChecks 是真实 Docker 集成测试。
+// 默认跳过，设置 CR_AGENT_RUN_CONTAINER_TESTS=1 后验证 container runtime、
+// repo bind mount、PermissionPolicy、go test/go vet 和 SQLite 审计记录。
+func TestAgentRunContainerRuntimeExecutesGoChecks(t *testing.T) {
+	if os.Getenv("CR_AGENT_RUN_CONTAINER_TESTS") != "1" {
+		t.Skip("set CR_AGENT_RUN_CONTAINER_TESTS=1 to run Docker container integration test")
+	}
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/containerdemo\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package containerdemo\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo_test.go"), []byte("package containerdemo\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 3 { t.Fatal(\"bad\") } }\n"), 0o644); err != nil {
+		t.Fatalf("write foo_test.go: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:            filepath.Join(root, "skills"),
+		Runtime:               RuntimeContainer,
+		SQLitePath:            dbPath,
+		OutputDir:             t.TempDir(),
+		Timeout:               60 * time.Second,
+		ContainerRepoHostPath: repo,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo,
+		Mode:     ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	assertRunForCommand(t, runs, "go test ./...")
+	assertRunForCommand(t, runs, "go vet ./...")
+	for _, run := range runs {
+		if strings.Contains(run.Command, "go ") && run.Runtime != RuntimeContainer {
+			t.Fatalf("go check should run in container runtime, got %+v", run)
+		}
+	}
+}
+
 func TestSandboxRepoPathForRuntime(t *testing.T) {
 	t.Parallel()
 

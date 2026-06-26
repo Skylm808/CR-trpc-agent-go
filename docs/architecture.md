@@ -26,7 +26,7 @@
 
 仍未完成的框架侧增强：
 
-- 真实 Docker container 端到端验证。
+- 真实 Docker container 端到端测试已加入 env gate；本地仍需 Docker daemon 才能执行。
 - E2B/Cube runtime adapter。
 - 官方 artifact service 接入；当前 artifact 为 SQLite 中的报告产物记录。
 - `session/sqlite` 作为 Agent session/history 的直接使用；当前使用本项目 SQLite store。
@@ -52,7 +52,7 @@ CLI 输入（--diff-file / --repo-path / --fixture）
 |-----------|----------------------|---------|
 | Skill 加载与规则脚本 | `tool/skill`、`skill.NewFSRepository` | ✅ 已接入 `skill_load` / `skill_run` |
 | Go 检查执行 | `tool/codeexec` | ✅ `sandbox` 模式执行 `go test` / `go vet`，`--staticcheck` 可选 |
-| 沙箱 runtime | `codeexecutor/container`、`codeexecutor/local` | 🔶 container 为默认；local 仅显式 fallback；Docker E2E 未验证 |
+| 沙箱 runtime | `codeexecutor/container`、`codeexecutor/local` | 🔶 container 为默认；local 仅显式 fallback；Docker E2E 测试已加，需 Docker 环境执行 |
 | 命令治理 | `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | 内容过滤 | 本项目 Filter/Redaction 记录 | 🔶 secret 脱敏和 filter_decision 已落库，策略仍需扩展 |
 | 持久化 | 兼容 Store + SQLite | ✅ Agent 层有 Store interface，SQLite 已存 task/run/decision/finding/artifact/report/metrics |
@@ -109,7 +109,7 @@ Filter 负责“内容能不能进入报告/数据库”：
 
 ## 沙箱执行
 
-默认 runtime 是 `container`。如果本地没有 Docker，开发和测试必须显式传 `--runtime local-fallback`。
+默认 runtime 是 `container`，默认容器镜像为 `golang:1.25-bookworm`。如果本地没有 Docker，开发和测试必须显式传 `--runtime local-fallback`。
 
 沙箱记录字段包括：
 
@@ -172,11 +172,10 @@ Filter 负责“内容能不能进入报告/数据库”：
 
 下一阶段不是重新写本地原型，而是在现有 framework-first 链路上补齐验收缺口：
 
-1. 真实 container runtime E2E 或受环境控制的 integration test。
+1. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
 2. E2B runtime 入口或清晰的 unsupported 记录。
 3. 官方 artifact/session/telemetry 能力的最小接入或明确 adapter 边界。
-4. 更强 Permission/Filter 策略与 ask/needs_human_review 测试。
-5. hidden/eval 评测脚本，验证高危检出率和误报率。
+4. hidden/eval 评测脚本，验证高危检出率和误报率。
 
 ## 相关文档
 

@@ -72,7 +72,7 @@ M5  验收交付与评测                         ⬜
 
 | 任务 | 状态 | 验证方式 |
 |------|------|----------|
-| Docker container runtime 真实 E2E | ⬜ | `CR_AGENT_RUN_CONTAINER_TESTS=1 go test ./internal/agent -run Container` |
+| Docker container runtime 真实 E2E | 🔶 | env-gated test 已加；需 Docker daemon 执行 |
 | container bind mount repo 到 `/workspace/repo` | ✅ | `ContainerRepoHostPath` + `WithBindMount` |
 | E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
 | ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
@@ -93,7 +93,7 @@ M5  验收交付与评测                         ⬜
 | README | ✅ | — |
 | 300–500 字方案说明 | ✅ | `design-summary.md` |
 | hidden/eval 评测脚本 | ⬜ | 增加 precision/recall 统计 |
-| Docker/E2B 使用说明 | 🔶 | Docker 路径需验证 |
+| Docker/E2B 使用说明 | 🔶 | Docker test 命令已写；E2B 入口待补 |
 
 ## 当前验收对照
 
@@ -110,7 +110,7 @@ M5  验收交付与评测                         ⬜
 
 ## 下一阶段推荐顺序
 
-1. 写 container integration test，默认跳过，显式环境变量才跑 Docker。
+1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
 2. 抽 `internal/storage/store.go`，降低 Agent 对 SQLite 包的耦合。
 3. 增加 `scripts/eval.sh` 或 Go eval command，输出公开/隐藏样本的 recall、precision、耗时。
 4. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
@@ -122,7 +122,7 @@ M5  验收交付与评测                         ⬜
 - [x] SQLite 记录 task / decisions / sandbox runs / artifacts / metrics / reports。
 - [x] 沙箱失败、超时不崩溃 review，且写入 DB。
 - [x] 报告和 finding evidence 中不出现明文 API Key / token / password。
-- [ ] container runtime 真实 E2E 验证。
+- [ ] container runtime 真实 E2E 在 Docker 环境中验证。
 - [x] DB 全表 secret 扫描测试。
 - [x] ask/deny/needs_human_review Agent E2E 测试。
 - [ ] hidden/eval 评测脚本。

@@ -22,7 +22,7 @@
 
 仍需完善：
 
-- Docker `codeexecutor/container` 真实端到端验证。
+- Docker `codeexecutor/container` 真实端到端验证已提供 env-gated 测试，仍需在有 Docker daemon 的 CI/机器上执行。
 - 官方 artifact service 接入；当前 artifact 为本地 SQLite 记录。
 - `session/sqlite` 作为 Agent session/history 的直接使用。
 - 更完整的 telemetry hook 和外部观测集成。
@@ -42,7 +42,7 @@ CLI
 
 runtime 策略：
 
-- 默认 `--runtime container`，通过 `codeexecutor/container` 创建隔离执行器。
+- 默认 `--runtime container`，通过 `codeexecutor/container` 创建隔离执行器，当前默认容器镜像为 `golang:1.25-bookworm`。
 - `--runtime local-fallback` 仅用于开发和测试。
 - container 模式下 `--repo-path` 会 bind mount 到容器内 `/workspace/repo`，Go check 命令在容器路径执行。
 
@@ -52,6 +52,14 @@ runtime 策略：
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
+```
+
+运行真实 Docker container 集成测试：
+
+```bash
+CR_AGENT_RUN_CONTAINER_TESTS=1 \
+GOCACHE=/private/tmp/cr-agent-gocache \
+go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
 ```
 
 用 fixture 生成报告：

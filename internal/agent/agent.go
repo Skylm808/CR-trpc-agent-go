@@ -18,6 +18,7 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
+	dockercontainer "github.com/docker/docker/api/types/container"
 
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	containerexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/container"
@@ -51,6 +52,7 @@ const (
 	defaultOutputLimitBytes = 64 * 1024
 	defaultTimeout          = 30 * time.Second
 	containerRepoMountPath  = "/workspace/repo"
+	defaultContainerImage   = "golang:1.25-bookworm"
 )
 
 // Config 描述 Agent 运行一轮审查所需的稳定依赖和安全边界。
@@ -314,7 +316,15 @@ func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 	case RuntimeContainer:
 		// 默认生产路径走官方 codeexecutor/container。测试不依赖 Docker，
 		// 因此必须显式选择 RuntimeLocalFallback。
-		opts := []containerexec.Option{}
+		opts := []containerexec.Option{
+			containerexec.WithContainerConfig(dockercontainer.Config{
+				Image:      defaultContainerImage,
+				WorkingDir: "/",
+				Cmd:        []string{"tail", "-f", "/dev/null"},
+				Tty:        true,
+				OpenStdin:  true,
+			}),
+		}
 		if strings.TrimSpace(cfg.ContainerRepoHostPath) != "" {
 			// 容器运行时无法访问主机绝对路径，显式把 repo 只读挂到固定路径。
 			opts = append(opts, containerexec.WithBindMount(cfg.ContainerRepoHostPath, containerRepoMountPath, "ro"))
