@@ -209,6 +209,51 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	}
 }
 
+// TestAgentRunRecordsSandboxTimeoutWithoutCrashing 固定 timeout 验收要求：
+// 超时必须记录为 timed_out，并写入 exception_counts，不能中断报告生成。
+func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeLocalFallback,
+		SQLitePath:   dbPath,
+		OutputDir:    t.TempDir(),
+		Timeout:      1 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		Fixture: "sandbox-timeout.diff",
+		Mode:    ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run should not fail when sandbox times out: %v", err)
+	}
+	if got := result.Metrics.ExceptionCounts["sandbox_failed"]; got != 1 {
+		t.Fatalf("expected sandbox_failed exception count, got %+v", result.Metrics.ExceptionCounts)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Status != "timed_out" {
+		t.Fatalf("expected timed_out sandbox run, got %+v", runs)
+	}
+}
+
 // TestAgentRunDryRunRecordsSkippedSandbox 固定 dry-run 语义：不进入 executor，
 // 但仍然生成报告并记录权限/沙箱 skipped 审计数据。
 func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {

@@ -57,7 +57,8 @@ func TestAllFixturesMatchExpectedReviewResults(t *testing.T) {
 		"dedupe.diff": {
 			Findings: []findingExpectation{{RuleID: "panic-direct", Severity: "high", Status: "finding"}},
 		},
-		"sandbox-fail.diff": {},
+		"sandbox-fail.diff":    {},
+		"sandbox-timeout.diff": {},
 	}
 
 	for fileName, fixture := range cases {

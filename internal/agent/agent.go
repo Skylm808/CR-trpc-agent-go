@@ -484,7 +484,9 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		return review.Result{}, runRecord, decision, err
 	}
 	runRecord.Status = "ok"
-	if out.ExitCode != 0 || out.TimedOut {
+	if out.TimedOut {
+		runRecord.Status = "timed_out"
+	} else if out.ExitCode != 0 {
 		runRecord.Status = "failed"
 	}
 	runRecord.ExitCode = out.ExitCode
