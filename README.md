@@ -4,6 +4,14 @@
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
+## 第一版 MVP 范围
+
+- 基于官方 `trpc-agent-go` 的 `skill_load` / `skill_run` / `tool/codeexec` / `PermissionPolicy`。
+- 默认 container runtime，local fallback 仅显式用于开发与测试。
+- 结构化 findings、warnings、human review items、治理摘要、沙箱摘要、metrics、artifacts。
+- SQLite 审计库可按 task id 查询 task、decision、run、finding、artifact、report。
+- 公开 fixture 和 `scripts/eval.sh` 已能跑通，适合作为第一版验收基线。
+
 ## Current Status
 
 已实现：
@@ -69,6 +77,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 ```
 
 可用 `CR_AGENT_EVAL_FIXTURES_ROOT` 指向外部/隐藏样本目录，用 `CR_AGENT_EVAL_FIXTURES` 选择样本子集。
+
+隐藏样本的推荐契约见 [docs/eval-matrix.md](docs/eval-matrix.md)。
 
 用 fixture 生成报告：
 
@@ -155,6 +165,10 @@ Example query:
 SELECT task_id, status, mode FROM review_tasks ORDER BY created_at DESC;
 SELECT command, action, reason FROM permission_decisions WHERE task_id = ?;
 SELECT command, status, timeout_ms, output_limit_bytes, duration_ms FROM sandbox_runs WHERE task_id = ?;
+SELECT severity, category, file, line, title, status FROM findings WHERE task_id = ? ORDER BY file, line;
+SELECT name, kind, path, digest FROM artifacts WHERE task_id = ?;
+SELECT total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count FROM metrics WHERE task_id = ?;
+SELECT json_report, markdown_report FROM reports WHERE task_id = ?;
 ```
 
 ## Fixtures
@@ -200,6 +214,7 @@ scripts/eval.sh         public fixture recall / precision evaluator
 - [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)
 - [docs/fixtures-matrix.md](docs/fixtures-matrix.md)
 - [docs/design-summary.md](docs/design-summary.md)
+- [docs/eval-matrix.md](docs/eval-matrix.md)
 
 ## License
 

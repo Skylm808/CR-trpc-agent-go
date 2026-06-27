@@ -91,15 +91,15 @@ M5  验收交付与评测                         ⬜
 | 示例输出 | ✅ | `examples/review_report.json/md` |
 | README | ✅ | — |
 | 300–500 字方案说明 | ✅ | `design-summary.md` |
-| hidden/eval 评测脚本 | 🔶 | 公开 fixture eval 已有；隐藏样本可通过外部 root 注入 |
-| Docker/E2B 使用说明 | 🔶 | Docker test 命令已写；E2B 入口待补 |
+| hidden/eval 评测脚本 | 🔶 | 公开 fixture eval 已有；隐藏样本可通过外部 root 注入，契约见 `docs/eval-matrix.md` |
+| Docker/E2B 使用说明 | 🔶 | Docker test 命令已写；E2B 入口待补或文档化暂不支持 |
 
 ## 当前验收对照
 
 | # | 标准 | 当前状态 | 缺口 |
 |---|------|----------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺 hidden/eval 脚本 |
+| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺 hidden/eval 脚本，契约见 `docs/eval-matrix.md` |
 | 3 | DB 完整记录 task/sandbox/finding/report，按 task_id 查询 | ✅ | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ local fallback 已测 | container 真实超时需测 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | DB 全表扫描已有；仍需更多 secret 样本 |
@@ -112,6 +112,7 @@ M5  验收交付与评测                         ⬜
 1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
 2. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 3. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
+4. 给 `sandbox_runs` 增加 `finished_at` / `artifact_count`，给 report 增加 `conclusion` 字段。
 
 ## Definition of Done
 

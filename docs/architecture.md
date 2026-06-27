@@ -175,7 +175,7 @@ Filter 负责“内容能不能进入报告/数据库”：
 1. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
 2. E2B runtime 入口或清晰的 unsupported 记录。
 3. 官方 artifact/session/telemetry 能力的最小接入或明确 adapter 边界。
-4. hidden/eval 评测脚本，验证高危检出率和误报率。
+4. hidden/eval 评测脚本，验证高危检出率和误报率，契约见 `docs/eval-matrix.md`。
 
 ## 相关文档
 

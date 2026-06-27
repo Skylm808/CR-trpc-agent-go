@@ -7,7 +7,7 @@
 | # | Issue 要求 | 组件路径 | 测试覆盖 | 状态 | 缺口 |
 |---|-----------|---------|---------|------|------|
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
-| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/codeexec` | local fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 待补 |
+| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/codeexec` | local fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go` | 🔶 | 文件路径列表、base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
@@ -56,7 +56,7 @@
 | # | 验收标准 | 状态 | 验证方式 | 缺口 |
 |---|---------|------|---------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补 |
+| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补，契约见 `docs/eval-matrix.md` |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container test 已加但本地未执行 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
@@ -83,6 +83,7 @@
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
 2. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
 3. 为隐藏样本扩展外部 expected matrix 输入。
+4. 如需正式交付，可再补 report conclusion 和 sandbox finished_at / artifact_count。
 
 ## 相关文档
 
