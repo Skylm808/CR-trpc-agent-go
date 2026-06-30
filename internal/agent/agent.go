@@ -13,6 +13,7 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 
+	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -92,6 +93,8 @@ type Agent struct {
 	runTool tool.CallableTool
 	// checkTool 执行 Go 检查。
 	checkTool tool.CallableTool
+	// exec 是底层执行器，供 workspaceexec 使用。
+	exec codeexecutor.CodeExecutor
 	// policy 审批工具调用。
 	policy tool.PermissionPolicy
 	// store 持久化审计数据。
@@ -143,6 +146,7 @@ func New(cfg Config) (*Agent, error) {
 		loadTool:  toolskill.NewLoadTool(repo),
 		runTool:   runTool,
 		checkTool: toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
+		exec:      exec,
 		policy:    defaultPermissionPolicy(),
 		store:     store,
 		artifactService: cfg.ArtifactService,

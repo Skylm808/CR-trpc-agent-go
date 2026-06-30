@@ -8,7 +8,7 @@
 
 ## 第一版 MVP 范围
 
-- 基于官方 `trpc-agent-go` 的 `skill_load` / `skill_run` / `tool/codeexec` / `PermissionPolicy`。
+- 基于官方 `trpc-agent-go` 的 `skill_load` / `skill_run` / `tool/workspaceexec` / `tool/codeexec` / `PermissionPolicy`。
 - 默认 container runtime，local fallback 仅显式用于开发与测试。
 - 结构化 findings、warnings、human review items、治理摘要、沙箱摘要、metrics、artifacts。
 - SQLite 审计库可按 task id 查询 task、decision、run、finding、artifact、report。
@@ -23,7 +23,7 @@
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
-- `sandbox` 模式下通过官方 `tool/codeexec` 执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`。
+- `sandbox` 模式下优先通过官方 `tool/workspaceexec` 在工作区内执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`；失败时保留 `tool/codeexec` 兜底。
 - SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact、metrics、report。
 - 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
@@ -46,7 +46,8 @@ CLI
   -> trpc-agent-go/tool/skill skill_load
   -> tool.PermissionPolicy
   -> trpc-agent-go/tool/skill skill_run
-  -> optional trpc-agent-go/tool/codeexec go checks
+  -> optional trpc-agent-go/tool/workspaceexec go checks
+  -> fallback trpc-agent-go/tool/codeexec go checks
   -> report JSON/Markdown
   -> SQLite audit store
 ```

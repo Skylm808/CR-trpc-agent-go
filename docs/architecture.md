@@ -23,6 +23,7 @@
 - `trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v1.10.0`
 - `tool/skill` 的 load/run tool
 - `tool/codeexec` 的 Go 检查执行入口
+- `tool/workspaceexec` 的工作区内 Go 检查入口
 - `tool.PermissionPolicy`
 - `codeexecutor/container` 和显式 `codeexecutor/local` fallback
 - 早期 `internal/governance` / `internal/sandbox` 本地包装已删除，避免和官方治理、执行边界混淆。
@@ -43,7 +44,7 @@ CLI 输入（--diff-file / --repo-path / --fixture）
   -> trpc-agent-go/tool/skill skill_load(code-review)
   -> tool.PermissionPolicy 决策 scripts/check.sh
   -> trpc-agent-go/tool/skill skill_run(scripts/check.sh)
-  -> 可选 sandbox 模式：tool/codeexec 执行 go test / go vet / staticcheck
+  -> 可选 sandbox 模式：优先 tool/workspaceexec 执行 go test / go vet / staticcheck，失败时退回 tool/codeexec
   -> 合并 Skill 输出，去重，脱敏，分流 warnings / human_review_items
   -> 生成 review_report.json 和 review_report.md
   -> SQLite 保存 task / decisions / runs / findings / artifacts / metrics / report

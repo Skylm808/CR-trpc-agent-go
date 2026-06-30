@@ -12,6 +12,7 @@
 - `tool.PermissionPolicy` 在执行前做 allow/ask/deny 决策。
 - `codeexecutor/container` 是默认 runtime；`local-fallback` 仅显式用于测试/开发。
 - `tool/codeexec` 在 `sandbox` 模式执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`。
+- `tool/workspaceexec` 已用于工作区内执行 Go 检查，`tool/codeexec` 作为 fallback 保留。
 - SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 - 旧的 `internal/governance` / `internal/sandbox` 本地包装已删除，主链路不再维护第二套治理和沙箱抽象。
 - `review_report.json` / `review_report.md` 已同步写入官方 artifact service，SQLite 继续保留引用记录。

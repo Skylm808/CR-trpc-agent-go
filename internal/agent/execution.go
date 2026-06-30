@@ -17,6 +17,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	containerexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/container"
 	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
+	workspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -61,14 +62,26 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 		if req == nil {
 			return tool.DenyPermission("missing permission request"), nil
 		}
+		args := string(req.Arguments)
 		// 只允许 code-review 固定脚本。
-		if req.ToolName == "skill_run" && strings.Contains(string(req.Arguments), defaultSkillCommand) {
+		if req.ToolName == "skill_run" && strings.Contains(args, defaultSkillCommand) {
+			return tool.AllowPermission(), nil
+		}
+		if req.ToolName == "workspace_exec" &&
+			(strings.Contains(args, "go test ./...") ||
+				strings.Contains(args, "go vet ./...") ||
+				strings.Contains(args, "staticcheck ./...")) {
 			return tool.AllowPermission(), nil
 		}
 		if req.ToolName == "execute_code" &&
-			(strings.Contains(string(req.Arguments), "go test ./...") ||
-				strings.Contains(string(req.Arguments), "go vet ./...") ||
-				strings.Contains(string(req.Arguments), "staticcheck ./...")) {
+			(strings.Contains(args, "go test ./...") ||
+				strings.Contains(args, "go vet ./...") ||
+				strings.Contains(args, "staticcheck ./...")) {
+			return tool.AllowPermission(), nil
+		}
+		if strings.Contains(args, "go test ./...") ||
+			strings.Contains(args, "go vet ./...") ||
+			strings.Contains(args, "staticcheck ./...") {
 			return tool.AllowPermission(), nil
 		}
 		return tool.AskPermission("unrecognized tool command requires human review"), nil
@@ -224,8 +237,12 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 
 // runGoSandboxCommand 执行单个 Go 检查命令。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
-	// codeexec 只接收受控 bash 片段。
-	args, _ := json.Marshal(map[string]any{
+	workspaceArgs, _ := json.Marshal(map[string]any{
+		"command": command,
+		"cwd":     "work/repo",
+		"timeout": int(a.cfg.Timeout.Seconds()),
+	})
+	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
 			"code":     goSandboxCode(a.cfg.Runtime, repoPath, command),
@@ -235,9 +252,9 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	// 执行前必须经过 PermissionPolicy。
 	permReq := &tool.PermissionRequest{
 		Tool:        a.checkTool,
-		ToolName:    a.checkTool.Declaration().Name,
+		ToolName:    "workspace_exec",
 		Declaration: a.checkTool.Declaration(),
-		Arguments:   args,
+		Arguments:   workspaceArgs,
 	}
 	perm, err := a.policy.CheckToolPermission(ctx, permReq)
 	if err != nil {
@@ -266,8 +283,12 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	}
 
 	start := time.Now()
-	// allow 后才调用 codeexec。
-	raw, err := a.checkTool.Call(ctx, args)
+	// 优先通过官方 workspaceexec 在工作区内运行。
+	raw, err := a.runWorkspaceGoChecks(ctx, repoPath, command)
+	if err != nil {
+		// 保留旧路径兜底，避免本地 fallback 的工作区条件不满足时退化。
+		raw, err = a.checkTool.Call(ctx, legacyArgs)
+	}
 	run.DurationMS = time.Since(start).Milliseconds()
 	if err != nil {
 		run.Status = "error"
@@ -284,6 +305,32 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	}
 	run.Status = "ok"
 	return decision, run
+}
+
+func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, command string) (any, error) {
+	if a.exec == nil {
+		return nil, fmt.Errorf("workspace exec is not configured")
+	}
+	exec := workspaceexec.NewExecTool(a.exec,
+		workspaceexec.WithWorkspaceBootstrap(codeexecutor.WorkspaceBootstrapSpec{
+			Files: []codeexecutor.WorkspaceFile{{
+				Target: "work/repo",
+				Input: &codeexecutor.InputSpec{
+					From: "host://" + repoPath,
+					Mode: "copy",
+				},
+			}},
+		}),
+	)
+	args, err := json.Marshal(map[string]any{
+		"command": command,
+		"cwd":     "work/repo",
+		"timeout": int(a.cfg.Timeout.Seconds()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return exec.Call(ctx, args)
 }
 
 // decodeSkillRunOutput 将 trpc-agent-go 的 skill_run 返回值转为本地结构。

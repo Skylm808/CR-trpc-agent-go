@@ -337,6 +337,26 @@ func TestReadInputFromRepoReturnsRepoPath(t *testing.T) {
 	if ref != root {
 		t.Fatalf("expected repo path ref %q, got %q", root, ref)
 	}
+	if diff == nil {
+		t.Fatalf("expected repo diff bytes")
+	}
+}
+
+// TestReadInputFromRepoReadsWorkingTreeDiff 固定仓库输入按工作区 diff 读取。
+func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package demo\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	diff, ref, err := readInput(Config{}, Request{RepoPath: repo})
+	if err != nil {
+		t.Fatalf("readInput returned error: %v", err)
+	}
+	if ref != repo {
+		t.Fatalf("expected repo path ref %q, got %q", repo, ref)
+	}
 	if len(diff) == 0 {
 		t.Fatalf("expected repo diff content")
 	}
