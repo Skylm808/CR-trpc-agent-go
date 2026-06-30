@@ -14,6 +14,8 @@
 - `tool/codeexec` 在 `sandbox` 模式执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`。
 - SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 - 旧的 `internal/governance` / `internal/sandbox` 本地包装已删除，主链路不再维护第二套治理和沙箱抽象。
+- `review_report.json` / `review_report.md` 已同步写入官方 artifact service，SQLite 继续保留引用记录。
+- `Run` 已挂官方 telemetry trace 边界，metrics 表仍保留本地聚合结果。
 
 当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 
@@ -64,7 +66,7 @@ go run ./cmd/review-agent \
 | 存储 | ✅ SQLite 核心表和查询方法完成 | `internal/storage/store.go` 已抽出独立接口 |
 | 报告 | ✅ 核心摘要字段完成 | 增加 conclusion 字段和更稳定 golden report |
 | 安全 | 🔶 timeout/output limit/digest/redaction 有记录 | 增加 artifact cap、env 白名单强校验 |
-| 监控 | 🔶 metrics 表记录核心摘要 | 接官方 telemetry hook |
+| 监控 | 🔶 metrics 表记录核心摘要，Run 已挂 trace span | 接更完整的 OTLP 导出 |
 | Runner/Event | ⏳ CLI 直接编排 `internal/agent.Agent.Run` | 后续接官方 Runner 事件流 |
 | Session/Memory | ⏳ 当前 SQLite 是审计库，不是官方 Session/Memory Service | 多轮评审需要时再接入 |
 

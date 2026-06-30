@@ -13,10 +13,12 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 
+	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	toolcodeexec "trpc.group/trpc-go/trpc-agent-go/tool/codeexec"
 	toolskill "trpc.group/trpc-go/trpc-agent-go/tool/skill"
+	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 )
 
 const (
@@ -64,6 +66,8 @@ type Config struct {
 	OutputLimitBytes int
 	// EnableStaticcheck 控制可选 staticcheck。
 	EnableStaticcheck bool
+	// ArtifactService 接入官方 artifact service。
+	ArtifactService artifact.Service
 }
 
 // Request 描述一次审查输入。
@@ -92,6 +96,8 @@ type Agent struct {
 	policy tool.PermissionPolicy
 	// store 持久化审计数据。
 	store storage.Store
+	// artifactService 保存官方产物。
+	artifactService artifact.Service
 }
 
 // New 创建基于 trpc-agent-go 的 CR Agent。
@@ -139,11 +145,15 @@ func New(cfg Config) (*Agent, error) {
 		checkTool: toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
 		policy:    defaultPermissionPolicy(),
 		store:     store,
+		artifactService: cfg.ArtifactService,
 	}, nil
 }
 
 // Run 执行一次完整审查。
 func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
+	ctx, span := telemetrytrace.Tracer.Start(ctx, "cr-agent.review")
+	defer span.End()
+
 	start := time.Now()
 	// 统一把输入收敛成 diff。
 	diff, inputRef, err := readInput(a.cfg, req)
@@ -233,6 +243,11 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	if err := writeReports(a.cfg.OutputDir, jsonReport, []byte(md)); err != nil {
 		return review.Result{}, err
 	}
+	if a.artifactService != nil {
+		if err := a.saveArtifacts(ctx, taskID, result, jsonReport, []byte(md)); err != nil {
+			return review.Result{}, err
+		}
+	}
 	if a.store != nil {
 		// 写入完整审计数据。
 		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md)); err != nil {
@@ -257,6 +272,37 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	return a.store.Close()
+}
+
+// saveArtifacts 使用官方 artifact service 持久化报告产物。
+func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, jsonReport, markdownReport []byte) error {
+	sessionInfo := artifact.SessionInfo{
+		AppName:   "cr-agent",
+		UserID:    "local",
+		SessionID: taskID,
+	}
+	for _, art := range result.Artifacts {
+		var payload []byte
+		var mime string
+		switch art.Name {
+		case "review_report.json":
+			payload = jsonReport
+			mime = "application/json"
+		case "review_report.md":
+			payload = markdownReport
+			mime = "text/markdown"
+		default:
+			continue
+		}
+		if _, err := a.artifactService.SaveArtifact(ctx, sessionInfo, art.Path, &artifact.Artifact{
+			Data:     payload,
+			MimeType: mime,
+			Name:     art.Name,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // normalizeConfig 填充默认配置。

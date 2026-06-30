@@ -31,9 +31,9 @@
 
 - 真实 Docker container 端到端测试已加入 env gate；本地仍需 Docker daemon 才能执行。
 - E2B/Cube runtime adapter。
-- 官方 artifact service 接入；当前 artifact 为 SQLite 中的报告产物记录。
+- 官方 artifact service 已接入最小报告产物保存；SQLite 继续保留引用记录和查询。
 - `session/sqlite` 作为 Agent session/history 的直接使用；当前使用本项目 SQLite store。
-- 更完整的 telemetry hook；当前先将耗时、异常、severity 分布等落入 metrics 表。
+- 已接入最小 telemetry trace 边界；当前 metrics 表继续记录耗时、异常、severity 分布等。
 
 ## 系统流程
 
@@ -61,8 +61,8 @@ CLI 输入（--diff-file / --repo-path / --fixture）
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 记录 task、decision、run、finding、artifact、metrics、report | 🔶 当前是审计存储，不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
-| Observability | metrics 表记录耗时、异常、权限拦截、severity 分布 | 🔶 已有审计指标，未接官方 OpenTelemetry telemetry hook |
-| Artifact | 本地 `review_report.json` / `review_report.md` 和 SQLite artifact record | 🔶 未接官方 artifact service |
+| Observability | metrics 表记录耗时、异常、权限拦截、severity 分布，Run 已挂 trace span | 🔶 仍缺更完整的 OTLP 导出和统一 dashboard |
+| Artifact | `review_report.json` / `review_report.md` 保存到本地，且同步写入官方 artifact service | ✅ 已有最小 artifact 接入，SQLite 继续保留引用记录 |
 
 ## CLI Mode
 

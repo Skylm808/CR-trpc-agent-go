@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
+	"trpc.group/trpc-go/trpc-agent-go/artifact"
+	"trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -318,6 +320,93 @@ func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "review_report.json")); err != nil {
 		t.Fatalf("expected json report: %v", err)
+	}
+}
+
+// TestReadInputFromRepoReturnsRepoPath 固定仓库输入仍按 repo path 读取。
+func TestReadInputFromRepoReturnsRepoPath(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	diff, ref, err := readInput(Config{}, Request{
+		RepoPath: root,
+	})
+	if err != nil {
+		t.Fatalf("readInput returned error: %v", err)
+	}
+	if ref != root {
+		t.Fatalf("expected repo path ref %q, got %q", root, ref)
+	}
+	if len(diff) == 0 {
+		t.Fatalf("expected repo diff content")
+	}
+}
+
+// TestReportArtifactsRemainStable 固定报告产物语义不变。
+func TestReportArtifactsRemainStable(t *testing.T) {
+	t.Parallel()
+
+	arts := reportArtifacts()
+	if len(arts) != 2 {
+		t.Fatalf("expected 2 report artifacts, got %+v", arts)
+	}
+	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" {
+		t.Fatalf("unexpected artifacts: %+v", arts)
+	}
+}
+
+// TestArtifactServiceReportsCanBeSavedAsArtifacts 固定报告可进入官方 artifact service。
+func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	svc := inmemory.NewService()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot:      filepath.Join(root, "skills"),
+		Runtime:         RuntimeLocalFallback,
+		SQLitePath:      dbPath,
+		OutputDir:       outDir,
+		Timeout:         5 * time.Second,
+		ArtifactService: svc,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	keys, err := svc.ListArtifactKeys(context.Background(), artifact.SessionInfo{
+		AppName:   "cr-agent",
+		UserID:    "local",
+		SessionID: result.TaskID,
+	})
+	if err != nil {
+		t.Fatalf("list artifact keys: %v", err)
+	}
+	if len(keys) == 0 {
+		t.Fatalf("expected artifacts to be saved in official artifact service")
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	recs, err := store.ArtifactsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load artifact records: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatalf("expected persisted artifact records")
 	}
 }
 

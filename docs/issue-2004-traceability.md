@@ -14,7 +14,7 @@
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | Agent timeout/output limit/digest/redaction | sandbox failure/timeout tests + DB secret scan | 🔶 | artifact cap、env 强白名单、更多 secret 样本待补 |
-| 9 | 监控审计 | metrics 表 + report metrics | report/agent/sqlite tests | 🔶 | 官方 telemetry hook 待接 |
+| 9 | 监控审计 | metrics 表 + trace span + report metrics | report/agent/sqlite tests | 🔶 | 更完整的 OTLP 导出与统一 dashboard 待补 |
 
 ## 输入输出要求追踪
 
