@@ -57,33 +57,52 @@ const (
 
 // Config 描述 Agent 运行一轮审查所需的稳定依赖和安全边界。
 type Config struct {
-	SkillsRoot            string
-	Runtime               string
-	SQLitePath            string
-	OutputDir             string
-	FixturesRoot          string
+	// SkillsRoot 指向 skills 根目录，Agent 会从这里加载 code-review Skill。
+	SkillsRoot string
+	// Runtime 决定代码执行器类型，生产默认 container，本地测试显式使用 local-fallback。
+	Runtime string
+	// SQLitePath 非空时启用 SQLite 审计落库，空值表示只生成报告。
+	SQLitePath string
+	// OutputDir 是 review_report.json 和 review_report.md 的输出目录。
+	OutputDir string
+	// FixturesRoot 是 --fixture 模式读取 diff 样本的根目录。
+	FixturesRoot string
+	// ContainerRepoHostPath 是 container runtime 挂载宿主机 repo 的只读路径。
 	ContainerRepoHostPath string
-	Timeout               time.Duration
-	OutputLimitBytes      int
-	EnableStaticcheck     bool
+	// Timeout 限制 Skill 脚本和沙箱命令的最长执行时间。
+	Timeout time.Duration
+	// OutputLimitBytes 限制工具 stdout/stderr 进入报告和数据库前的最大字节数。
+	OutputLimitBytes int
+	// EnableStaticcheck 控制 sandbox 模式是否额外执行 staticcheck。
+	EnableStaticcheck bool
 }
 
 // Request 描述一次审查输入；DiffFile、RepoPath、Fixture 至少需要提供一个。
 type Request struct {
+	// DiffFile 指向外部传入的 unified diff 或 PR patch 文件。
 	DiffFile string
+	// RepoPath 指向本地 Git 工作区；Agent 会在该目录执行 git diff。
 	RepoPath string
-	Fixture  string
-	Mode     string
+	// Fixture 指向 FixturesRoot 下的内置测试 diff 文件名。
+	Fixture string
+	// Mode 决定执行深度，例如 rule-only、dry-run 或 sandbox。
+	Mode string
 }
 
 // Agent 持有 trpc-agent-go 工具和本项目持久化实现。
 type Agent struct {
-	cfg       Config
-	loadTool  tool.CallableTool
-	runTool   tool.CallableTool
+	// cfg 保存 CLI 转换后的运行参数和安全边界。
+	cfg Config
+	// loadTool 是官方 skill_load 工具，用于加载 code-review Skill。
+	loadTool tool.CallableTool
+	// runTool 是官方 skill_run 工具，用于执行 Skill 内的固定脚本。
+	runTool tool.CallableTool
+	// checkTool 是官方 codeexec 工具，用于 sandbox 模式下执行 Go 检查命令。
 	checkTool tool.CallableTool
-	policy    tool.PermissionPolicy
-	store     storage.Store
+	// policy 是官方 PermissionPolicy，所有高风险工具调用都先经过它。
+	policy tool.PermissionPolicy
+	// store 是本项目的存储接口，当前默认实现是 SQLite。
+	store storage.Store
 }
 
 // New 创建一个框架优先的 CR Agent。
@@ -93,10 +112,12 @@ func New(cfg Config) (*Agent, error) {
 		return nil, errors.New("skills root is required")
 	}
 
+	// 先建立官方 Skill 仓库，让后续 skill_load 和 skill_run 共用同一个根目录。
 	repo, err := skillrepo.NewFSRepository(cfg.SkillsRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load skill repository: %w", err)
 	}
+	// 执行器在这里创建，确保 skill_run 和 codeexec 使用相同 runtime 边界。
 	exec, err := newExecutor(cfg)
 	if err != nil {
 		return nil, err
@@ -104,6 +125,7 @@ func New(cfg Config) (*Agent, error) {
 
 	var store storage.Store
 	if cfg.SQLitePath != "" {
+		// SQLite 是默认持久化实现，但 Agent 只依赖 storage.Store 接口。
 		store, err = sqlite.Open(cfg.SQLitePath)
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite store: %w", err)
@@ -134,10 +156,12 @@ func New(cfg Config) (*Agent, error) {
 // Run 执行一次完整审查：采集输入、加载 Skill、权限判定、执行脚本、生成报告并落库。
 func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	start := time.Now()
+	// 输入统一收敛成 diff 字节流，后续 Skill、报告和数据库都只依赖这一份输入。
 	diff, inputRef, err := readInput(a.cfg, req)
 	if err != nil {
 		return review.Result{}, err
 	}
+	// taskID 用 diff 摘要和时间戳生成，既方便追踪又避免不同运行互相覆盖。
 	taskID := newTaskID(diff)
 	mode := strings.TrimSpace(req.Mode)
 	if mode == "" {
@@ -145,6 +169,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	}
 
 	if a.store != nil {
+		// 先写 running 任务，保证即使后续沙箱失败也能在数据库中看到审查尝试。
 		if err := a.store.SaveTask(ctx, storage.Task{
 			ID: taskID, InputType: "diff", InputRef: inputRef,
 			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
@@ -160,22 +185,27 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	var runRecord storage.SandboxRunRecord
 	var decision storage.DecisionRecord
 	if mode == ModeDryRun {
+		// dry-run 只验证 Skill 可加载和治理链路，不进入真实执行器。
 		toolCallCount = 1
 		result, runRecord, decision, err = a.runDryRun(ctx, taskID)
 	} else {
+		// rule-only、fake-model 和 sandbox 都先执行确定性的 code-review Skill。
 		result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
 	}
 	decisions := []storage.DecisionRecord{decision}
 	runs := []storage.SandboxRunRecord{runRecord}
 	if mode == ModeSandbox && strings.TrimSpace(req.RepoPath) != "" {
+		// sandbox 模式在 Skill 规则之外，再对真实 Go repo 执行 go test/go vet。
 		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, req.RepoPath)
 		decisions = append(decisions, checkDecisions...)
 		runs = append(runs, checkRuns...)
 		toolCallCount += len(checkRuns)
 	}
 	if err != nil {
+		// Skill 或沙箱失败不直接终止评审，转成需要人工复核的 warning。
 		result = resultWithRunError(result, err)
 	}
+	// 从执行记录反推监控指标，保证报告和数据库看到的是同一套统计口径。
 	result.TaskID = taskID
 	result.Created = time.Now()
 	result.Metrics.TotalDurationMS = time.Since(start).Milliseconds()
@@ -193,8 +223,10 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		}
 	}
 	if decision.Action != string(tool.PermissionActionAllow) {
+		// 当前 MVP 只有主 Skill 命令计入 permission_blocks。
 		result.Metrics.PermissionBlocks = 1
 	}
+	// 报告层需要治理、沙箱、artifact 摘要；这些字段也会跟随结果落库。
 	result.HumanReviewItems = humanReviewItems(result.Warnings)
 	result.GovernanceSummary = governanceSummary(decisions, result.Metrics.PermissionBlocks)
 	result.SandboxSummary = sandboxSummary(runs)
@@ -203,6 +235,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
 	}
 
+	// 报告先生成并写入文件，再把同一份内容写入 SQLite，避免报告和数据库不一致。
 	jsonReport, jsonErr := report.BuildJSON(result)
 	if jsonErr != nil {
 		return review.Result{}, jsonErr
@@ -212,9 +245,11 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		return review.Result{}, err
 	}
 	if a.store != nil {
+		// persist 写入可回放审计数据：权限、沙箱、finding、指标、artifact 和报告。
 		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md)); err != nil {
 			return review.Result{}, err
 		}
+		// 最后把任务状态从 running 更新为 done。
 		if err := a.store.SaveTask(ctx, storage.Task{
 			ID: taskID, InputType: "diff", InputRef: inputRef,
 			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
@@ -229,11 +264,13 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 
 // runDryRun 只加载 Skill 并记录跳过执行的治理/沙箱摘要。
 func (a *Agent) runDryRun(ctx context.Context, taskID string) (review.Result, storage.SandboxRunRecord, storage.DecisionRecord, error) {
+	// dry-run 仍然调用 skill_load，用来验证 Skill 目录和 SKILL.md 可被框架识别。
 	loadArgs := []byte(`{"skill":"code-review"}`)
 	if _, err := a.loadTool.Call(ctx, loadArgs); err != nil {
 		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 	now := time.Now()
+	// dry-run 不执行脚本，但仍记录治理和沙箱摘要，方便验收落库链路。
 	decision := storage.DecisionRecord{
 		TaskID:  taskID,
 		Command: defaultSkillCommand,
@@ -349,6 +386,7 @@ func defaultPermissionPolicy() tool.PermissionPolicy {
 
 // runGoSandboxChecks 在 sandbox 模式下执行 Go 项目的最小静态/测试检查。
 func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]storage.DecisionRecord, []storage.SandboxRunRecord) {
+	// 基础检查固定为 go test 和 go vet；staticcheck 因依赖额外工具，保持显式开关。
 	commands := []string{"go test ./...", "go vet ./..."}
 	if a.cfg.EnableStaticcheck {
 		// staticcheck 是可选检查，只有显式开启时才进入权限和沙箱链路。
@@ -366,6 +404,7 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 
 // runGoSandboxCommand 对单个 Go 检查命令做权限检查并通过 codeexec 执行。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
+	// codeexec 接收代码块参数，这里只允许 bash 语言并填入受控的 Go 检查命令。
 	args, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
@@ -373,6 +412,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		}},
 		"execution_id": taskID + "-" + strings.ReplaceAll(command, " ", "-"),
 	})
+	// 高风险命令必须先构造 PermissionRequest，再交给 PermissionPolicy 判断。
 	permReq := &tool.PermissionRequest{
 		Tool:        a.checkTool,
 		ToolName:    a.checkTool.Declaration().Name,
@@ -383,6 +423,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	if err != nil {
 		perm = tool.DenyPermission(err.Error())
 	}
+	// Normalize 能把空 action 等异常决策规整为框架定义的安全结果。
 	perm, err = tool.NormalizePermissionDecision(perm)
 	if err != nil {
 		perm = tool.DenyPermission(err.Error())
@@ -399,11 +440,13 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		At:               time.Now(),
 	}
 	if perm.Action != tool.PermissionActionAllow {
+		// deny/ask/needs_human_review 不能进入执行器，只记录决策和跳过状态。
 		run.Status = string(perm.Action)
 		return decision, run
 	}
 
 	start := time.Now()
+	// 只有 allow 的命令才进入 codeexec；执行耗时和输出摘要都会写入审计记录。
 	raw, err := a.checkTool.Call(ctx, args)
 	run.DurationMS = time.Since(start).Milliseconds()
 	if err != nil {
@@ -414,6 +457,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	output := codeExecOutput(raw)
 	run.StdoutDigest = digestString(output)
 	if strings.Contains(output, "Error executing code block") {
+		// 当前 codeexec 返回值没有统一 exit code 字段，先用标准错误文本兜底标记失败。
 		run.Status = "failed"
 		run.ExitCode = 1
 		return decision, run
@@ -424,11 +468,13 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 
 // runSkillChecks 通过 skill_load 与 skill_run 执行 code-review Skill。
 func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) (review.Result, storage.SandboxRunRecord, storage.DecisionRecord, error) {
+	// 第一步显式加载 Skill，保证后续执行的脚本来自受控 Skill 仓库。
 	loadArgs := []byte(`{"skill":"code-review"}`)
 	if _, err := a.loadTool.Call(ctx, loadArgs); err != nil {
 		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 
+	// diff 通过 stdin 传给 Skill 脚本，脚本 stdout 必须输出结构化 JSON。
 	runArgs, err := json.Marshal(map[string]any{
 		"skill":   defaultSkillName,
 		"command": defaultSkillCommand,
@@ -439,6 +485,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		return review.Result{}, storage.SandboxRunRecord{}, storage.DecisionRecord{}, err
 	}
 
+	// skill_run 同样需要 PermissionPolicy 放行，避免任意 Skill 命令被直接执行。
 	permReq := &tool.PermissionRequest{
 		Tool:        a.runTool,
 		ToolName:    a.runTool.Declaration().Name,
@@ -465,6 +512,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		At:               time.Now(),
 	}
 	if perm.Action != tool.PermissionActionAllow {
+		// 非 allow 的治理结果降级为人工复核项，报告仍然可以正常生成。
 		runRecord.Status = string(perm.Action)
 		return review.Result{Warnings: []review.Finding{{
 			Severity: "low", Category: "governance", Title: "Command requires human review",
@@ -474,6 +522,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 	}
 
 	start := time.Now()
+	// 通过官方 skill_run 进入 workspace runtime，而不是在 Agent 内直接执行脚本。
 	raw, err := a.runTool.Call(ctx, runArgs)
 	runRecord.DurationMS = time.Since(start).Milliseconds()
 	if err != nil {
@@ -488,6 +537,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		return review.Result{}, runRecord, decision, err
 	}
 	runRecord.Status = "ok"
+	// skill_run 返回的超时和退出码是沙箱运行结果的事实来源。
 	if out.TimedOut {
 		runRecord.Status = "timed_out"
 	} else if out.ExitCode != 0 {
@@ -500,6 +550,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		runRecord.DurationMS = out.DurationMS
 	}
 
+	// 最后只解析 stdout 中的 JSON findings，stderr 只作为审计摘要保存。
 	result, err := parseSkillFindings(out.Stdout)
 	return result, runRecord, decision, err
 }
@@ -517,6 +568,7 @@ func decodeSkillRunOutput(raw any) (skillRunOutput, error) {
 	return out, nil
 }
 
+// skillRunOutput 是 skill_run 返回值里本项目关心的执行摘要字段。
 type skillRunOutput struct {
 	Stdout     string `json:"stdout"`
 	Stderr     string `json:"stderr"`
@@ -527,6 +579,7 @@ type skillRunOutput struct {
 
 // parseSkillFindings 解析 Skill 脚本 stdout 中的结构化 findings。
 func parseSkillFindings(stdout string) (review.Result, error) {
+	// Skill stdout 的契约是 {"findings":[],"warnings":[]}，后续报告直接消费该结构。
 	var payload struct {
 		Findings []review.Finding `json:"findings"`
 		Warnings []review.Finding `json:"warnings"`
@@ -534,12 +587,14 @@ func parseSkillFindings(stdout string) (review.Result, error) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); err != nil {
 		return review.Result{}, err
 	}
+	// 即使脚本已经脱敏，Agent 层仍然做一次兜底，保护报告和数据库。
 	for i := range payload.Findings {
 		payload.Findings[i] = sanitizeFinding(payload.Findings[i])
 	}
 	for i := range payload.Warnings {
 		payload.Warnings[i] = sanitizeFinding(payload.Warnings[i])
 	}
+	// findings 与 warnings 分别去重，避免同一文件同一行同一规则重复报。
 	return review.Result{
 		Findings: review.DedupeFindings(payload.Findings),
 		Warnings: review.DedupeFindings(payload.Warnings),
@@ -558,6 +613,7 @@ func sanitizeFinding(f review.Finding) review.Finding {
 
 // persist 保存一次审查的治理、沙箱、finding、指标和报告数据。
 func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport []byte) error {
+	// 权限决策先落库，后续排查可以知道命令是 allow、ask 还是 deny。
 	for _, decision := range decisions {
 		if decision.Command == "" && decision.Action == "" {
 			continue
@@ -567,6 +623,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		}
 	}
 	if result.Metrics.RedactionCount > 0 {
+		// 只要发生脱敏，就记录一条 filter decision，证明敏感信息经过治理处理。
 		if err := a.store.SaveFilterDecision(ctx, storage.FilterDecisionRecord{
 			TaskID: taskID,
 			Target: "finding.evidence",
@@ -577,6 +634,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
+	// 沙箱运行记录只保存摘要和 digest，不把完整 stdout/stderr 直接写进数据库。
 	for _, run := range runs {
 		if run.Command == "" && run.Status == "" {
 			continue
@@ -585,11 +643,13 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
+	// findings、warnings 和人工复核项统一落到 finding 表，通过 status 区分。
 	for _, finding := range persistedReviewItems(result) {
 		if err := a.store.SaveFinding(ctx, taskID, finding); err != nil {
 			return err
 		}
 	}
+	// metrics 保存聚合指标，方便之后按 task id 回放或做批量评测。
 	if err := a.store.SaveMetrics(ctx, storage.MetricsRecord{
 		TaskID: taskID, TotalDurationMS: result.Metrics.TotalDurationMS,
 		SandboxDurationMS:    result.Metrics.SandboxDurationMS,
@@ -603,6 +663,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 	}); err != nil {
 		return err
 	}
+	// artifact 记录报告文件的名称、路径和摘要，内容本身由 reports 表保存。
 	for _, artifact := range result.Artifacts {
 		digest := artifact.Digest
 		if artifact.Name == "review_report.json" {
@@ -622,6 +683,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			return err
 		}
 	}
+	// 最终报告单独保存，保证命令行输出和数据库查询都能复现同一份结论。
 	return a.store.SaveReport(ctx, taskID, jsonReport, markdownReport)
 }
 
