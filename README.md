@@ -2,6 +2,8 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `codeexecutor/container` 作为生产默认执行器，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物、指标和最终报告。
 
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
 ## 第一版 MVP 范围
@@ -27,6 +29,7 @@
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
 - 公开 fixture 覆盖安全、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
+- 早期 `internal/governance` / `internal/sandbox` 本地包装已删除；主链路只使用官方 `tool.PermissionPolicy`、`tool/codeexec` 和 `codeexecutor/container` / `codeexecutor/local`。
 
 仍需完善：
 

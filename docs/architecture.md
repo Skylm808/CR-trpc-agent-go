@@ -15,6 +15,8 @@
 
 本仓库是 **trpc-agent-go 之上的应用示例**，不是框架 fork。本仓库负责 Go CR 业务逻辑、规则、报告、schema、fixture 和验收测试；官方框架负责 Skill、Tool、PermissionPolicy、CodeExecutor 等可复用原语。
 
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+
 当前代码已经接入：
 
 - `trpc.group/trpc-go/trpc-agent-go v1.10.0`
@@ -23,6 +25,7 @@
 - `tool/codeexec` 的 Go 检查执行入口
 - `tool.PermissionPolicy`
 - `codeexecutor/container` 和显式 `codeexecutor/local` fallback
+- 早期 `internal/governance` / `internal/sandbox` 本地包装已删除，避免和官方治理、执行边界混淆。
 
 仍未完成的框架侧增强：
 
@@ -48,16 +51,18 @@ CLI 输入（--diff-file / --repo-path / --fixture）
 
 ## 框架集成映射
 
-| 本仓库组件 | trpc-agent-go 对应能力 | 当前状态 |
-|-----------|----------------------|---------|
-| Skill 加载与规则脚本 | `tool/skill`、`skill.NewFSRepository` | ✅ 已接入 `skill_load` / `skill_run` |
-| Go 检查执行 | `tool/codeexec` | ✅ `sandbox` 模式执行 `go test` / `go vet`，`--staticcheck` 可选 |
-| 沙箱 runtime | `codeexecutor/container`、`codeexecutor/local` | 🔶 container 为默认；local 仅显式 fallback；Docker E2E 测试已加，需 Docker 环境执行 |
-| 命令治理 | `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
-| 内容过滤 | 本项目 Filter/Redaction 记录 | 🔶 secret 脱敏和 filter_decision 已落库，策略仍需扩展 |
-| 持久化 | 兼容 Store + SQLite | ✅ Agent 层有 Store interface，SQLite 已存 task/run/decision/finding/artifact/report/metrics |
-| 遥测 | metrics 表；后续接 telemetry hook | 🔶 已记录核心指标，未接官方 telemetry hook |
-| 产物 | artifact 目标；当前 SQLite artifact record | 🔶 报告产物已记录，未接官方 artifact service |
+| 官方模块 | 本仓库对应实现 | 当前状态 |
+|---------|----------------|---------|
+| Agent | `internal/agent.Agent` 是 CLI 编排器，负责输入、工具调用、报告和审计闭环 | ✅ 应用层 Agent 原型，未实现官方 `agent.Agent` 事件流接口 |
+| Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | 🔶 尚未接入官方 Runner/Event；后续可演进为事件流和会话生命周期管理 |
+| Tool | `skill_load`、`skill_run`、`execute_code` 都以 `tool.CallableTool` 形式持有 | ✅ 已使用官方工具抽象 |
+| Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
+| CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 需 Docker 环境 |
+| PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
+| Session | SQLite 记录 task、decision、run、finding、artifact、metrics、report | 🔶 当前是审计存储，不是官方 Session Service |
+| Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
+| Observability | metrics 表记录耗时、异常、权限拦截、severity 分布 | 🔶 已有审计指标，未接官方 OpenTelemetry telemetry hook |
+| Artifact | 本地 `review_report.json` / `review_report.md` 和 SQLite artifact record | 🔶 未接官方 artifact service |
 
 ## CLI Mode
 

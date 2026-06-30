@@ -13,6 +13,9 @@
 - `codeexecutor/container` 是默认 runtime；`local-fallback` 仅显式用于测试/开发。
 - `tool/codeexec` 在 `sandbox` 模式执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`。
 - SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
+- 旧的 `internal/governance` / `internal/sandbox` 本地包装已删除，主链路不再维护第二套治理和沙箱抽象。
+
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 
 ## 当前小版本能力
 
@@ -62,6 +65,8 @@ go run ./cmd/review-agent \
 | 报告 | ✅ 核心摘要字段完成 | 增加 conclusion 字段和更稳定 golden report |
 | 安全 | 🔶 timeout/output limit/digest/redaction 有记录 | 增加 artifact cap、env 白名单强校验 |
 | 监控 | 🔶 metrics 表记录核心摘要 | 接官方 telemetry hook |
+| Runner/Event | ⏳ CLI 直接编排 `internal/agent.Agent.Run` | 后续接官方 Runner 事件流 |
+| Session/Memory | ⏳ 当前 SQLite 是审计库，不是官方 Session/Memory Service | 多轮评审需要时再接入 |
 
 ## 非目标
 
