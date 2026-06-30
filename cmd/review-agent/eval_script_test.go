@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// TestEvalScriptReportsFixtureMetrics 固定公开样本评测脚本的最小契约：
-// 脚本必须通过 CLI 生成报告，并输出 recall/precision 摘要。
+// TestEvalScriptReportsFixtureMetrics 固定评测脚本输出。
 func TestEvalScriptReportsFixtureMetrics(t *testing.T) {
 	t.Parallel()
 
@@ -31,7 +30,7 @@ func TestEvalScriptReportsFixtureMetrics(t *testing.T) {
 	}
 }
 
-// repoRootForEval 从测试目录向上查找仓库根目录。
+// repoRootForEval 查找仓库根目录。
 func repoRootForEval(t *testing.T) string {
 	t.Helper()
 

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Analysis 是规则执行过程中生成的内部工作集。
+// Analysis 是规则执行工作集。
 type Analysis struct {
 	TaskID   string
 	Findings []Finding
@@ -17,7 +17,7 @@ type Analysis struct {
 	Diff     ParsedDiff
 }
 
-// AnalyzeDiff 负责解析 diff、执行规则、去重输出，并为结果附加轻量遥测快照。
+// AnalyzeDiff 解析 diff 并执行规则。
 func AnalyzeDiff(input string) (Result, error) {
 	start := time.Now()
 	parsed, err := ParseUnifiedDiff(input)
@@ -50,7 +50,7 @@ func AnalyzeDiff(input string) (Result, error) {
 func runRules(diff ParsedDiff) Analysis {
 	var out Analysis
 	out.Diff = diff
-	// 形似 secret 的字面量无论文件类型都视为高风险，因为第一版更偏向安全。
+	// 密钥字面量优先按高风险处理。
 	secretToken := regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`)
 	for _, file := range diff.Files {
 		for _, hunk := range file.Hunks {
@@ -63,7 +63,7 @@ func runRules(diff ParsedDiff) Analysis {
 				if file.Path == "" {
 					continue
 				}
-				// TODO/FIXME 标记本身不阻断，但作为中等严重级别的可维护性问题很有价值。
+				// TODO/FIXME 作为可维护性问题提示。
 				if strings.Contains(text, "TODO(") || strings.Contains(text, "FIXME") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:       "medium",
@@ -79,7 +79,7 @@ func runRules(diff ParsedDiff) Analysis {
 						Status:         "finding",
 					})
 				}
-				// 直接 panic 的路径会被标记，因为这个 Agent 面向 Go 代码审查，共享代码更偏好显式错误处理。
+				// 共享代码中直接 panic 通常应改为显式错误处理。
 				if strings.Contains(text, "panic(") && !hasRuleInFile(out.Findings, file.Path, "panic-direct") {
 					out.Findings = append(out.Findings, Finding{
 						Severity:       "high",
@@ -96,10 +96,10 @@ func runRules(diff ParsedDiff) Analysis {
 					})
 				}
 				if file.IsTestFile {
-					// 测试文件本身就是测试面，因此跳过缺失测试提示。
+					// 测试文件跳过缺失测试提示。
 					continue
 				}
-				// 新函数如果没有明显错误路径，通常意味着可能需要专门测试，因此保留为 warning。
+				// 新函数默认提示补充测试。
 				if strings.HasPrefix(text, "func ") && !strings.Contains(text, "error") {
 					out.Warnings = append(out.Warnings, Finding{
 						Severity:       "low",
@@ -185,7 +185,7 @@ func runRules(diff ParsedDiff) Analysis {
 						})
 					}
 				}
-				// 字面量 secret 会按 critical 级别报告，并在落库或出报告前脱敏 evidence。
+				// secret 证据在报告和落库前会脱敏。
 				if strings.Contains(strings.ToLower(text), "password") ||
 					strings.Contains(strings.ToLower(text), "token") ||
 					strings.Contains(strings.ToLower(text), "secret") ||
@@ -210,7 +210,7 @@ func runRules(diff ParsedDiff) Analysis {
 	return out
 }
 
-// hunkJoinedText 将一个 hunk 压缩成更容易搜索的文本，供需要跨行判断的简单生命周期规则使用。
+// hunkJoinedText 拼接 hunk 文本。
 func hunkJoinedText(hunk Hunk) string {
 	var b strings.Builder
 	for _, line := range hunk.Lines {
@@ -220,7 +220,7 @@ func hunkJoinedText(hunk Hunk) string {
 	return b.String()
 }
 
-// containsAny 检查拼接后的 hunk 文本是否包含任一给定子串。
+// containsAny 判断是否包含任一子串。
 func containsAny(text string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(text, needle) {
@@ -230,7 +230,7 @@ func containsAny(text string, needles ...string) bool {
 	return false
 }
 
-// hasRuleInFile 判断同一文件是否已经报告过同一规则，用于少量高噪声规则降噪。
+// hasRuleInFile 判断文件内规则是否已命中。
 func hasRuleInFile(findings []Finding, file string, ruleID string) bool {
 	for _, finding := range findings {
 		if finding.File == file && finding.RuleID == ruleID {
@@ -242,7 +242,7 @@ func hasRuleInFile(findings []Finding, file string, ruleID string) bool {
 
 var ErrEmptyInput = errors.New("empty review input")
 
-// BuildReport 是 CLI 和测试使用的外部入口。
+// BuildReport 是外部入口。
 func BuildReport(input string) (Result, error) {
 	if strings.TrimSpace(input) == "" {
 		return Result{}, ErrEmptyInput
@@ -250,7 +250,7 @@ func BuildReport(input string) (Result, error) {
 	return AnalyzeDiff(input)
 }
 
-// PackageFromPath 根据文件路径推导出类似 Go package 的名称。
+// PackageFromPath 从路径推导包名。
 func PackageFromPath(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(base, filepath.Ext(base))

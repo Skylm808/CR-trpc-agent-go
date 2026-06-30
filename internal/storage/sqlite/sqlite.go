@@ -1,4 +1,4 @@
-// Package sqlite 将审查任务、finding、遥测和报告持久化到单文件 SQLite 数据库中。
+// Package sqlite 提供 SQLite 存储实现。
 package sqlite
 
 import (
@@ -11,12 +11,12 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// Store 持有原型使用的 SQLite 连接。
+// Store 持有 SQLite 连接。
 type Store struct {
 	db *sql.DB
 }
 
-// Task 是审查任务的标准持久化记录。
+// Task 是审查任务记录。
 type Task struct {
 	ID          string
 	InputType   string
@@ -30,14 +30,14 @@ type Task struct {
 	FinishedAt  time.Time
 }
 
-// Report 保存生成的 JSON 和 Markdown 报告内容。
+// Report 保存报告内容。
 type Report struct {
 	JSON      []byte
 	Markdown  []byte
 	CreatedAt time.Time
 }
 
-// DecisionRecord 保存一条可审计的权限策略决策。
+// DecisionRecord 保存权限决策。
 type DecisionRecord struct {
 	TaskID  string
 	Command string
@@ -46,7 +46,7 @@ type DecisionRecord struct {
 	At      time.Time
 }
 
-// SandboxRunRecord 保存一次沙箱执行尝试。
+// SandboxRunRecord 保存沙箱运行。
 type SandboxRunRecord struct {
 	TaskID           string
 	Command          string
@@ -63,7 +63,7 @@ type SandboxRunRecord struct {
 	At               time.Time
 }
 
-// FilterDecisionRecord 保存一条过滤或脱敏决策。
+// FilterDecisionRecord 保存过滤决策。
 type FilterDecisionRecord struct {
 	TaskID string
 	Target string
@@ -72,7 +72,7 @@ type FilterDecisionRecord struct {
 	At     time.Time
 }
 
-// ArtifactRecord 保存一条持久化审查产物引用。
+// ArtifactRecord 保存产物引用。
 type ArtifactRecord struct {
 	TaskID string
 	Name   string
@@ -82,7 +82,7 @@ type ArtifactRecord struct {
 	At     time.Time
 }
 
-// MetricsRecord 保存某个任务的聚合审查遥测。
+// MetricsRecord 保存聚合指标。
 type MetricsRecord struct {
 	TaskID               string
 	TotalDurationMS      int64
@@ -96,7 +96,7 @@ type MetricsRecord struct {
 	At                   time.Time
 }
 
-// MetricsSummary 是 MetricsByTaskID 返回的查询结构。
+// MetricsSummary 是指标查询结果。
 type MetricsSummary struct {
 	TaskID               string
 	TotalDurationMS      int64
@@ -110,7 +110,7 @@ type MetricsSummary struct {
 	At                   time.Time
 }
 
-// Open 在给定路径创建或打开 SQLite 数据库。
+// Open 打开 SQLite 数据库。
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -124,7 +124,7 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// Init 创建第一版 review Agent 所需的表结构。
+// Init 创建表结构。
 func (s *Store) Init(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA foreign_keys = ON;
@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 	return err
 }
 
-// Close 关闭当前持有的数据库句柄。
+// Close 关闭数据库连接。
 func (s *Store) Close() error {
 	if s.db == nil {
 		return nil
@@ -227,7 +227,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// SaveTask 插入或更新作为持久化锚点的 task 记录。
+// SaveTask 插入或更新任务。
 func (s *Store) SaveTask(ctx context.Context, task Task) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO review_tasks(task_id, input_type, input_ref, input_digest, repo_path, status, mode, created_at, started_at, finished_at)
@@ -248,7 +248,7 @@ finished_at=excluded.finished_at
 	return err
 }
 
-// SaveFinding 写入一条结构化 finding 记录。
+// SaveFinding 写入 finding。
 func (s *Store) SaveFinding(ctx context.Context, taskID string, finding review.Finding) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO findings(finding_id, task_id, severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, dedupe_key, status)
@@ -259,7 +259,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return err
 }
 
-// SaveReport 写入最终的 JSON 和 Markdown 报告内容。
+// SaveReport 写入最终报告。
 func (s *Store) SaveReport(ctx context.Context, taskID string, jsonReport, markdownReport []byte) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO reports(task_id, json_report, markdown_report, created_at)
@@ -273,7 +273,7 @@ created_at=excluded.created_at
 	return err
 }
 
-// TaskByID 加载某个 task，供后续检查或回放。
+// TaskByID 查询任务。
 func (s *Store) TaskByID(ctx context.Context, id string) (Task, error) {
 	var task Task
 	var createdAt string
@@ -291,7 +291,7 @@ FROM review_tasks WHERE task_id=?
 	return task, nil
 }
 
-// FindingsByTaskID 加载某个 task 的已存 finding。
+// FindingsByTaskID 查询 findings。
 func (s *Store) FindingsByTaskID(ctx context.Context, taskID string) ([]review.Finding, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, status
@@ -314,7 +314,7 @@ ORDER BY file, line, rule_id
 	return out, rows.Err()
 }
 
-// ReportByTaskID 加载某个 task 的持久化报告内容。
+// ReportByTaskID 查询报告。
 func (s *Store) ReportByTaskID(ctx context.Context, taskID string) (Report, error) {
 	var rep Report
 	var createdAt string
@@ -328,7 +328,7 @@ SELECT json_report, markdown_report, created_at FROM reports WHERE task_id=?
 	return rep, nil
 }
 
-// SaveDecision 写入一条治理决策审计记录。
+// SaveDecision 写入权限决策。
 func (s *Store) SaveDecision(ctx context.Context, rec DecisionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO permission_decisions(task_id, command, action, reason, created_at)
@@ -337,7 +337,7 @@ VALUES(?, ?, ?, ?, ?)
 	return err
 }
 
-// SaveSandboxRun 写入一次沙箱尝试，便于后续排障。
+// SaveSandboxRun 写入沙箱记录。
 func (s *Store) SaveSandboxRun(ctx context.Context, rec SandboxRunRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO sandbox_runs(task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at)
@@ -346,7 +346,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return err
 }
 
-// SaveFilterDecision 写入一条过滤或脱敏决策，便于审计。
+// SaveFilterDecision 写入过滤决策。
 func (s *Store) SaveFilterDecision(ctx context.Context, rec FilterDecisionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO filter_decisions(task_id, target, action, reason, created_at)
@@ -355,7 +355,7 @@ VALUES(?, ?, ?, ?, ?)
 	return err
 }
 
-// SaveArtifact 写入某个任务的一条持久化产物引用。
+// SaveArtifact 写入产物记录。
 func (s *Store) SaveArtifact(ctx context.Context, rec ArtifactRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO artifacts(task_id, name, kind, path, digest, created_at)
@@ -364,7 +364,7 @@ VALUES(?, ?, ?, ?, ?, ?)
 	return err
 }
 
-// DecisionsByTaskID 按写入顺序加载某个任务的权限决策记录。
+// DecisionsByTaskID 查询权限决策。
 func (s *Store) DecisionsByTaskID(ctx context.Context, taskID string) ([]DecisionRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT task_id, command, action, reason, created_at
@@ -389,7 +389,7 @@ ORDER BY id
 	return out, rows.Err()
 }
 
-// SandboxRunsByTaskID 按写入顺序加载某个任务的沙箱执行记录。
+// SandboxRunsByTaskID 查询沙箱记录。
 func (s *Store) SandboxRunsByTaskID(ctx context.Context, taskID string) ([]SandboxRunRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at
@@ -414,7 +414,7 @@ ORDER BY id
 	return out, rows.Err()
 }
 
-// FilterDecisionsByTaskID 按写入顺序加载某个任务的过滤/脱敏决策。
+// FilterDecisionsByTaskID 查询过滤决策。
 func (s *Store) FilterDecisionsByTaskID(ctx context.Context, taskID string) ([]FilterDecisionRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT task_id, target, action, reason, created_at
@@ -439,7 +439,7 @@ ORDER BY id
 	return out, rows.Err()
 }
 
-// ArtifactsByTaskID 按写入顺序加载某个任务的持久化产物。
+// ArtifactsByTaskID 查询产物记录。
 func (s *Store) ArtifactsByTaskID(ctx context.Context, taskID string) ([]ArtifactRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT task_id, name, kind, path, digest, created_at
@@ -464,7 +464,7 @@ ORDER BY id
 	return out, rows.Err()
 }
 
-// SaveMetrics 保存某个 task 的聚合遥测快照。
+// SaveMetrics 保存指标。
 func (s *Store) SaveMetrics(ctx context.Context, rec MetricsRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
@@ -483,7 +483,7 @@ created_at=excluded.created_at
 	return err
 }
 
-// MetricsByTaskID 加载某个 task 的遥测快照。
+// MetricsByTaskID 查询指标。
 func (s *Store) MetricsByTaskID(ctx context.Context, taskID string) (MetricsSummary, error) {
 	var out MetricsSummary
 	var createdAt string
@@ -498,7 +498,7 @@ FROM metrics WHERE task_id=?
 	return out, nil
 }
 
-// nullableTime 将可选时间转换为适合数据库写入的值。
+// nullableTime 转换可选时间。
 func nullableTime(t time.Time) any {
 	if t.IsZero() {
 		return nil
@@ -506,7 +506,7 @@ func nullableTime(t time.Time) any {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-// parseNullableTime 将可为空的文本时间戳转回 time.Time。
+// parseNullableTime 解析可选时间。
 func parseNullableTime(v sql.NullString) time.Time {
 	if !v.Valid || v.String == "" {
 		return time.Time{}

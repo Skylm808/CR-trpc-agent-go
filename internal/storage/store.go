@@ -1,4 +1,4 @@
-// Package storage 定义审查 Agent 使用的持久化边界。
+// Package storage 定义持久化边界。
 package storage
 
 import (
@@ -8,25 +8,25 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 )
 
-// Task 是一次审查任务的持久化锚点。
+// Task 是审查任务。
 type Task = sqlite.Task
 
-// DecisionRecord 是一次 PermissionPolicy 决策的审计记录。
+// DecisionRecord 是权限决策记录。
 type DecisionRecord = sqlite.DecisionRecord
 
-// FilterDecisionRecord 是一次过滤或脱敏决策的审计记录。
+// FilterDecisionRecord 是过滤决策记录。
 type FilterDecisionRecord = sqlite.FilterDecisionRecord
 
-// SandboxRunRecord 是一次沙箱执行尝试的审计记录。
+// SandboxRunRecord 是沙箱运行记录。
 type SandboxRunRecord = sqlite.SandboxRunRecord
 
-// ArtifactRecord 是一次报告或沙箱产物的持久化引用。
+// ArtifactRecord 是产物记录。
 type ArtifactRecord = sqlite.ArtifactRecord
 
-// MetricsRecord 是一次审查的聚合监控记录。
+// MetricsRecord 是指标记录。
 type MetricsRecord = sqlite.MetricsRecord
 
-// Store 定义 Agent 需要的最小持久化能力，便于后续替换 SQL 后端。
+// Store 定义最小存储能力。
 type Store interface {
 	SaveTask(context.Context, Task) error
 	SaveFinding(context.Context, string, review.Finding) error

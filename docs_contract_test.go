@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestREADMETracksFrameworkFirstCLIContract 防止 README 回退到本地原型描述。
+// TestREADMETracksFrameworkFirstCLIContract 固定 README 的 trpc-agent-go 契约。
 func TestREADMETracksFrameworkFirstCLIContract(t *testing.T) {
 	data, err := os.ReadFile("README.md")
 	if err != nil {

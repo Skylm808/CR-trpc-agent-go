@@ -11,7 +11,7 @@ import (
 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@`)
 
-// ParseUnifiedDiff 将原始 diff 文本转换为规则引擎使用的标准化 ParsedDiff 结构。
+// ParseUnifiedDiff 解析 unified diff。
 func ParseUnifiedDiff(input string) (ParsedDiff, error) {
 	var parsed ParsedDiff
 	scanner := bufio.NewScanner(strings.NewReader(input))
@@ -22,7 +22,7 @@ func ParseUnifiedDiff(input string) (ParsedDiff, error) {
 	newLine := 0
 
 	flushHunk := func() {
-		// 在切换文件或开始新 hunk 之前先保存当前 hunk。
+		// 切换文件或 hunk 前先保存当前 hunk。
 		if current == nil || currentHunk == nil {
 			return
 		}

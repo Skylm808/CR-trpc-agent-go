@@ -16,9 +16,7 @@ func TestSkillFilesExist(t *testing.T) {
 	}
 }
 
-// TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable 固定容器兼容性：
-// 默认生产容器需要 Go 工具链执行 go test/go vet，Skill 脚本在没有
-// python3 时也必须能通过 Go 回退输出结构化 findings。
+// TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable 固定 Go 回退路径。
 func TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -61,7 +59,7 @@ func TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable(t *testing.T) {
 	}
 }
 
-// mustLookPath 查找测试需要的宿主机工具，缺失时跳过相关兼容性测试。
+// mustLookPath 查找测试工具。
 func mustLookPath(t *testing.T, name string) string {
 	t.Helper()
 	path, err := exec.LookPath(name)
@@ -71,7 +69,7 @@ func mustLookPath(t *testing.T, name string) string {
 	return path
 }
 
-// linkTool 把宿主机工具链接进受控 PATH，用于模拟没有 python3 的容器环境。
+// linkTool 构造受控 PATH。
 func linkTool(t *testing.T, dir string, name string) {
 	t.Helper()
 	target := mustLookPath(t, name)

@@ -1,4 +1,4 @@
-// Package report 将结构化审查结果渲染为 JSON 和 Markdown 产物，供用户和 CI 系统使用。
+// Package report 生成 JSON 和 Markdown 报告。
 package report
 
 import (
@@ -9,14 +9,14 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// BuildJSON 会先去重 findings，再序列化审查结果。
+// BuildJSON 生成 JSON 报告。
 func BuildJSON(result review.Result) ([]byte, error) {
 	result.Findings = review.DedupeFindings(result.Findings)
 	result.HumanReviewItems = humanReviewItems(result)
 	return json.MarshalIndent(result, "", "  ")
 }
 
-// BuildMarkdown 将审查结果格式化为可读的 Markdown 摘要。
+// BuildMarkdown 生成 Markdown 报告。
 func BuildMarkdown(result review.Result) string {
 	findings := review.DedupeFindings(result.Findings)
 	var b strings.Builder
@@ -59,7 +59,7 @@ func BuildMarkdown(result review.Result) string {
 	return b.String()
 }
 
-// humanReviewItems 汇总需要人工复核的 warnings 和显式人工复核项。
+// humanReviewItems 汇总人工复核项。
 func humanReviewItems(result review.Result) []review.Finding {
 	items := append([]review.Finding(nil), result.HumanReviewItems...)
 	for _, warning := range result.Warnings {
@@ -70,7 +70,7 @@ func humanReviewItems(result review.Result) []review.Finding {
 	return review.DedupeFindings(items)
 }
 
-// writeHumanReview 渲染人工复核项，避免低置信治理项混入高置信 findings。
+// writeHumanReview 渲染人工复核项。
 func writeHumanReview(b *strings.Builder, items []review.Finding) {
 	if len(items) == 0 {
 		return
@@ -84,7 +84,7 @@ func writeHumanReview(b *strings.Builder, items []review.Finding) {
 	}
 }
 
-// writeGovernance 渲染权限与过滤决策摘要。
+// writeGovernance 渲染治理摘要。
 func writeGovernance(b *strings.Builder, summary review.GovernanceSummary) {
 	if len(summary.PermissionDecisions) == 0 && len(summary.FilterDecisions) == 0 && summary.PermissionBlocks == 0 {
 		return
@@ -109,7 +109,7 @@ func writeGovernance(b *strings.Builder, summary review.GovernanceSummary) {
 	}
 }
 
-// writeSandbox 渲染沙箱运行摘要和安全边界。
+// writeSandbox 渲染沙箱摘要。
 func writeSandbox(b *strings.Builder, summary review.SandboxSummary) {
 	if len(summary.Runs) == 0 {
 		return
@@ -121,7 +121,7 @@ func writeSandbox(b *strings.Builder, summary review.SandboxSummary) {
 	}
 }
 
-// writeArtifacts 渲染报告产物摘要。
+// writeArtifacts 渲染产物摘要。
 func writeArtifacts(b *strings.Builder, artifacts []review.ArtifactSummary) {
 	if len(artifacts) == 0 {
 		return

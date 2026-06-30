@@ -1,45 +1,45 @@
-// Package governance 包含第一版命令权限策略。
+// Package governance 提供命令权限策略。
 package governance
 
 import (
 	"strings"
 )
 
-// Action 是命令对应的标准化治理决策。
+// Action 是治理决策。
 type Action string
 
 const (
 	// Allow 允许命令继续执行。
 	Allow Action = "allow"
-	// Deny 阻止命令执行，不再请求人工审批。
+	// Deny 阻止命令执行。
 	Deny Action = "deny"
 	// Ask 表示该命令在执行前需要审批。
 	Ask Action = "ask"
-	// NeedsHumanReview 为后续交互式流程预留决策状态。
+	// NeedsHumanReview 表示需要人工复核。
 	NeedsHumanReview Action = "needs_human_review"
 )
 
-// CommandRequest 描述进入沙箱执行器之前的命令。
+// CommandRequest 描述待审批命令。
 type CommandRequest struct {
 	Command string
 	Source  string
 }
 
-// Decision 是下游代码可以持久化或强制执行的策略结果。
+// Decision 是策略结果。
 type Decision struct {
 	Action Action
 	Reason string
 }
 
-// Policy 是原型使用的确定性权限策略。
+// Policy 是确定性权限策略。
 type Policy struct{}
 
-// DefaultPolicy 返回保守的第一版策略。
+// DefaultPolicy 返回默认策略。
 func DefaultPolicy() Policy {
 	return Policy{}
 }
 
-// Decide 将命令分类为允许、拒绝或需要复核。
+// Decide 判断命令是否可执行。
 func (Policy) Decide(req CommandRequest) Decision {
 	cmd := strings.ToLower(strings.TrimSpace(req.Command))
 	switch {

@@ -1,4 +1,4 @@
-// Package review 包含第一版 CR Agent 使用的确定性 diff 解析器、规则引擎和共享数据结构。
+// Package review 提供 diff 解析、规则引擎和共享结构。
 package review
 
 import (
@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Result 是一次审查运行的标准化输出。
+// Result 是审查输出。
 type Result struct {
 	TaskID            string            `json:"task_id"`
 	Findings          []Finding         `json:"findings"`
@@ -26,7 +26,7 @@ type Result struct {
 	Created           time.Time         `json:"created_at,omitempty"`
 }
 
-// Metrics 保存可安全持久化并在报告中展示的粗粒度审查遥测。
+// Metrics 保存审查指标。
 type Metrics struct {
 	TotalDurationMS   int64          `json:"total_duration_ms,omitempty"`
 	SandboxDurationMS int64          `json:"sandbox_duration_ms,omitempty"`
@@ -38,33 +38,33 @@ type Metrics struct {
 	RedactionCount    int            `json:"redaction_count,omitempty"`
 }
 
-// GovernanceSummary 汇总一次审查中的权限与过滤策略决策。
+// GovernanceSummary 汇总治理决策。
 type GovernanceSummary struct {
 	PermissionDecisions []PermissionDecisionSummary `json:"permission_decisions,omitempty"`
 	FilterDecisions     []FilterDecisionSummary     `json:"filter_decisions,omitempty"`
 	PermissionBlocks    int                         `json:"permission_blocks,omitempty"`
 }
 
-// PermissionDecisionSummary 是报告层可展示的权限决策摘要。
+// PermissionDecisionSummary 是权限决策摘要。
 type PermissionDecisionSummary struct {
 	Command string `json:"command"`
 	Action  string `json:"action"`
 	Reason  string `json:"reason,omitempty"`
 }
 
-// FilterDecisionSummary 是报告层可展示的过滤/脱敏决策摘要。
+// FilterDecisionSummary 是过滤决策摘要。
 type FilterDecisionSummary struct {
 	Target string `json:"target"`
 	Action string `json:"action"`
 	Reason string `json:"reason,omitempty"`
 }
 
-// SandboxSummary 汇总沙箱执行尝试和失败状态。
+// SandboxSummary 汇总沙箱执行。
 type SandboxSummary struct {
 	Runs []SandboxRunSummary `json:"runs,omitempty"`
 }
 
-// SandboxRunSummary 是报告层可展示的单次沙箱执行摘要。
+// SandboxRunSummary 是单次沙箱摘要。
 type SandboxRunSummary struct {
 	Command          string `json:"command"`
 	Runtime          string `json:"runtime"`
@@ -78,7 +78,7 @@ type SandboxRunSummary struct {
 	DurationMS       int64  `json:"duration_ms"`
 }
 
-// ArtifactSummary 描述报告中引用的持久化产物。
+// ArtifactSummary 描述产物引用。
 type ArtifactSummary struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
@@ -86,7 +86,7 @@ type ArtifactSummary struct {
 	Digest string `json:"digest,omitempty"`
 }
 
-// Finding 是规则引擎输出的结构化审查问题。
+// Finding 是结构化审查问题。
 type Finding struct {
 	Severity       string `json:"severity"`
 	Category       string `json:"category"`
@@ -101,7 +101,7 @@ type Finding struct {
 	Status         string `json:"status,omitempty"`
 }
 
-// DedupeKey 返回一个稳定 key，用于合并指向同一文件、行、类别和规则的重复 finding。
+// DedupeKey 返回去重键。
 func (f Finding) DedupeKey() string {
 	sum := sha1.Sum([]byte(strings.Join([]string{
 		strings.ToLower(strings.TrimSpace(f.File)),
@@ -112,12 +112,12 @@ func (f Finding) DedupeKey() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ParsedDiff 是统一 diff 的标准化表示。
+// ParsedDiff 是标准化 diff。
 type ParsedDiff struct {
 	Files []ParsedFile `json:"files"`
 }
 
-// ParsedFile 描述 diff 中的一份变更文件。
+// ParsedFile 描述变更文件。
 type ParsedFile struct {
 	Path        string `json:"path"`
 	Language    string `json:"language"`
@@ -127,7 +127,7 @@ type ParsedFile struct {
 	Hunks       []Hunk `json:"hunks"`
 }
 
-// Hunk 表示一个 diff hunk，包含行级上下文和候选行号。
+// Hunk 表示 diff 片段。
 type Hunk struct {
 	File           string   `json:"file"`
 	OldStart       int      `json:"old_start"`
@@ -139,7 +139,7 @@ type Hunk struct {
 	Lines          []Line   `json:"lines,omitempty"`
 }
 
-// Line 保存 hunk 中的一行以及旧行号和新行号。
+// Line 保存 diff 行。
 type Line struct {
 	OldLine int    `json:"old_line,omitempty"`
 	NewLine int    `json:"new_line,omitempty"`
@@ -147,7 +147,7 @@ type Line struct {
 	Text    string `json:"text"`
 }
 
-// RedactSecrets 在写入 findings、报告或存储之前，替换常见的敏感信息形态值。
+// RedactSecrets 脱敏常见密钥。
 func RedactSecrets(input string) string {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)`),
@@ -163,7 +163,7 @@ func RedactSecrets(input string) string {
 	return out
 }
 
-// DedupeFindings 保留每个唯一 finding key 的第一次出现，并返回稳定排序后的切片。
+// DedupeFindings 去重并稳定排序。
 func DedupeFindings(findings []Finding) []Finding {
 	seen := map[string]struct{}{}
 	out := make([]Finding, 0, len(findings))
@@ -187,7 +187,7 @@ func DedupeFindings(findings []Finding) []Finding {
 	return out
 }
 
-// MustJSON 将值格式化为 pretty JSON，并刻意忽略错误，因为它只用于内部遥测快照。
+// MustJSON 返回格式化 JSON。
 func MustJSON(v any) []byte {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return b

@@ -4,7 +4,7 @@
 
 ## 已完成的纠偏
 
-项目已从纯本地 diff runner 调整为框架优先路线：
+项目已从纯本地 diff runner 调整为基于 trpc-agent-go 的实现路线：
 
 - `go.mod` 依赖官方 `trpc.group/trpc-go/trpc-agent-go v1.10.0`，没有本地 `replace`。
 - `internal/agent` 统一编排 CLI，不再让 CLI 直接调用本地 runner。

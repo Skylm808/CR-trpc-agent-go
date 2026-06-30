@@ -13,9 +13,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore 固定第一版最小链路：
-// 读取 fixture diff，经由 trpc-agent-go 的 skill_load/skill_run 执行脚本，
-// 再把权限决策、沙箱运行、finding 和报告写入 SQLite。
+// TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore 固定最小审查链路。
 func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	t.Parallel()
 
@@ -120,8 +118,7 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	}
 }
 
-// TestAgentRunDoesNotPersistRawSecretsInSQLite 扫描所有 SQLite 文本列和 BLOB 列，
-// 固定验收标准：报告和数据库中不能出现明文 API key、token 或 password。
+// TestAgentRunDoesNotPersistRawSecretsInSQLite 固定明文密钥不落库。
 func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 	t.Parallel()
 
@@ -164,8 +161,7 @@ func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 	}
 }
 
-// TestAgentRunPersistsWarningsForReplay 固定数据库回放契约：低置信度 warning
-// 不能只存在于报告 JSON 中，也要作为结构化审查项可按 task_id 查询。
+// TestAgentRunPersistsWarningsForReplay 固定 warning 可回放。
 func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 	t.Parallel()
 
@@ -213,8 +209,7 @@ func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 	t.Fatalf("expected warning to be persisted for replay, got %+v", items)
 }
 
-// TestAgentRunDoesNotExecuteNonAllowPermission 固定治理边界：deny/ask 决策
-// 必须落库并进入报告摘要，但不能继续执行 skill_run 产生规则 finding。
+// TestAgentRunDoesNotExecuteNonAllowPermission 固定非 allow 不执行。
 func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
 	t.Parallel()
 
@@ -293,8 +288,7 @@ func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
 	}
 }
 
-// TestAgentRunAcceptsFixtureInput 固定 fixture 输入契约，避免 CLI 自己解析
-// fixture 后绕过 Agent 编排。
+// TestAgentRunAcceptsFixtureInput 固定 fixture 输入路径。
 func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 	t.Parallel()
 
@@ -327,8 +321,7 @@ func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 	}
 }
 
-// TestAgentRunRecordsSandboxFailureWithoutCrashing 固定验收要求：
-// 沙箱脚本失败不能让整个评审失败，必须生成报告并落库失败 run。
+// TestAgentRunRecordsSandboxFailureWithoutCrashing 固定失败不崩溃。
 func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	t.Parallel()
 
@@ -384,8 +377,7 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	}
 }
 
-// TestAgentRunRecordsSandboxTimeoutWithoutCrashing 固定 timeout 验收要求：
-// 超时必须记录为 timed_out，并写入 exception_counts，不能中断报告生成。
+// TestAgentRunRecordsSandboxTimeoutWithoutCrashing 固定超时可审计。
 func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
 	t.Parallel()
 
@@ -429,8 +421,7 @@ func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
 	}
 }
 
-// TestAgentRunDryRunRecordsSkippedSandbox 固定 dry-run 语义：不进入 executor，
-// 但仍然生成报告并记录权限/沙箱 skipped 审计数据。
+// TestAgentRunDryRunRecordsSkippedSandbox 固定 dry-run 审计记录。
 func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 	t.Parallel()
 
@@ -480,8 +471,7 @@ func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 	}
 }
 
-// TestAgentRunFakeModelUsesDeterministicSkill 固定 fake-model 语义：不需要真实模型
-// API Key，但仍走 deterministic skill_run 审查链路。
+// TestAgentRunFakeModelUsesDeterministicSkill 固定 fake-model 规则链路。
 func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
 	t.Parallel()
 
@@ -509,8 +499,7 @@ func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
 	}
 }
 
-// TestAgentRunSandboxModeExecutesGoChecks 固定 sandbox 模式的最小 Go 项目检查：
-// go test 与 go vet 必须先生成权限决策，再通过官方 codeexec 工具执行并落库。
+// TestAgentRunSandboxModeExecutesGoChecks 固定 sandbox Go 检查。
 func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	t.Parallel()
 
@@ -566,8 +555,7 @@ func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	assertRunForCommand(t, runs, "go vet ./...")
 }
 
-// TestAgentRunSandboxModeOptionallyExecutesStaticcheck 固定 staticcheck 为显式
-// opt-in 检查：即使本机未安装 staticcheck，也必须先记录权限决策和沙箱 run。
+// TestAgentRunSandboxModeOptionallyExecutesStaticcheck 固定 staticcheck 显式开启。
 func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 	t.Parallel()
 
@@ -619,9 +607,7 @@ func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 	assertAnyRunForCommand(t, runs, "staticcheck ./...")
 }
 
-// TestAgentRunContainerRuntimeExecutesGoChecks 是真实 Docker 集成测试。
-// 默认跳过，设置 CR_AGENT_RUN_CONTAINER_TESTS=1 后验证容器运行时、
-// repo 绑定挂载、PermissionPolicy、go test/go vet 和 SQLite 审计记录。
+// TestAgentRunContainerRuntimeExecutesGoChecks 验证真实容器链路。
 func TestAgentRunContainerRuntimeExecutesGoChecks(t *testing.T) {
 	if os.Getenv("CR_AGENT_RUN_CONTAINER_TESTS") != "1" {
 		t.Skip("set CR_AGENT_RUN_CONTAINER_TESTS=1 to run Docker container integration test")
@@ -706,7 +692,7 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 	}
 }
 
-// repoRoot 从当前测试目录向上查找 go.mod，避免测试依赖固定工作目录。
+// repoRoot 查找仓库根目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()
 
@@ -726,7 +712,7 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// assertDecisionForCommand 检查指定命令存在 allow 权限决策。
+// assertDecisionForCommand 检查 allow 决策。
 func assertDecisionForCommand(t *testing.T, decisions []sqlite.DecisionRecord, command string) {
 	t.Helper()
 	for _, decision := range decisions {
@@ -737,7 +723,7 @@ func assertDecisionForCommand(t *testing.T, decisions []sqlite.DecisionRecord, c
 	t.Fatalf("expected allow decision for %q, got %+v", command, decisions)
 }
 
-// assertRunForCommand 检查指定命令存在成功沙箱记录。
+// assertRunForCommand 检查成功沙箱记录。
 func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command string) {
 	t.Helper()
 	for _, run := range runs {
@@ -748,7 +734,7 @@ func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command s
 	t.Fatalf("expected ok sandbox run for %q, got %+v", command, runs)
 }
 
-// assertAnyRunForCommand 检查指定命令存在沙箱记录，不限制成功或失败。
+// assertAnyRunForCommand 检查沙箱记录存在。
 func assertAnyRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command string) {
 	t.Helper()
 	for _, run := range runs {
@@ -759,7 +745,7 @@ func assertAnyRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, comman
 	t.Fatalf("expected sandbox run for %q, got %+v", command, runs)
 }
 
-// scanSQLiteForRawSecrets 遍历用户表中的 TEXT/BLOB 列，返回命中的表列和值片段。
+// scanSQLiteForRawSecrets 扫描明文密钥。
 func scanSQLiteForRawSecrets(ctx context.Context, db *sql.DB, secrets []string) ([]string, error) {
 	tables, err := sqliteTableNames(ctx, db)
 	if err != nil {
@@ -788,7 +774,7 @@ func scanSQLiteForRawSecrets(ctx context.Context, db *sql.DB, secrets []string) 
 	return leaks, nil
 }
 
-// sqliteTableNames 返回应用创建的 SQLite 用户表名。
+// sqliteTableNames 返回用户表名。
 func sqliteTableNames(ctx context.Context, db *sql.DB) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `
 SELECT name FROM sqlite_schema
@@ -811,7 +797,7 @@ ORDER BY name
 	return tables, rows.Err()
 }
 
-// sqliteTextColumns 返回需要检查明文泄漏的 TEXT/BLOB 列。
+// sqliteTextColumns 返回文本列。
 func sqliteTextColumns(ctx context.Context, db *sql.DB, table string) ([]string, error) {
 	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
 	if err != nil {
@@ -837,7 +823,7 @@ func sqliteTextColumns(ctx context.Context, db *sql.DB, table string) ([]string,
 	return columns, rows.Err()
 }
 
-// sqliteColumnValues 读取指定列的所有非空值，用于测试侧全表扫描。
+// sqliteColumnValues 读取列值。
 func sqliteColumnValues(ctx context.Context, db *sql.DB, table string, column string) ([]string, error) {
 	rows, err := db.QueryContext(ctx, "SELECT "+column+" FROM "+table)
 	if err != nil {
