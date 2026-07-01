@@ -9,13 +9,13 @@
 - 高风险命令进入沙箱前经过 `tool.PermissionPolicy` 决策。
 - 默认使用 `codeexecutor/container`，`local-fallback` 仅用于开发和测试。
 - 结构化输出 findings、warnings、human review items、治理摘要、沙箱摘要、指标和报告产物。
-- SQLite 记录 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
+- SQLite 记录 task、permission/filter decision、sandbox run、finding、artifact 引用、metrics、report。
 
 ## 设计原则
 
 本仓库是 **trpc-agent-go 之上的应用示例**，不是框架 fork。本仓库负责 Go CR 业务逻辑、规则、报告、schema、fixture 和验收测试；官方框架负责 Skill、Tool、PermissionPolicy、CodeExecutor 等可复用原语。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 
 当前代码已经接入：
 
@@ -47,7 +47,7 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
   -> 可选 sandbox 模式：优先 tool/workspaceexec 执行 go test / go vet / staticcheck，失败时退回 tool/codeexec
   -> 合并 Skill 输出，去重，脱敏，分流 warnings / human_review_items
   -> 生成 review_report.json 和 review_report.md
-  -> SQLite 保存 task / decisions / runs / findings / artifacts / metrics / report
+  -> SQLite 保存 task / decisions / runs / findings / artifact references / metrics / report
 ```
 
 ## 框架集成映射

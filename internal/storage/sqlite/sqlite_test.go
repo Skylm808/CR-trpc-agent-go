@@ -233,6 +233,53 @@ func TestStorePersistsFilterDecisionsAndArtifacts(t *testing.T) {
 	}
 }
 
+func TestArtifactsTableStoresReferencesOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "review.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer store.Close()
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite directly: %v", err)
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(context.Background(), `PRAGMA table_info(artifacts)`)
+	if err != nil {
+		t.Fatalf("query artifact schema: %v", err)
+	}
+	defer rows.Close()
+
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatalf("scan artifact schema: %v", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate artifact schema: %v", err)
+	}
+	for _, forbidden := range []string{"content", "data", "payload", "blob", "json_report", "markdown_report"} {
+		if columns[forbidden] {
+			t.Fatalf("artifacts table should store references only, found column %q", forbidden)
+		}
+	}
+	for _, required := range []string{"task_id", "name", "kind", "path", "digest", "size_bytes", "created_at"} {
+		if !columns[required] {
+			t.Fatalf("artifacts table missing reference column %q, columns=%+v", required, columns)
+		}
+	}
+}
+
 func TestStoreMigratesArtifactSizeColumn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy-artifacts.db")
 	db, err := sql.Open("sqlite", path)

@@ -1,8 +1,8 @@
 # CR-trpc-agent-go
 
-基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `codeexecutor/container` 作为生产默认执行器，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物、指标和最终报告。
+基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `artifact` 保存报告和诊断产物，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -25,7 +25,7 @@
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
 - `sandbox` 模式下优先通过官方 `tool/workspaceexec` 在工作区内执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`；失败时保留 `tool/codeexec` 兜底。
-- SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact、metrics、report。
+- SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact 引用、metrics、report。
 - `review_report.json`、`review_report.md`、`review_diagnostics.json` 会写入本地输出目录；配置 `ArtifactService` 时同步进入官方 artifact service。
 - 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。

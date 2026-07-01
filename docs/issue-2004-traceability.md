@@ -7,7 +7,7 @@
 | # | Issue 要求 | 组件路径 | 测试覆盖 | 状态 | 缺口 |
 |---|-----------|---------|---------|------|------|
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
-| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | local fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
+| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | workspaceexec 主路径/fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go`、`agent_test.go` | 🔶 | diff / file-list / repo 已支持；base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
@@ -33,7 +33,7 @@
 | SQLite 查询 filter decision | `FilterDecisionsByTaskID` | ✅ |
 | SQLite 查询 metrics | `MetricsByTaskID` | ✅ |
 | SQLite 查询 findings | `FindingsByTaskID` | ✅ |
-| SQLite 查询 artifacts | `ArtifactsByTaskID` | ✅ |
+| SQLite 查询 artifact 引用 | `ArtifactsByTaskID` | ✅ |
 | dry-run / fake-model / rule-only | Agent mode | ✅ |
 | 示例输出 | `examples/review_report.json/md` | ✅ |
 
@@ -46,7 +46,7 @@
 | 规则文档 | `skills/code-review/rules.md` | ✅ |
 | 沙箱脚本 | `skills/code-review/scripts/check.sh` | ✅ |
 | Agent 编排 | `internal/agent/agent.go` | ✅ |
-| DB schema | `internal/storage/sqlite/sqlite.go` | ✅ |
+| DB schema | `internal/storage/sqlite/sqlite.go` | ✅ artifacts 表只保存引用、摘要和大小 |
 | 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 13 个 |
 | 示例 report 输出 | `examples/review_report.json/md` | ✅ |
 | README | `README.md` | ✅ |
@@ -83,7 +83,7 @@
 ## 下一步
 
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
-2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入。
+2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可继续补隐藏样本 expected matrix 和更多 secret 样本。
 

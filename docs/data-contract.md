@@ -106,19 +106,19 @@
 
 ## Artifact
 
-当前 artifact 包含本地报告和诊断产物引用，落库到 `artifacts`；配置 `ArtifactService` 时同步写入官方 artifact service。
+当前 artifact 包含本地报告和诊断产物引用。配置 `ArtifactService` 时，报告和诊断正文写入官方 artifact service；SQLite `artifacts` 表只保存引用、摘要和大小，作为审计索引。
 
 | 字段 | 当前状态 |
 |------|----------|
 | `task_id` | ✅ |
 | `name` | ✅ `review_report.json` / `review_report.md` / `review_diagnostics.json` |
 | `kind` | ✅ `report` / `diagnostic` |
-| `path` | ✅ |
-| `digest` | ✅ |
-| `size_bytes` | ✅ |
+| `path` | ✅ 产物路径或 artifact key |
+| `digest` | ✅ 产物 SHA-256 摘要 |
+| `size_bytes` | ✅ 产物字节数 |
 | `created_at` | ✅ |
 
-当前 Agent 默认限制单个本地产物最大 1MiB，可通过 Config 调整。后续可增加更细粒度 artifact filter。
+当前 Agent 默认限制单个本地产物最大 1MiB，可通过 Config 调整。SQLite 不保存 artifact 正文；后续可增加更细粒度 artifact filter。
 
 ## MetricsSummary
 

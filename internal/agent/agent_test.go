@@ -1046,6 +1046,95 @@ func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	assertRunForCommand(t, runs, "go vet ./...")
 }
 
+// TestRunGoSandboxCommandPrefersWorkspaceExec 固定 workspaceexec 成功时不触发 codeexec 兜底。
+func TestRunGoSandboxCommandPrefersWorkspaceExec(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/workspaceprimary\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package workspaceprimary\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo_test.go"), []byte("package workspaceprimary\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 3 { t.Fatal(\"bad\") } }\n"), 0o644); err != nil {
+		t.Fatalf("write foo_test.go: %v", err)
+	}
+
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	fallback := &recordingTool{
+		name: "execute_code",
+		call: func(ctx context.Context, jsonArgs []byte) (any, error) {
+			_ = ctx
+			t.Fatalf("codeexec fallback should not be called after workspaceexec success: %s", jsonArgs)
+			return nil, nil
+		},
+	}
+	ag.checkTool = fallback
+
+	decision, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-primary", repo, "go test ./...")
+	if decision.Action != "allow" {
+		t.Fatalf("expected allow decision, got %+v", decision)
+	}
+	if run.Status != "ok" {
+		t.Fatalf("expected workspaceexec go test to succeed, got %+v", run)
+	}
+	if fallback.calls != 0 {
+		t.Fatalf("codeexec fallback should not be called after workspaceexec success, calls=%d", fallback.calls)
+	}
+}
+
+// TestRunGoSandboxCommandFallsBackToCodeExec 固定 workspaceexec 不可用时保留 codeexec 兜底。
+func TestRunGoSandboxCommandFallsBackToCodeExec(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	ag.exec = nil
+	fallback := &recordingTool{
+		name: "execute_code",
+		call: func(ctx context.Context, jsonArgs []byte) (any, error) {
+			_ = ctx
+			if !strings.Contains(string(jsonArgs), "go vet ./...") {
+				t.Fatalf("expected fallback args to include go vet command, got %s", jsonArgs)
+			}
+			return map[string]any{"output": "fallback ok"}, nil
+		},
+	}
+	ag.checkTool = fallback
+
+	decision, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-fallback", repo, "go vet ./...")
+	if decision.Action != "allow" {
+		t.Fatalf("expected allow decision, got %+v", decision)
+	}
+	if fallback.calls != 1 {
+		t.Fatalf("expected exactly one codeexec fallback call, got %d", fallback.calls)
+	}
+	if run.Status != "ok" || run.StdoutDigest == "" {
+		t.Fatalf("expected successful fallback sandbox run with digest, got %+v", run)
+	}
+}
+
 // TestAgentRunSandboxModeRecordsGoCheckFailure 固定 Go 检查失败可审计。
 func TestAgentRunSandboxModeRecordsGoCheckFailure(t *testing.T) {
 	t.Parallel()
@@ -1302,6 +1391,21 @@ func agentSpanAttributes(attrs []attribute.KeyValue) map[string]attribute.Value 
 		out[string(attr.Key)] = attr.Value
 	}
 	return out
+}
+
+type recordingTool struct {
+	name  string
+	calls int
+	call  func(context.Context, []byte) (any, error)
+}
+
+func (t *recordingTool) Declaration() *tool.Declaration {
+	return &tool.Declaration{Name: t.name}
+}
+
+func (t *recordingTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	t.calls++
+	return t.call(ctx, jsonArgs)
 }
 
 // assertDecisionForCommand 检查 allow 决策。
