@@ -1,6 +1,9 @@
 package review
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFindingKeyDedupesSameFileLineRule(t *testing.T) {
 	f1 := Finding{File: "main.go", Line: 12, Category: "resource", RuleID: "close-file"}
@@ -12,9 +15,36 @@ func TestFindingKeyDedupesSameFileLineRule(t *testing.T) {
 }
 
 func TestRedactSecretsMasksCommonTokenShapes(t *testing.T) {
-	got := RedactSecrets("apiKey=sk-1234567890abcdef password=hello token=abc.def.ghi")
-	if got == "apiKey=sk-1234567890abcdef password=hello token=abc.def.ghi" {
-		t.Fatal("expected secrets to be redacted")
+	input := strings.Join([]string{
+		`apiKey=sk-1234567890abcdef`,
+		`Authorization: Bearer abc.def.ghi`,
+		`password=plain-password`,
+		`githubToken="ghp_1234567890abcdef1234567890abcdef1234"`,
+		`token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature`,
+		`private_key="-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----"`,
+		`dsn="postgres://reviewer:db-password-123@db.example.com/app?sslmode=require"`,
+	}, " ")
+
+	got := RedactSecrets(input)
+	for _, raw := range []string{
+		"sk-1234567890abcdef",
+		"abc.def.ghi",
+		"plain-password",
+		"ghp_1234567890abcdef1234567890abcdef1234",
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
+		"-----BEGIN PRIVATE KEY-----",
+		"db-password-123",
+	} {
+		if strings.Contains(got, raw) {
+			t.Fatalf("redacted output still contains %q: %s", raw, got)
+		}
+	}
+	for _, wantContext := range []string{"apiKey=", "Authorization:", "password=", "githubToken=", "token=", "private_key=", "postgres://reviewer:"} {
+		if !strings.Contains(got, wantContext) {
+			t.Fatalf("redaction should preserve context %q, got %s", wantContext, got)
+		}
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("expected redaction marker, got %s", got)
 	}
 }
-

@@ -157,16 +157,50 @@ type Line struct {
 
 // RedactSecrets 脱敏常见密钥。
 func RedactSecrets(input string) string {
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)`),
-		regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`),
-		regexp.MustCompile(`(?i)\bearer\s+[A-Za-z0-9\-._~+/=]+`),
-	}
 	out := input
-	for _, re := range patterns {
-		out = re.ReplaceAllStringFunc(out, func(s string) string {
-			return re.ReplaceAllString(s, "$1=[REDACTED]")
-		})
+	replacers := []struct {
+		re   *regexp.Regexp
+		with string
+	}{
+		{
+			re:   regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password|github[_-]?token|private[_-]?key)\b\s*[:=]\s*("[^"]+"|'[^']+'|[^\s,;]+)`),
+			with: `$1=[REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9\-._~+/=]+`),
+			with: `Bearer [REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`),
+			with: `[REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`ghp_[A-Za-z0-9]{20,}`),
+			with: `[REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),
+			with: `[REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
+			with: `[REDACTED]`,
+		},
+		{
+			re:   regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`),
+			with: `[REDACTED_PRIVATE_KEY]`,
+		},
+		{
+			re:   regexp.MustCompile(`([a-z][a-z0-9+.-]*://[^/\s:@]+):([^@\s/]+)@`),
+			with: `${1}:[REDACTED]@`,
+		},
+		{
+			re:   regexp.MustCompile(`(?i)(password=)[^&\s]+`),
+			with: `${1}[REDACTED]`,
+		},
+	}
+	for _, replacer := range replacers {
+		out = replacer.re.ReplaceAllString(out, replacer.with)
 	}
 	return out
 }

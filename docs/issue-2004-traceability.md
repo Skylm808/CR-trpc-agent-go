@@ -13,7 +13,7 @@
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
-| 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | sandbox failure/timeout tests + DB secret scan | 🔶 | runtime 级 env 强隔离、更多 secret 样本待补 |
+| 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离待补 |
 | 9 | 监控审计 | metrics 表 + trace span + report metrics | report/agent/sqlite tests | 🔶 | 更完整的 OTLP 导出与统一 dashboard 待补 |
 
 ## 输入输出要求追踪
@@ -61,7 +61,7 @@
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补，契约见 `docs/eval-matrix.md` |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container test 已加但本地未执行 |
-| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
+| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
 | 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议和 conclusion | ✅ | `report_test.go`、`agent_test.go` | — |
@@ -85,7 +85,7 @@
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
 2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
-4. 如需正式交付，可继续补隐藏样本 expected matrix 和更多 secret 样本。
+4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。
 
 ## 相关文档
 

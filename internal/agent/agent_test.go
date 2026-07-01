@@ -209,6 +209,93 @@ func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 	}
 }
 
+// TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite 固定常见密钥不会进入报告和数据库。
+func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	diffPath := filepath.Join(t.TempDir(), "secrets.diff")
+	rawSecrets := []string{
+		"sk-1234567890abcdef",
+		"abc.def.ghi",
+		"plain-password",
+		"ghp_1234567890abcdef1234567890abcdef1234",
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
+		"-----BEGIN PRIVATE KEY-----",
+		"db-password-123",
+	}
+	diff := `diff --git a/leak.go b/leak.go
+--- /dev/null
++++ b/leak.go
+@@ -0,0 +1,10 @@
++package redactiondemo
++
++const apiKey = "sk-1234567890abcdef"
++const bearerToken = "Bearer abc.def.ghi"
++const password = "plain-password"
++const githubToken = "ghp_1234567890abcdef1234567890abcdef1234"
++const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature"
++const privateKey = "-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----"
++const secretDSN = "postgres://reviewer:db-password-123@db.example.com/app?sslmode=require"
+`
+	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
+		t.Fatalf("write diff: %v", err)
+	}
+
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  outDir,
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: diffPath,
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.Metrics.RedactionCount == 0 {
+		t.Fatalf("expected redaction count, got %+v", result.Metrics)
+	}
+	if len(result.Findings) == 0 || !strings.Contains(result.Findings[0].Evidence, "[REDACTED]") {
+		t.Fatalf("expected readable redacted evidence, got %+v", result.Findings)
+	}
+
+	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, raw := range rawSecrets {
+			if strings.Contains(string(data), raw) {
+				t.Fatalf("%s leaked raw secret %q: %s", name, raw, data)
+			}
+		}
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite directly: %v", err)
+	}
+	defer db.Close()
+	leaks, err := scanSQLiteForRawSecrets(context.Background(), db, rawSecrets)
+	if err != nil {
+		t.Fatalf("scan sqlite: %v", err)
+	}
+	if len(leaks) > 0 {
+		t.Fatalf("sqlite persisted raw secrets: %s", strings.Join(leaks, ", "))
+	}
+}
+
 // TestAgentRunPersistsWarningsForReplay 固定 warning 可回放。
 func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 	t.Parallel()
