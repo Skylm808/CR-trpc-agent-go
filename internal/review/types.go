@@ -19,12 +19,22 @@ type Result struct {
 	Warnings          []Finding         `json:"warnings,omitempty"`
 	HumanReviewItems  []Finding         `json:"human_review_items"`
 	Metrics           Metrics           `json:"metrics,omitempty"`
+	InputMetadata     InputMetadata     `json:"input_metadata,omitempty"`
 	GovernanceSummary GovernanceSummary `json:"governance_summary"`
 	SandboxSummary    SandboxSummary    `json:"sandbox_summary"`
 	Artifacts         []ArtifactSummary `json:"artifacts"`
 	Summary           string            `json:"summary,omitempty"`
 	Conclusion        Conclusion        `json:"conclusion,omitempty"`
 	Created           time.Time         `json:"created_at,omitempty"`
+}
+
+// InputMetadata 描述本次输入涉及的 Go 工程信息。
+type InputMetadata struct {
+	ChangedGoFiles   []string `json:"changed_go_files,omitempty"`
+	PackageNames     []string `json:"package_names,omitempty"`
+	ModulePath       string   `json:"module_path,omitempty"`
+	HasTests         bool     `json:"has_tests,omitempty"`
+	TouchedTestFiles []string `json:"touched_test_files,omitempty"`
 }
 
 // Conclusion 是最终审查结论。

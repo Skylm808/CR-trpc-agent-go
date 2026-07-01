@@ -562,6 +562,37 @@ func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
 	}
 }
 
+// TestInputMetadataFromRepoPathDiff 固定 repo-path 输入的 Go 元数据。
+func TestInputMetadataFromRepoPathDiff(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repometa\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "handler.go"), []byte("package handler\n\nfunc Serve() {}\n"), 0o644); err != nil {
+		t.Fatalf("write handler.go: %v", err)
+	}
+	diff, _, err := readInput(Config{}, Request{RepoPath: repo})
+	if err != nil {
+		t.Fatalf("readInput returned error: %v", err)
+	}
+
+	meta := inputMetadata(diff, repo)
+	if meta.ModulePath != "example.com/repometa" {
+		t.Fatalf("module path = %q, want example.com/repometa", meta.ModulePath)
+	}
+	if !stringSliceContains(meta.ChangedGoFiles, "handler.go") {
+		t.Fatalf("expected handler.go in metadata, got %+v", meta)
+	}
+	if !stringSliceContains(meta.PackageNames, "handler") {
+		t.Fatalf("expected package handler in metadata, got %+v", meta)
+	}
+	if meta.HasTests || len(meta.TouchedTestFiles) != 0 {
+		t.Fatalf("expected no touched tests, got %+v", meta)
+	}
+}
+
 // TestReadInputFromFileListBuildsDiff 固定文件路径列表输入。
 func TestReadInputFromFileListBuildsDiff(t *testing.T) {
 	t.Parallel()
@@ -917,11 +948,81 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	if attrs["cr_agent.tool_call_count"].AsInt64() != int64(result.Metrics.ToolCallCount) {
 		t.Fatalf("tool call count attribute mismatch: %+v", attrs["cr_agent.tool_call_count"])
 	}
+	if !strings.Contains(attrs["cr_agent.severity_counts"].AsString(), `"critical":1`) {
+		t.Fatalf("severity distribution attribute mismatch: %+v", attrs["cr_agent.severity_counts"])
+	}
+	if attrs["cr_agent.exception_counts"].AsString() == "" {
+		t.Fatalf("expected exception distribution attribute, got %+v", attrs["cr_agent.exception_counts"])
+	}
 	if attrs["cr_agent.conclusion_status"].AsString() != result.Conclusion.Status {
 		t.Fatalf("conclusion status attribute mismatch: got %q want %q", attrs["cr_agent.conclusion_status"].AsString(), result.Conclusion.Status)
 	}
 	if attrs["cr_agent.conclusion_reason"].AsString() != result.Conclusion.Reason {
 		t.Fatalf("conclusion reason attribute mismatch: got %q want %q", attrs["cr_agent.conclusion_reason"].AsString(), result.Conclusion.Reason)
+	}
+}
+
+// TestAgentRunWritesGoInputMetadataToDiagnostics 固定 Go 输入元数据进入诊断产物。
+func TestAgentRunWritesGoInputMetadataToDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/metademo\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "service.go"), []byte("package service\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write service.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "service_test.go"), []byte("package service\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatalf("write service_test.go: %v", err)
+	}
+	listPath := filepath.Join(repo, "files.txt")
+	if err := os.WriteFile(listPath, []byte("service.go\nservice_test.go\n"), 0o644); err != nil {
+		t.Fatalf("write file list: %v", err)
+	}
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  outDir,
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		FileList: listPath,
+		RepoPath: repo,
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.InputMetadata.ModulePath != "example.com/metademo" {
+		t.Fatalf("expected module metadata, got %+v", result.InputMetadata)
+	}
+	if !result.InputMetadata.HasTests || len(result.InputMetadata.TouchedTestFiles) != 1 {
+		t.Fatalf("expected touched test metadata, got %+v", result.InputMetadata)
+	}
+	if !stringSliceContains(result.InputMetadata.ChangedGoFiles, "service.go") ||
+		!stringSliceContains(result.InputMetadata.ChangedGoFiles, "service_test.go") {
+		t.Fatalf("expected changed Go files, got %+v", result.InputMetadata)
+	}
+	if !stringSliceContains(result.InputMetadata.PackageNames, "service") {
+		t.Fatalf("expected package name metadata, got %+v", result.InputMetadata)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics: %v", err)
+	}
+	for _, want := range []string{`"input_metadata"`, `"module_path": "example.com/metademo"`, `"service_test.go"`, `"has_tests": true`} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("expected diagnostics to include %q, got %s", want, data)
+		}
 	}
 }
 
@@ -1507,6 +1608,15 @@ func agentSpanAttributes(attrs []attribute.KeyValue) map[string]attribute.Value 
 		out[string(attr.Key)] = attr.Value
 	}
 	return out
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type recordingTool struct {

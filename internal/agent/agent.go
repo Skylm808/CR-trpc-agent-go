@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -185,6 +186,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if err != nil {
 		return review.Result{}, err
 	}
+	inputMeta := inputMetadata(diff, req.RepoPath)
 	// taskID 便于报告和数据库关联。
 	taskID := newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
@@ -230,6 +232,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	// 汇总报告和数据库共用的指标。
 	result.TaskID = taskID
 	result.Created = time.Now()
+	result.InputMetadata = inputMeta
 	result.Metrics.TotalDurationMS = time.Since(start).Milliseconds()
 	result.Metrics.ToolCallCount = toolCallCount
 	result.Metrics.SandboxDurationMS = totalSandboxDuration(runs)
@@ -393,6 +396,8 @@ func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
 		attribute.Int("cr_agent.exception_count", exceptionCount(result.Metrics.ExceptionCounts)),
 		attribute.Int64("cr_agent.total_duration_ms", result.Metrics.TotalDurationMS),
 		attribute.Int64("cr_agent.sandbox_duration_ms", result.Metrics.SandboxDurationMS),
+		attribute.String("cr_agent.severity_counts", metricDistribution(result.Metrics.SeverityCounts)),
+		attribute.String("cr_agent.exception_counts", metricDistribution(result.Metrics.ExceptionCounts)),
 		attribute.String("cr_agent.conclusion_status", result.Conclusion.Status),
 		attribute.String("cr_agent.conclusion_reason", result.Conclusion.Reason),
 	)
@@ -426,4 +431,15 @@ func exceptionCount(counts map[string]int) int {
 		total += count
 	}
 	return total
+}
+
+func metricDistribution(counts map[string]int) string {
+	if counts == nil {
+		return "{}"
+	}
+	data, err := json.Marshal(counts)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }

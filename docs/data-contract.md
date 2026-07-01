@@ -32,6 +32,18 @@
 | `base_ref` / `head_ref` | ⬜ |
 | `parsed_files` / `parsed_hunks` | ✅ 由 parser 和 Skill 脚本处理 |
 
+## InputMetadata
+
+输入元数据进入 `review_report.json` 和 `review_diagnostics.json` 的 `input_metadata` 字段，用于评测和回放时识别 Go 工程范围。
+
+| 字段 | 当前状态 |
+|------|----------|
+| `changed_go_files` | ✅ 本次输入触达的 `.go` 文件 |
+| `package_names` | ✅ 从 diff 中的 `package` 行提取 |
+| `module_path` | ✅ `--repo-path` 有 `go.mod` 时提取 |
+| `has_tests` | ✅ 本次输入是否触达测试文件 |
+| `touched_test_files` | ✅ 本次输入触达的 `_test.go` 文件 |
+
 ## PermissionDecision
 
 命令执行前的治理决策，落库到 `permission_decisions`。
@@ -137,7 +149,7 @@
 | `redaction_count` | ✅ |
 | `created_at` | ✅ |
 
-当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、输入类型、task、finding、artifact、权限拦截、工具调用、沙箱和异常摘要。后续可把外部 telemetry hook 输出映射到同一 schema。
+当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、输入类型、task、finding、artifact、权限拦截、工具调用、沙箱耗时、severity 分布、exception 类型分布和结论。后续可把外部 telemetry hook 输出映射到同一 schema。
 
 ## ReviewReport
 
@@ -153,6 +165,7 @@
 | `governance_summary` | ✅ |
 | `sandbox_summary` | ✅ |
 | `metrics` | ✅ |
+| `input_metadata` | ✅ |
 | `artifacts` | ✅ |
 | `conclusion` | ✅ |
 

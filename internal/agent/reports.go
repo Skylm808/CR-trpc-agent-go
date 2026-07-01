@@ -54,6 +54,7 @@ func buildDiagnostics(result review.Result) ([]byte, error) {
 	payload := struct {
 		TaskID            string                   `json:"task_id"`
 		Metrics           review.Metrics           `json:"metrics"`
+		InputMetadata     review.InputMetadata     `json:"input_metadata,omitempty"`
 		GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
 		SandboxSummary    review.SandboxSummary    `json:"sandbox_summary"`
 		Artifacts         []review.ArtifactSummary `json:"artifacts"`
@@ -61,6 +62,7 @@ func buildDiagnostics(result review.Result) ([]byte, error) {
 	}{
 		TaskID:            result.TaskID,
 		Metrics:           result.Metrics,
+		InputMetadata:     result.InputMetadata,
 		GovernanceSummary: result.GovernanceSummary,
 		SandboxSummary:    result.SandboxSummary,
 		Artifacts:         result.Artifacts,

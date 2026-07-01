@@ -9,12 +9,12 @@
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | workspaceexec 主路径/fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
-| 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go`、`agent_test.go` | 🔶 | diff / file-list / repo 已支持；base/head ref 未支持 |
+| 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go`、`agent_test.go` | 🔶 | diff / file-list / repo 和 Go metadata 已支持；base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离待补 |
-| 9 | 监控审计 | metrics 表 + trace span + report metrics | report/agent/sqlite tests | 🔶 | 更完整的 OTLP 导出与统一 dashboard 待补 |
+| 9 | 监控审计 | metrics 表 + trace span + report metrics | report/agent/sqlite tests | 🔶 | telemetry attributes 已含 severity/exception 分布；OTLP dashboard 待补 |
 
 ## 输入输出要求追踪
 
@@ -26,7 +26,7 @@
 | 测试 fixture | `--fixture` + `testdata/fixtures/` | ✅ |
 | `review_report.json` | `internal/report.BuildJSON` | ✅ |
 | `review_report.md` | `internal/report.BuildMarkdown` | ✅ |
-| `review_diagnostics.json` | `internal/agent.buildDiagnostics`，包含 metrics / governance / sandbox / artifacts / conclusion | ✅ |
+| `review_diagnostics.json` | `internal/agent.buildDiagnostics`，包含 metrics / input metadata / governance / sandbox / artifacts / conclusion | ✅ |
 | SQLite 查询 task 状态 | `TaskByID` | ✅ |
 | SQLite 查询 sandbox run | `SandboxRunsByTaskID` | ✅ |
 | SQLite 查询 permission decision | `DecisionsByTaskID` | ✅ |
