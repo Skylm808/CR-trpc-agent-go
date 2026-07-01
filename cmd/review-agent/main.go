@@ -9,6 +9,7 @@ import (
 func main() {
 	var opts Options
 	flag.StringVar(&opts.DiffFile, "diff-file", "", "path to unified diff")
+	flag.StringVar(&opts.FileList, "file-list", "", "path to newline-delimited changed file list")
 	flag.StringVar(&opts.RepoPath, "repo-path", "", "path to repository")
 	flag.StringVar(&opts.Fixture, "fixture", "", "fixture diff name under fixtures root")
 	flag.StringVar(&opts.OutputDir, "output-dir", ".", "directory for reports")

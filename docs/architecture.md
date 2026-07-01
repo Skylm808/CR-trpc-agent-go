@@ -39,7 +39,7 @@
 ## 系统流程
 
 ```text
-CLI 输入（--diff-file / --repo-path / --fixture）
+CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
   -> internal/agent.Agent
   -> trpc-agent-go/tool/skill skill_load(code-review)
   -> tool.PermissionPolicy 决策 scripts/check.sh
@@ -79,12 +79,12 @@ CLI 输入（--diff-file / --repo-path / --fixture）
 当前支持：
 
 - `--diff-file`：读取 unified diff。
+- `--file-list`：读取文件路径列表，转换为新增文件 diff；相对路径优先按 `--repo-path` 解析。
 - `--fixture` + `--fixtures-root`：读取公开测试样本。
 - `--repo-path`：git 仓库使用 `git diff --unified=3`；普通目录转换为新增文件 diff。
 
 待补强：
 
-- 文件路径列表输入。
 - base/head ref。
 - 更强 Go package/module 元数据提取。
 

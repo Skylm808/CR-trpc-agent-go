@@ -28,7 +28,7 @@
 | `diff_text` | ✅ |
 | `fixture` | ✅ |
 | `workspace_path` | ✅ `--repo-path` |
-| `file_paths` | ⬜ |
+| `file_paths` | ✅ `--file-list` 输入会转换为新增文件 diff |
 | `base_ref` / `head_ref` | ⬜ |
 | `parsed_files` / `parsed_hunks` | ✅ 由 parser 和 Skill 脚本处理 |
 

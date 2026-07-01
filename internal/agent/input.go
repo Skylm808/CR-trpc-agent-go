@@ -15,6 +15,10 @@ func readInput(cfg Config, req Request) ([]byte, string, error) {
 		b, err := os.ReadFile(req.DiffFile)
 		return b, req.DiffFile, err
 	}
+	if req.FileList != "" {
+		b, err := diffFromFileList(req.FileList, req.RepoPath)
+		return b, req.FileList, err
+	}
 	if req.Fixture != "" {
 		return readFixtureInput(cfg.FixturesRoot, req.Fixture)
 	}
@@ -22,7 +26,7 @@ func readInput(cfg Config, req Request) ([]byte, string, error) {
 		b, err := diffFromRepo(req.RepoPath)
 		return b, req.RepoPath, err
 	}
-	return nil, "", errors.New("diff file, repo path, or fixture is required")
+	return nil, "", errors.New("diff file, file list, repo path, or fixture is required")
 }
 
 // readFixtureInput 读取受控样本。
@@ -80,4 +84,77 @@ func diffFromRepo(repoPath string) ([]byte, error) {
 		}
 	}
 	return []byte(b.String()), nil
+}
+
+// diffFromFileList 把路径列表转换为新增文件 diff。
+func diffFromFileList(listPath string, repoPath string) ([]byte, error) {
+	content, err := os.ReadFile(listPath)
+	if err != nil {
+		return nil, err
+	}
+	baseDir := filepath.Dir(listPath)
+	restrictToBase := false
+	if strings.TrimSpace(repoPath) != "" {
+		baseDir = repoPath
+		restrictToBase = true
+	}
+	var b strings.Builder
+	for _, raw := range strings.Split(string(content), "\n") {
+		name := strings.TrimSpace(raw)
+		if name == "" || strings.HasPrefix(name, "#") {
+			continue
+		}
+		path, display, err := resolveListedFile(name, baseDir, restrictToBase)
+		if err != nil {
+			return nil, err
+		}
+		fileContent, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read listed file %q: %w", name, err)
+		}
+		diffForNewFile(&b, display, fileContent)
+	}
+	return []byte(b.String()), nil
+}
+
+func resolveListedFile(name string, baseDir string, restrictToBase bool) (string, string, error) {
+	path := filepath.Clean(name)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(baseDir, path)
+	}
+	display := filepath.Base(path)
+	if rel, err := filepath.Rel(baseDir, path); err == nil {
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			if restrictToBase || !filepath.IsAbs(name) {
+				return "", "", fmt.Errorf("listed file %q escapes base directory", name)
+			}
+		} else {
+			display = rel
+		}
+	}
+	return path, display, nil
+}
+
+func diffForNewFile(b *strings.Builder, name string, content []byte) {
+	display := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(name), string(filepath.Separator)))
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	fmt.Fprintf(b, "diff --git a/%s b/%s\n", display, display)
+	fmt.Fprintf(b, "--- /dev/null\n+++ b/%s\n", display)
+	fmt.Fprintf(b, "@@ -0,0 +1,%d @@\n", nonEmptyLineCount(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		fmt.Fprintf(b, "+%s\n", line)
+	}
+}
+
+func nonEmptyLineCount(lines []string) int {
+	count := 0
+	for _, line := range lines {
+		if line != "" {
+			count++
+		}
+	}
+	return count
 }

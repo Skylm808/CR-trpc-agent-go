@@ -11,6 +11,7 @@ import (
 // Options 保存 CLI 参数。
 type Options struct {
 	DiffFile     string
+	FileList     string
 	RepoPath     string
 	Fixture      string
 	OutputDir    string
@@ -25,8 +26,8 @@ type Options struct {
 
 // Run 将 CLI 参数交给 Agent。
 func Run(opts Options) error {
-	if opts.DiffFile == "" && opts.RepoPath == "" && opts.Fixture == "" {
-		return errors.New("diff file, repo path, or fixture is required")
+	if opts.DiffFile == "" && opts.FileList == "" && opts.RepoPath == "" && opts.Fixture == "" {
+		return errors.New("diff file, file list, repo path, or fixture is required")
 	}
 	cfg := cragent.Config{
 		SkillsRoot:            opts.SkillsRoot,
@@ -54,6 +55,7 @@ func Run(opts Options) error {
 	_ = opts.RunChecks
 	_, err = ag.Run(context.Background(), cragent.Request{
 		DiffFile: opts.DiffFile,
+		FileList: opts.FileList,
 		RepoPath: opts.RepoPath,
 		Fixture:  opts.Fixture,
 		Mode:     opts.Mode,

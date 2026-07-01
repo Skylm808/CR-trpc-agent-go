@@ -446,6 +446,106 @@ func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
 	}
 }
 
+// TestReadInputFromFileListBuildsDiff 固定文件路径列表输入。
+func TestReadInputFromFileListBuildsDiff(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	src := filepath.Join(repo, "foo.go")
+	if err := os.WriteFile(src, []byte("package demo\n\nfunc Bad() { panic(\"boom\") }\n"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	listPath := filepath.Join(repo, "files.txt")
+	if err := os.WriteFile(listPath, []byte("# changed files\nfoo.go\n\n"), 0o644); err != nil {
+		t.Fatalf("write file list: %v", err)
+	}
+
+	diff, ref, err := readInput(Config{}, Request{FileList: listPath, RepoPath: repo})
+	if err != nil {
+		t.Fatalf("readInput returned error: %v", err)
+	}
+	if ref != listPath {
+		t.Fatalf("expected file list ref %q, got %q", listPath, ref)
+	}
+	for _, want := range []string{"diff --git a/foo.go b/foo.go", "+++ b/foo.go", "+func Bad() { panic(\"boom\") }"} {
+		if !strings.Contains(string(diff), want) {
+			t.Fatalf("expected generated diff to include %q, got %s", want, diff)
+		}
+	}
+}
+
+// TestReadInputFromFileListRejectsRepoEscape 固定路径列表不能跳出 repo。
+func TestReadInputFromFileListRejectsRepoEscape(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.Mkdir(repo, 0o755); err != nil {
+		t.Fatalf("make repo: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "secret.go"), []byte("package secret\n"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	listPath := filepath.Join(repo, "files.txt")
+	if err := os.WriteFile(listPath, []byte("../secret.go\n"), 0o644); err != nil {
+		t.Fatalf("write file list: %v", err)
+	}
+
+	if _, _, err := readInput(Config{}, Request{FileList: listPath, RepoPath: repo}); err == nil {
+		t.Fatalf("expected repo escape to be rejected")
+	}
+}
+
+// TestAgentRunAcceptsFileListInput 固定路径列表进入完整审查链路。
+func TestAgentRunAcceptsFileListInput(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package demo\n\nfunc Bad() { panic(\"boom\") }\n"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	listPath := filepath.Join(repo, "files.txt")
+	if err := os.WriteFile(listPath, []byte("foo.go\n"), 0o644); err != nil {
+		t.Fatalf("write file list: %v", err)
+	}
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  outDir,
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		FileList: listPath,
+		RepoPath: repo,
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.Findings) == 0 || result.Findings[0].RuleID != "panic-direct" {
+		t.Fatalf("expected panic finding from file list input, got %+v", result.Findings)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "review_report.json")); err != nil {
+		t.Fatalf("expected json report: %v", err)
+	}
+}
+
+// TestRequestInputKindRecognizesFileList 固定路径列表 telemetry 类型。
+func TestRequestInputKindRecognizesFileList(t *testing.T) {
+	t.Parallel()
+
+	if got := requestInputKind(Request{FileList: "files.txt"}); got != "file_list" {
+		t.Fatalf("input kind = %q, want file_list", got)
+	}
+}
+
 // TestReportArtifactsRemainStable 固定报告和诊断产物语义不变。
 func TestReportArtifactsRemainStable(t *testing.T) {
 	t.Parallel()

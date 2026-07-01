@@ -83,6 +83,8 @@ type Config struct {
 type Request struct {
 	// DiffFile 是外部 diff 文件。
 	DiffFile string
+	// FileList 是待审文件路径列表。
+	FileList string
 	// RepoPath 是本地 Git 工作区。
 	RepoPath string
 	// Fixture 是内置样本名。
@@ -407,6 +409,8 @@ func requestInputKind(req Request) string {
 	switch {
 	case strings.TrimSpace(req.DiffFile) != "":
 		return "diff_file"
+	case strings.TrimSpace(req.FileList) != "":
+		return "file_list"
 	case strings.TrimSpace(req.RepoPath) != "":
 		return "repo_path"
 	case strings.TrimSpace(req.Fixture) != "":

@@ -63,7 +63,7 @@ go run ./cmd/review-agent \
 | Skill | ✅ `tool/skill` load/run 已接入 | 增加脚本输出 schema 校验 |
 | 沙箱 | 🔶 container 默认，local fallback 可测；Docker E2E env-gated test 已加 | 在有 Docker daemon 的 CI/机器上执行 |
 | Permission | ✅ allowlist 与 ask/deny Agent E2E 已接入 | 扩展更细粒度命令策略 |
-| 输入 | 🔶 diff/fixture/repo 支持 | 补文件路径列表、base/head ref |
+| 输入 | 🔶 diff/fixture/repo/file-list 支持 | 补 base/head ref |
 | 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测，契约见 `docs/eval-matrix.md` |
 | 存储 | ✅ SQLite 核心表和查询方法完成 | `internal/storage/store.go` 已抽出独立接口 |
 | 报告 | ✅ 核心摘要字段和 conclusion 完成 | 可增加更稳定 golden report |

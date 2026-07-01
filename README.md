@@ -21,6 +21,7 @@
 - `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
 - `skill_load` 加载 `skills/code-review/SKILL.md`。
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
+- `--file-list` 路径列表输入会转换为新增文件 diff，复用同一审查链路。
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
 - `sandbox` 模式下优先通过官方 `tool/workspaceexec` 在工作区内执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`；失败时保留 `tool/codeexec` 兜底。
@@ -132,6 +133,7 @@ go run ./cmd/review-agent \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--diff-file` | empty | Unified diff input. |
+| `--file-list` | empty | Newline-delimited changed file list; relative paths resolve from `--repo-path` or the list file directory. |
 | `--repo-path` | empty | Git repo or plain directory input. |
 | `--fixture` | empty | Fixture file name under `--fixtures-root`. |
 | `--fixtures-root` | `testdata/fixtures` | Fixture directory. |
