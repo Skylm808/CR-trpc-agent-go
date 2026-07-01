@@ -36,6 +36,10 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		if run.Command == "" && run.Status == "" {
 			continue
 		}
+		if run.FinishedAt.IsZero() {
+			run.FinishedAt = time.Now()
+		}
+		run.ArtifactCount = len(result.Artifacts)
 		if err := a.store.SaveSandboxRun(ctx, run); err != nil {
 			return err
 		}

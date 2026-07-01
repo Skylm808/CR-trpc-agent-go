@@ -4,6 +4,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -61,6 +62,8 @@ type SandboxRunRecord struct {
 	DurationMS       int64
 	Output           string
 	At               time.Time
+	FinishedAt       time.Time
+	ArtifactCount    int
 }
 
 // FilterDecisionRecord 保存过滤决策。
@@ -192,7 +195,9 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
   stderr_digest TEXT NOT NULL DEFAULT '',
   duration_ms INTEGER NOT NULL DEFAULT 0,
   output TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  artifact_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS artifacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,7 +221,27 @@ CREATE TABLE IF NOT EXISTS metrics (
   created_at TEXT NOT NULL
 );
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrate(ctx)
+}
+
+// migrate 补齐旧库缺失列。
+func (s *Store) migrate(ctx context.Context) error {
+	for _, stmt := range []string{
+		`ALTER TABLE sandbox_runs ADD COLUMN finished_at TEXT`,
+		`ALTER TABLE sandbox_runs ADD COLUMN artifact_count INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumnError(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func isDuplicateColumnError(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "duplicate column name") || strings.Contains(err.Error(), "duplicate column"))
 }
 
 // Close 关闭数据库连接。
@@ -340,9 +365,9 @@ VALUES(?, ?, ?, ?, ?)
 // SaveSandboxRun 写入沙箱记录。
 func (s *Store) SaveSandboxRun(ctx context.Context, rec SandboxRunRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sandbox_runs(task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, rec.TaskID, rec.Command, rec.Runtime, rec.Status, rec.TimeoutMS, rec.OutputLimitBytes, rec.EnvWhitelist, rec.ExitCode, rec.StdoutDigest, rec.StderrDigest, rec.DurationMS, rec.Output, rec.At.UTC().Format(time.RFC3339Nano))
+INSERT INTO sandbox_runs(task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at, finished_at, artifact_count)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Command, rec.Runtime, rec.Status, rec.TimeoutMS, rec.OutputLimitBytes, rec.EnvWhitelist, rec.ExitCode, rec.StdoutDigest, rec.StderrDigest, rec.DurationMS, rec.Output, rec.At.UTC().Format(time.RFC3339Nano), nullableTime(rec.FinishedAt), rec.ArtifactCount)
 	return err
 }
 
@@ -392,7 +417,7 @@ ORDER BY id
 // SandboxRunsByTaskID 查询沙箱记录。
 func (s *Store) SandboxRunsByTaskID(ctx context.Context, taskID string) ([]SandboxRunRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at
+SELECT task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at, finished_at, artifact_count
 FROM sandbox_runs WHERE task_id=?
 ORDER BY id
 `, taskID)
@@ -405,10 +430,14 @@ ORDER BY id
 	for rows.Next() {
 		var rec SandboxRunRecord
 		var createdAt string
-		if err := rows.Scan(&rec.TaskID, &rec.Command, &rec.Runtime, &rec.Status, &rec.TimeoutMS, &rec.OutputLimitBytes, &rec.EnvWhitelist, &rec.ExitCode, &rec.StdoutDigest, &rec.StderrDigest, &rec.DurationMS, &rec.Output, &createdAt); err != nil {
+		var finishedAt sql.NullString
+		if err := rows.Scan(&rec.TaskID, &rec.Command, &rec.Runtime, &rec.Status, &rec.TimeoutMS, &rec.OutputLimitBytes, &rec.EnvWhitelist, &rec.ExitCode, &rec.StdoutDigest, &rec.StderrDigest, &rec.DurationMS, &rec.Output, &createdAt, &finishedAt, &rec.ArtifactCount); err != nil {
 			return nil, err
 		}
 		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+		if finishedAt.Valid {
+			rec.FinishedAt, _ = time.Parse(time.RFC3339Nano, finishedAt.String)
+		}
 		out = append(out, rec)
 	}
 	return out, rows.Err()

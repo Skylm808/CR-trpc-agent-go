@@ -52,7 +52,7 @@ M5  验收交付与评测                         ⬜
 | SQLite 记录 task | ✅ | — |
 | SQLite 记录 permission_decisions | ✅ | 增加 policy_name 字段可选 |
 | SQLite 记录 filter_decisions | ✅ | 扩展非 secret filter |
-| SQLite 记录 sandbox_runs | ✅ | 增加 artifact_count / finished_at |
+| SQLite 记录 sandbox_runs | ✅ | 已记录 artifact_count / finished_at |
 | SQLite 记录 findings/warnings/human review items | ✅ | 统一写入 `findings` 表，用 `status` 区分 |
 | SQLite 记录 artifacts | ✅ | 报告和诊断产物引用已记录，官方 artifact service 已有最小接入 |
 | SQLite 记录 metrics | ✅ | trace span 同步记录审查摘要属性 |
@@ -62,7 +62,7 @@ M5  验收交付与评测                         ⬜
 
 建议后续小改：
 
-1. 在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。
+1. ~~在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。~~ 已完成。
 2. 增加 report conclusion 字段，便于 CI 汇总。
 
 ## M4：真实沙箱、治理与遥测增强 🔶
@@ -112,7 +112,7 @@ M5  验收交付与评测                         ⬜
 1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
 2. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 3. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
-4. 给 `sandbox_runs` 增加 `finished_at` / `artifact_count`，给 report 增加 `conclusion` 字段。
+4. 给 report 增加 `conclusion` 字段。
 
 ## Definition of Done
 

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -77,13 +78,22 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 		t.Fatalf("SaveDecision returned error: %v", err)
 	}
 	if err := store.SaveSandboxRun(context.Background(), SandboxRunRecord{
-		TaskID:  "task-1",
-		Command: "go test ./...",
-		Status:  "ok",
-		Output:  "PASS",
-		At:      now,
+		TaskID:        "task-1",
+		Command:       "go test ./...",
+		Status:        "ok",
+		Output:        "PASS",
+		At:            now,
+		FinishedAt:    now.Add(time.Second),
+		ArtifactCount: 3,
 	}); err != nil {
 		t.Fatalf("SaveSandboxRun returned error: %v", err)
+	}
+	runs, err := store.SandboxRunsByTaskID(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("SandboxRunsByTaskID returned error: %v", err)
+	}
+	if len(runs) != 1 || runs[0].ArtifactCount != 3 || runs[0].FinishedAt.IsZero() {
+		t.Fatalf("unexpected sandbox run audit fields: %+v", runs)
 	}
 	if err := store.SaveMetrics(context.Background(), MetricsRecord{
 		TaskID:               "task-1",
@@ -106,6 +116,62 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	}
 	if gotMetrics.FindingCount != 1 || gotMetrics.ToolCallCount != 1 {
 		t.Fatalf("unexpected metrics: %+v", gotMetrics)
+	}
+}
+
+func TestStoreMigratesSandboxRunAuditColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE sandbox_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  command TEXT NOT NULL,
+  runtime TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  timeout_ms INTEGER NOT NULL DEFAULT 0,
+  output_limit_bytes INTEGER NOT NULL DEFAULT 0,
+  env_whitelist TEXT NOT NULL DEFAULT '',
+  exit_code INTEGER NOT NULL DEFAULT 0,
+  stdout_digest TEXT NOT NULL DEFAULT '',
+  stderr_digest TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  output TEXT,
+  created_at TEXT NOT NULL
+);`)
+	if err != nil {
+		t.Fatalf("create legacy sandbox_runs: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy db: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open should migrate legacy db: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := store.SaveSandboxRun(context.Background(), SandboxRunRecord{
+		TaskID:        "task-legacy",
+		Command:       "go vet ./...",
+		Status:        "ok",
+		At:            now,
+		FinishedAt:    now.Add(time.Second),
+		ArtifactCount: 2,
+	}); err != nil {
+		t.Fatalf("SaveSandboxRun after migration returned error: %v", err)
+	}
+	runs, err := store.SandboxRunsByTaskID(context.Background(), "task-legacy")
+	if err != nil {
+		t.Fatalf("SandboxRunsByTaskID returned error: %v", err)
+	}
+	if len(runs) != 1 || runs[0].ArtifactCount != 2 || runs[0].FinishedAt.IsZero() {
+		t.Fatalf("migration did not preserve new audit fields: %+v", runs)
 	}
 }
 

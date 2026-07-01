@@ -80,8 +80,8 @@
 | `duration_ms` | ✅ |
 | `output` | 🔶 保留兼容字段，正常路径应优先 digest |
 | `created_at` | ✅ |
-| `finished_at` | ⬜ |
-| `artifact_count` | ⬜ |
+| `finished_at` | ✅ |
+| `artifact_count` | ✅ |
 
 ## Finding
 

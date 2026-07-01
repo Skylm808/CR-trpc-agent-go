@@ -108,6 +108,9 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if len(runs) == 0 || runs[0].TimeoutMS == 0 || runs[0].OutputLimitBytes == 0 {
 		t.Fatalf("expected bounded sandbox run record, got %+v", runs)
 	}
+	if runs[0].FinishedAt.IsZero() || runs[0].ArtifactCount != 3 {
+		t.Fatalf("expected sandbox audit completion fields, got %+v", runs[0])
+	}
 	filterDecisions, err := store.FilterDecisionsByTaskID(context.Background(), result.TaskID)
 	if err != nil {
 		t.Fatalf("load filter decisions: %v", err)
