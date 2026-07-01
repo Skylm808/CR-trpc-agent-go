@@ -45,6 +45,7 @@ const (
 	defaultSkillName        = "code-review"
 	defaultSkillCommand     = "scripts/check.sh"
 	defaultOutputLimitBytes = 64 * 1024
+	defaultMaxArtifactBytes = 1024 * 1024
 	defaultTimeout          = 30 * time.Second
 	containerRepoMountPath  = "/workspace/repo"
 	defaultContainerImage   = "golang:1.25-bookworm"
@@ -69,6 +70,8 @@ type Config struct {
 	Timeout time.Duration
 	// OutputLimitBytes 是输出上限。
 	OutputLimitBytes int
+	// MaxArtifactBytes 是单个产物大小上限。
+	MaxArtifactBytes int64
 	// EnableStaticcheck 控制可选 staticcheck。
 	EnableStaticcheck bool
 	// ArtifactService 接入官方 artifact service。
@@ -257,11 +260,14 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if err != nil {
 		return review.Result{}, err
 	}
+	if err := enforceArtifactLimits(a.cfg, reportPayloads(jsonReport, []byte(md), diagnosticsReport)); err != nil {
+		return review.Result{}, err
+	}
 	if err := writeReports(a.cfg.OutputDir, jsonReport, []byte(md), diagnosticsReport); err != nil {
 		return review.Result{}, err
 	}
 	if a.artifactService != nil {
-		if err := a.saveArtifacts(ctx, taskID, result, jsonReport, []byte(md), diagnosticsReport); err != nil {
+		if err := a.saveArtifacts(ctx, taskID, result, reportPayloads(jsonReport, []byte(md), diagnosticsReport)); err != nil {
 			return review.Result{}, err
 		}
 	}
@@ -293,28 +299,29 @@ func (a *Agent) Close() error {
 }
 
 // saveArtifacts 使用官方 artifact service 持久化报告和诊断产物。
-func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, jsonReport, markdownReport, diagnosticsReport []byte) error {
+func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, payloads []artifactPayload) error {
 	sessionInfo := artifact.SessionInfo{
 		AppName:   "cr-agent",
 		UserID:    "local",
 		SessionID: taskID,
 	}
+	payloadByName := make(map[string][]byte, len(payloads))
+	for _, payload := range payloads {
+		payloadByName[payload.Name] = payload.Data
+	}
 	for _, art := range result.Artifacts {
-		var payload []byte
 		var mime string
 		switch art.Name {
 		case "review_report.json":
-			payload = jsonReport
 			mime = "application/json"
 		case "review_report.md":
-			payload = markdownReport
 			mime = "text/markdown"
 		case "review_diagnostics.json":
-			payload = diagnosticsReport
 			mime = "application/json"
 		default:
 			continue
 		}
+		payload := payloadByName[art.Name]
 		if _, err := a.artifactService.SaveArtifact(ctx, sessionInfo, art.Path, &artifact.Artifact{
 			Data:     payload,
 			MimeType: mime,
@@ -336,6 +343,9 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.OutputLimitBytes <= 0 {
 		cfg.OutputLimitBytes = defaultOutputLimitBytes
+	}
+	if cfg.MaxArtifactBytes <= 0 {
+		cfg.MaxArtifactBytes = defaultMaxArtifactBytes
 	}
 	if cfg.OutputDir == "" {
 		cfg.OutputDir = "."

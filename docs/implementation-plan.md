@@ -77,7 +77,7 @@ M5  验收交付与评测                         ⬜
 | ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
 | deny 不进入 executor | ✅ | Agent E2E 覆盖 deny |
 | env whitelist 强校验 | 🔶 | 当前记录 `PATH,HOME,TMPDIR`，未强制过滤所有 env |
-| artifact cap | 🔶 | 当前记录报告和诊断产物 size_bytes，未增加 cap 策略 |
+| artifact cap | ✅ | 默认单产物 1MiB，Config 可调整 |
 | 官方 telemetry hook | 🔶 | 当前有 trace span + 审查摘要属性 + 本地 metrics 表 |
 
 ## M5：验收交付与评测 ⬜

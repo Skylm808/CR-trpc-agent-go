@@ -67,7 +67,7 @@ go run ./cmd/review-agent \
 | 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测，契约见 `docs/eval-matrix.md` |
 | 存储 | ✅ SQLite 核心表和查询方法完成 | `internal/storage/store.go` 已抽出独立接口 |
 | 报告 | ✅ 核心摘要字段和 conclusion 完成 | 可增加更稳定 golden report |
-| 安全 | 🔶 timeout/output limit/digest/redaction 有记录 | 增加 artifact cap、env 白名单强校验 |
+| 安全 | 🔶 timeout/output limit/digest/redaction/artifact cap 有记录 | 增加 env 白名单强校验 |
 | 监控 | 🔶 metrics 表记录核心摘要，Run 已挂 trace span | 接更完整的 OTLP 导出 |
 | Runner/Event | ⏳ CLI 直接编排 `internal/agent.Agent.Run` | 后续接官方 Runner 事件流 |
 | Session/Memory | ⏳ 当前 SQLite 是审计库，不是官方 Session/Memory Service | 多轮评审需要时再接入 |

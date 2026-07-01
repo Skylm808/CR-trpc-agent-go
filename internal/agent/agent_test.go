@@ -456,6 +456,51 @@ func TestReportArtifactsRemainStable(t *testing.T) {
 	}
 }
 
+// TestEnforceArtifactLimitsBlocksOversizedReports 固定产物大小边界。
+func TestEnforceArtifactLimitsBlocksOversizedReports(t *testing.T) {
+	t.Parallel()
+
+	err := enforceArtifactLimits(Config{MaxArtifactBytes: 4}, []artifactPayload{{
+		Name: "review_report.json",
+		Data: []byte("12345"),
+	}})
+	if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Fatalf("expected artifact size limit error, got %v", err)
+	}
+}
+
+// TestAgentRunRejectsOversizedArtifacts 固定超大产物不落盘。
+func TestAgentRunRejectsOversizedArtifacts(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot:       filepath.Join(root, "skills"),
+		Runtime:          RuntimeLocalFallback,
+		SQLitePath:       dbPath,
+		OutputDir:        outDir,
+		Timeout:          5 * time.Second,
+		MaxArtifactBytes: 1,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	_, err = ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeRuleOnly,
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds size limit") {
+		t.Fatalf("expected artifact size limit error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(outDir, "review_report.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("oversized report should not be written, stat err=%v", statErr)
+	}
+}
+
 // TestConclusionStatuses 固定最终结论规则。
 func TestConclusionStatuses(t *testing.T) {
 	t.Parallel()

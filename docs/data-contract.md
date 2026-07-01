@@ -118,7 +118,7 @@
 | `size_bytes` | ✅ |
 | `created_at` | ✅ |
 
-后续可增加 artifact cap 和更细粒度 artifact filter。
+当前 Agent 默认限制单个本地产物最大 1MiB，可通过 Config 调整。后续可增加更细粒度 artifact filter。
 
 ## MetricsSummary
 

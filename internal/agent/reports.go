@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,11 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 )
+
+type artifactPayload struct {
+	Name string
+	Data []byte
+}
 
 // writeReports 写入报告文件。
 func writeReports(dir string, jsonReport, markdownReport, diagnosticsReport []byte) error {
@@ -22,6 +28,25 @@ func writeReports(dir string, jsonReport, markdownReport, diagnosticsReport []by
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "review_diagnostics.json"), diagnosticsReport, 0o644)
+}
+
+// reportPayloads 返回待写入产物。
+func reportPayloads(jsonReport, markdownReport, diagnosticsReport []byte) []artifactPayload {
+	return []artifactPayload{
+		{Name: "review_report.json", Data: jsonReport},
+		{Name: "review_report.md", Data: markdownReport},
+		{Name: "review_diagnostics.json", Data: diagnosticsReport},
+	}
+}
+
+// enforceArtifactLimits 阻止超大产物落盘或入库。
+func enforceArtifactLimits(cfg Config, artifacts []artifactPayload) error {
+	for _, artifact := range artifacts {
+		if int64(len(artifact.Data)) > cfg.MaxArtifactBytes {
+			return fmt.Errorf("artifact %s exceeds size limit: %d > %d", artifact.Name, len(artifact.Data), cfg.MaxArtifactBytes)
+		}
+	}
+	return nil
 }
 
 // buildDiagnostics 生成独立诊断产物。
