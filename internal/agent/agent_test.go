@@ -717,6 +717,66 @@ func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	assertRunForCommand(t, runs, "go vet ./...")
 }
 
+// TestAgentRunSandboxModeRecordsGoCheckFailure 固定 Go 检查失败可审计。
+func TestAgentRunSandboxModeRecordsGoCheckFailure(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/faildemo\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package faildemo\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo_test.go"), []byte("package faildemo\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) { if Add(1, 2) != 4 { t.Fatal(\"bad\") } }\n"), 0o644); err != nil {
+		t.Fatalf("write foo_test.go: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  t.TempDir(),
+		Timeout:    10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo,
+		Mode:     ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := result.Metrics.ExceptionCounts["sandbox_failed"]; got == 0 {
+		t.Fatalf("expected sandbox_failed metric, got %+v", result.Metrics.ExceptionCounts)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	for _, run := range runs {
+		if run.Command == "go test ./..." {
+			if run.Status != "failed" || run.ExitCode == 0 {
+				t.Fatalf("expected failed go test run with exit code, got %+v", run)
+			}
+			return
+		}
+	}
+	t.Fatalf("go test sandbox run not found: %+v", runs)
+}
+
 // TestAgentRunSandboxModeOptionallyExecutesStaticcheck 固定 staticcheck 显式开启。
 func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
 	t.Parallel()
@@ -849,6 +909,9 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 	if !strings.Contains(code, "cd "+shellQuote(containerRepoMountPath)) {
 		t.Fatalf("container command should cd into mount path, got %q", code)
 	}
+	if !strings.Contains(code, "GOCACHE="+shellQuote(goSandboxCacheDir)) {
+		t.Fatalf("container command should set sandbox Go cache, got %q", code)
+	}
 	if strings.Contains(code, hostRepo) {
 		t.Fatalf("container command leaked host repo path %q: %q", hostRepo, code)
 	}
@@ -928,6 +991,9 @@ func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command s
 	t.Helper()
 	for _, run := range runs {
 		if run.Command == command && run.Status == "ok" && run.DurationMS >= 0 {
+			if !strings.Contains(run.EnvWhitelist, "GOCACHE") {
+				t.Fatalf("expected sandbox env whitelist to include GOCACHE, got %+v", run)
+			}
 			return
 		}
 	}

@@ -17,8 +17,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	containerexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/container"
 	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
-	workspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	workspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 )
 
 // newExecutor 创建 trpc-agent-go 执行器。
@@ -241,6 +241,9 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		"command": command,
 		"cwd":     "work/repo",
 		"timeout": int(a.cfg.Timeout.Seconds()),
+		"env": map[string]string{
+			"GOCACHE": goSandboxCacheDir,
+		},
 	})
 	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
@@ -273,7 +276,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		TaskID: taskID, Command: command, Runtime: a.cfg.Runtime,
 		Status: "skipped", TimeoutMS: a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
-		EnvWhitelist:     "PATH,HOME,TMPDIR",
+		EnvWhitelist:     "PATH,HOME,TMPDIR,GOCACHE",
 		At:               time.Now(),
 	}
 	if perm.Action != tool.PermissionActionAllow {
@@ -295,12 +298,21 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		run.StderrDigest = digestString(err.Error())
 		return decision, run
 	}
-	output := codeExecOutput(raw)
-	run.StdoutDigest = digestString(output)
-	if strings.Contains(output, "Error executing code block") {
-		// 用返回文本兜底判断失败。
+	output := sandboxCommandOutput(raw)
+	run.StdoutDigest = digestString(output.Text)
+	if output.ExitCode != nil {
+		run.ExitCode = *output.ExitCode
+	}
+	if output.Status != "" && output.Status != "exited" && output.ExitCode == nil {
+		run.Status = output.Status
+		return decision, run
+	}
+	if run.ExitCode != 0 || strings.Contains(output.Text, "Error executing code block") {
+		// 非零退出必须作为失败记录。
 		run.Status = "failed"
-		run.ExitCode = 1
+		if run.ExitCode == 0 {
+			run.ExitCode = 1
+		}
 		return decision, run
 	}
 	run.Status = "ok"
@@ -317,6 +329,7 @@ func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, comma
 				Target: "work/repo",
 				Input: &codeexecutor.InputSpec{
 					From: "host://" + repoPath,
+					To:   "work/repo/.repo",
 					Mode: "copy",
 				},
 			}},
@@ -326,6 +339,9 @@ func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, comma
 		"command": command,
 		"cwd":     "work/repo",
 		"timeout": int(a.cfg.Timeout.Seconds()),
+		"env": map[string]string{
+			"GOCACHE": goSandboxCacheDir,
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -405,19 +421,31 @@ func digestString(data string) string {
 	return digestBytes([]byte(data))
 }
 
-// codeExecOutput 提取 codeexec 输出。
-func codeExecOutput(raw any) string {
+// sandboxCommandOutput 提取沙箱命令输出。
+func sandboxCommandOutput(raw any) commandOutput {
 	b, err := json.Marshal(raw)
 	if err != nil {
-		return ""
+		return commandOutput{}
 	}
 	var out struct {
-		Output string `json:"output"`
+		Status   string `json:"status"`
+		Output   string `json:"output"`
+		ExitCode *int   `json:"exit_code"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
-		return ""
+		return commandOutput{}
 	}
-	return out.Output
+	return commandOutput{
+		Status:   out.Status,
+		Text:     out.Output,
+		ExitCode: out.ExitCode,
+	}
+}
+
+type commandOutput struct {
+	Status   string
+	Text     string
+	ExitCode *int
 }
 
 // shellQuote 对本地路径做 POSIX 单引号转义。
@@ -435,5 +463,6 @@ func sandboxRepoPathForRuntime(runtime string, hostRepoPath string) string {
 
 // goSandboxCode 构造 Go 检查命令。
 func goSandboxCode(runtime string, hostRepoPath string, command string) string {
-	return "cd " + shellQuote(sandboxRepoPathForRuntime(runtime, hostRepoPath)) + " && " + command
+	return "cd " + shellQuote(sandboxRepoPathForRuntime(runtime, hostRepoPath)) +
+		" && GOCACHE=" + shellQuote(goSandboxCacheDir) + " " + command
 }

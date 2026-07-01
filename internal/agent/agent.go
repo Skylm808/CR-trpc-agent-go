@@ -48,6 +48,7 @@ const (
 	defaultTimeout          = 30 * time.Second
 	containerRepoMountPath  = "/workspace/repo"
 	defaultContainerImage   = "golang:1.25-bookworm"
+	goSandboxCacheDir       = "/tmp/cr-agent-gocache"
 )
 
 // Config 保存一次审查的依赖和边界。
