@@ -1,6 +1,6 @@
 # 数据契约
 
-本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认持久化后端，并在 `internal/storage/store.go` 保留 `Store` interface，后续可以迁移到独立 SQL 后端或接入 `session/sqlite`。
+本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认审计后端，并在 `internal/storage/store.go` 保留 `Store` interface；它不是官方 Session Service。后续接 Runner/Event 或多轮评审时，可以迁移到独立 SQL 后端，或把审计任务映射到官方 `session/sqlite`。
 
 ## ReviewTask
 

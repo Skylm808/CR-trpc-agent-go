@@ -33,7 +33,7 @@
 - 真实 Docker container 端到端测试已加入 env gate；本地仍需 Docker daemon 才能执行。
 - E2B/Cube runtime adapter。
 - 官方 artifact service 已接入报告和诊断产物保存；SQLite 继续保留引用记录和查询。
-- `session/sqlite` 作为 Agent session/history 的直接使用；当前使用本项目 SQLite store。
+- 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
 - 已接入最小 telemetry trace 边界和审查摘要属性；当前 metrics 表继续记录耗时、异常、severity 分布等。
 
 ## 系统流程
@@ -60,7 +60,7 @@ CLI 输入（--diff-file / --repo-path / --fixture）
 | Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
 | CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 需 Docker 环境 |
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
-| Session | SQLite 记录 task、decision、run、finding、artifact、metrics、report | 🔶 当前是审计存储，不是官方 Session Service |
+| Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
 | Observability | metrics 表记录耗时、异常、权限拦截、severity 分布，Run 已挂 trace span | 🔶 仍缺更完整的 OTLP 导出和统一 dashboard |
 | Artifact | `review_report.json` / `review_report.md` / `review_diagnostics.json` 保存到本地，且同步写入官方 artifact service | ✅ 已有最小 artifact 接入，SQLite 继续保留引用记录 |
