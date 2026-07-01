@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
+	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
 	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -134,6 +135,34 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 		if artifact.Size == 0 {
 			t.Fatalf("expected artifact size to be persisted, got %+v", artifacts)
 		}
+	}
+}
+
+// TestLocalFallbackExecutorsUseIsolatedWorkDirs 固定并发评测时本地执行目录隔离。
+func TestLocalFallbackExecutorsUseIsolatedWorkDirs(t *testing.T) {
+	t.Parallel()
+
+	first, err := newExecutor(Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("newExecutor first returned error: %v", err)
+	}
+	second, err := newExecutor(Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("newExecutor second returned error: %v", err)
+	}
+	firstLocal, ok := first.(*localexec.CodeExecutor)
+	if !ok {
+		t.Fatalf("expected local executor, got %T", first)
+	}
+	secondLocal, ok := second.(*localexec.CodeExecutor)
+	if !ok {
+		t.Fatalf("expected local executor, got %T", second)
+	}
+	if firstLocal.WorkDir == "" || secondLocal.WorkDir == "" {
+		t.Fatalf("expected non-empty work dirs, got %q and %q", firstLocal.WorkDir, secondLocal.WorkDir)
+	}
+	if firstLocal.WorkDir == secondLocal.WorkDir {
+		t.Fatalf("local fallback executors should not share work dir %q", firstLocal.WorkDir)
 	}
 }
 

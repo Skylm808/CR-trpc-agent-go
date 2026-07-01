@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,10 +24,14 @@ import (
 func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 	switch cfg.Runtime {
 	case RuntimeLocalFallback:
+		workDir, err := os.MkdirTemp("", "cr-agent-localexec-*")
+		if err != nil {
+			return nil, fmt.Errorf("create local fallback workdir: %w", err)
+		}
 		// 本地 fallback 只用于测试和开发。
 		return localexec.New(
 			localexec.WithTimeout(cfg.Timeout),
-			localexec.WithWorkDir(filepath.Join(os.TempDir(), "cr-agent-localexec")),
+			localexec.WithWorkDir(workDir),
 		), nil
 	case RuntimeContainer:
 		// 默认使用官方容器执行器。

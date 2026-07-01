@@ -1,6 +1,6 @@
 # Eval Matrix
 
-本文档说明 `scripts/eval.sh` 的公开样本评测方式，以及后续接入 hidden sample 时推荐的输入契约。
+本文档说明 `scripts/eval.sh` 的公开样本评测方式，以及接入 hidden sample 时的输入契约。
 
 ## 当前公开评测
 
@@ -17,38 +17,72 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 - `CR_AGENT_EVAL_RUNTIME`：`container` 或 `local-fallback`。
 - `CR_AGENT_EVAL_MODE`：默认 `rule-only`。
 - `CR_AGENT_EVAL_FIXTURES`：样本子集，空格分隔。
+- `CR_AGENT_EVAL_EXPECTED`：外部 expected matrix TSV 路径。
+- `CR_AGENT_EVAL_REPORT_ROOT`：保留每个 fixture 的输出报告目录；默认使用临时目录。
 
-## 推荐的 hidden matrix 格式
+输出字段包括：
 
-隐藏样本建议用与公开样本相同的 TSV 结构，每行四列：
+- `fixtures`
+- `expected`
+- `required_expected`
+- `optional_expected`
+- `true_positive`
+- `false_positive`
+- `false_negative`
+- `recall`
+- `precision`
+- `false_positive_rate`
+- `missing_findings`
+- `unexpected_findings`
+- `duration_ms`
+- `matrix_source`
+
+## Hidden Matrix 格式
+
+隐藏样本使用 TSV，每行四列或五列。四列旧格式默认 `required=true`：
 
 ```text
 fixture_name	rule_id	severity	status
 ```
 
+五列格式可以显式声明该项是否必须检出：
+
+```text
+fixture_name	rule_id	severity	status	required
+```
+
+`required` 可取 `true` / `required` / `yes` / `1` / `must`，或 `false` / `optional` / `no` / `0`。optional 项命中时不算误报，未命中也不算漏报，适合记录低置信或允许人工判断的信号。
+
 示例：
 
 ```text
-hidden-001.diff	secret-leak	critical	finding
-hidden-002.diff	missing-test-hint	low	warning
+hidden-001.diff	secret-leak	critical	finding	true
+hidden-002.diff	missing-test-hint	low	warning	false
 ```
 
-脚本在读取 hidden matrix 时，只需要额外接收一个预期文件路径，不需要修改审查逻辑本身。这样可以把公开评测和隐藏评测统一到同一条执行路径上，减少 CI 差异。
+运行 hidden matrix：
+
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
+CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
+CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+GOCACHE=/private/tmp/cr-agent-gocache \
+scripts/eval.sh
+```
+
+这样可以把公开评测和隐藏评测统一到同一条执行路径上，减少 CI 差异。
 
 ## 评分口径
 
-- `true_positive`：fixture 中存在且报告中命中的 `(rule_id, severity, status)`。
+- `true_positive`：required 项中存在且报告中命中的 `(rule_id, severity, status)`。
 - `false_positive`：报告中出现但 matrix 未声明的项。
-- `false_negative`：matrix 声明但报告未出现的项。
+- `false_negative`：required 项声明但报告未出现的项。
 - `recall`：`TP / (TP + FN)`。
 - `precision`：`TP / (TP + FP)`。
+- `false_positive_rate`：`FP / (TP + FP)`。
+- `missing_findings`：漏检项数量；非零时脚本会输出 `missing=` 明细。
+- `unexpected_findings`：未声明项数量；非零时脚本会输出 `unexpected=` 明细。
 
 ## 建议
 
-后续如果要把 hidden sample 接入 CI，建议让脚本支持：
-
-1. `CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv`
-2. `CR_AGENT_EVAL_REPORT_ROOT=/path/to/output`
-3. `CR_AGENT_EVAL_JSON_ONLY=1`
-
-这样可以把数据集和执行器解耦，便于复用。
+hidden sample 不建议提交到公开仓库。CI 可以通过私有 artifact 或 secret volume 提供 fixture root 和 expected matrix，并设置 `CR_AGENT_EVAL_REPORT_ROOT` 保留失败报告用于回放。

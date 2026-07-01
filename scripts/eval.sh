@@ -7,23 +7,38 @@ SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
 FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
-OUT_ROOT="$(mktemp -d)"
+EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
+REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
+if [[ -n "$REPORT_ROOT" ]]; then
+  OUT_ROOT="$REPORT_ROOT"
+  mkdir -p "$OUT_ROOT"
+else
+  OUT_ROOT="$(mktemp -d)"
+fi
 START_SECONDS="$(date +%s)"
-trap 'rm -rf "$OUT_ROOT"' EXIT
+if [[ -z "$REPORT_ROOT" ]]; then
+  trap 'rm -rf "$OUT_ROOT"' EXIT
+fi
 
 EXPECTED_FILE="$OUT_ROOT/expected.tsv"
-cat > "$EXPECTED_FILE" <<'TSV'
-secret.diff	secret-leak	critical	finding
-panic.diff	panic-direct	high	finding
-todo.diff	todo-marker	medium	finding
-test-missing.diff	missing-test-hint	low	warning
-missing-test.diff	missing-test-hint	low	warning
-goroutine.diff	goroutine-leak	high	finding
-context.diff	context-leak	high	finding
-resource.diff	resource-leak	high	finding
-db-lifecycle.diff	db-lifecycle	high	finding
-dedupe.diff	panic-direct	high	finding
+MATRIX_SOURCE="builtin"
+if [[ -n "$EXPECTED_OVERRIDE" ]]; then
+  EXPECTED_FILE="$EXPECTED_OVERRIDE"
+  MATRIX_SOURCE="external"
+else
+  cat > "$EXPECTED_FILE" <<'TSV'
+secret.diff	secret-leak	critical	finding	true
+panic.diff	panic-direct	high	finding	true
+todo.diff	todo-marker	medium	finding	true
+test-missing.diff	missing-test-hint	low	warning	true
+missing-test.diff	missing-test-hint	low	warning	true
+goroutine.diff	goroutine-leak	high	finding	true
+context.diff	context-leak	high	finding	true
+resource.diff	resource-leak	high	finding	true
+db-lifecycle.diff	db-lifecycle	high	finding	true
+dedupe.diff	panic-direct	high	finding	true
 TSV
+fi
 
 for fixture in $FIXTURES; do
   mkdir -p "$OUT_ROOT/$fixture"
@@ -61,14 +76,15 @@ type report struct {
 }
 
 func main() {
-	if len(os.Args) < 5 {
-		fmt.Fprintln(os.Stderr, "usage: eval <expected.tsv> <out-root> <duration-ms> <fixtures...>")
+	if len(os.Args) < 6 {
+		fmt.Fprintln(os.Stderr, "usage: eval <expected.tsv> <out-root> <duration-ms> <matrix-source> <fixtures...>")
 		os.Exit(2)
 	}
 	expectedFile := os.Args[1]
 	outRoot := os.Args[2]
 	durationMS := os.Args[3]
-	fixtures := os.Args[4:]
+	matrixSource := os.Args[4]
+	fixtures := os.Args[5:]
 
 	expected, err := readExpected(expectedFile)
 	if err != nil {
@@ -79,57 +95,96 @@ func main() {
 		fixtureSet[fixture] = true
 	}
 
+	requiredExpected := 0
+	optionalExpected := 0
 	truePositive := 0
 	falsePositive := 0
 	falseNegative := 0
-	expectedTotal := 0
+	var missing []string
+	var unexpected []string
 	for _, fixture := range fixtures {
 		want := expected[fixture]
-		expectedTotal += len(want)
+		for _, entry := range want {
+			if entry.Required {
+				requiredExpected++
+			} else {
+				optionalExpected++
+			}
+		}
 		got, err := readActual(filepath.Join(outRoot, fixture, "review_report.json"))
 		if err != nil {
 			panic(err)
 		}
 		for key := range got {
-			if want[key] {
+			if entry, ok := want[key]; ok && entry.Required {
 				truePositive++
+			} else if _, ok := want[key]; ok {
+				continue
 			} else {
 				falsePositive++
+				unexpected = append(unexpected, fixture+"|"+key)
 			}
 		}
-		for key := range want {
-			if !got[key] {
+		for key, entry := range want {
+			if entry.Required && !got[key] {
 				falseNegative++
+				missing = append(missing, fixture+"|"+key)
 			}
 		}
 	}
 	recall := ratio(truePositive, truePositive+falseNegative)
 	precision := ratio(truePositive, truePositive+falsePositive)
-	fmt.Printf("fixtures=%d expected=%d true_positive=%d false_positive=%d false_negative=%d recall=%.3f precision=%.3f duration_ms=%s\n",
-		len(fixtureSet), expectedTotal, truePositive, falsePositive, falseNegative, recall, precision, durationMS)
+	falsePositiveRate := ratioZero(falsePositive, truePositive+falsePositive)
+	fmt.Printf("fixtures=%d expected=%d required_expected=%d optional_expected=%d true_positive=%d false_positive=%d false_negative=%d recall=%.3f precision=%.3f false_positive_rate=%.3f missing_findings=%d unexpected_findings=%d duration_ms=%s matrix_source=%s\n",
+		len(fixtureSet), requiredExpected+optionalExpected, requiredExpected, optionalExpected, truePositive, falsePositive, falseNegative, recall, precision, falsePositiveRate, len(missing), len(unexpected), durationMS, matrixSource)
+	if len(missing) > 0 {
+		fmt.Printf("missing=%s\n", strings.Join(missing, ","))
+	}
+	if len(unexpected) > 0 {
+		fmt.Printf("unexpected=%s\n", strings.Join(unexpected, ","))
+	}
 	if falsePositive > 0 || falseNegative > 0 {
 		os.Exit(1)
 	}
 }
 
-func readExpected(path string) (map[string]map[string]bool, error) {
+type expectedItem struct {
+	Required bool
+}
+
+func readExpected(path string) (map[string]map[string]expectedItem, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	out := map[string]map[string]bool{}
+	out := map[string]map[string]expectedItem{}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		fields := strings.Split(scanner.Text(), "\t")
-		if len(fields) != 4 {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 4 && len(fields) != 5 {
+			return nil, fmt.Errorf("invalid expected row %q: want 4 or 5 tab-separated fields", line)
 		}
 		fixture := fields[0]
 		if out[fixture] == nil {
-			out[fixture] = map[string]bool{}
+			out[fixture] = map[string]expectedItem{}
 		}
-		out[fixture][strings.Join(fields[1:], "|")] = true
+		required := true
+		if len(fields) == 5 {
+			switch strings.ToLower(strings.TrimSpace(fields[4])) {
+			case "true", "required", "yes", "1", "must":
+				required = true
+			case "false", "optional", "no", "0":
+				required = false
+			default:
+				return nil, fmt.Errorf("invalid required value %q in row %q", fields[4], line)
+			}
+		}
+		out[fixture][strings.Join(fields[1:4], "|")] = expectedItem{Required: required}
 	}
 	return out, scanner.Err()
 }
@@ -159,7 +214,14 @@ func ratio(numerator, denominator int) float64 {
 	}
 	return float64(numerator) / float64(denominator)
 }
+
+func ratioZero(numerator, denominator int) float64 {
+	if denominator == 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
+}
 GO
 
 DURATION_MS="$(( ($(date +%s) - START_SECONDS) * 1000 ))"
-go run "$HELPER" "$EXPECTED_FILE" "$OUT_ROOT" "$DURATION_MS" $FIXTURES
+go run "$HELPER" "$EXPECTED_FILE" "$OUT_ROOT" "$DURATION_MS" "$MATRIX_SOURCE" $FIXTURES
