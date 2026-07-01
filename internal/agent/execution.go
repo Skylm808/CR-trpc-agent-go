@@ -42,6 +42,11 @@ func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 				Cmd:        []string{"tail", "-f", "/dev/null"},
 				Tty:        true,
 				OpenStdin:  true,
+				Env: []string{
+					"PATH=" + goSandboxPath,
+					"GOPATH=/go",
+					"GOTOOLCHAIN=local",
+				},
 			}),
 		}
 		if strings.TrimSpace(cfg.ContainerRepoHostPath) != "" {
@@ -240,18 +245,17 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 
 // runGoSandboxCommand 执行单个 Go 检查命令。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
+	execCommand := goSandboxExecCommand(a.cfg.Runtime, command)
 	workspaceArgs, _ := json.Marshal(map[string]any{
-		"command": command,
+		"command": execCommand,
 		"cwd":     "work/repo",
 		"timeout": int(a.cfg.Timeout.Seconds()),
-		"env": map[string]string{
-			"GOCACHE": goSandboxCacheDir,
-		},
+		"env":     goSandboxEnv(a.cfg.Runtime),
 	})
 	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
-			"code":     goSandboxCode(a.cfg.Runtime, repoPath, command),
+			"code":     goSandboxCode(a.cfg.Runtime, repoPath, execCommand),
 		}},
 		"execution_id": taskID + "-" + strings.ReplaceAll(command, " ", "-"),
 	})
@@ -290,7 +294,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 
 	start := time.Now()
 	// 优先通过官方 workspaceexec 在工作区内运行。
-	raw, err := a.runWorkspaceGoChecks(ctx, repoPath, command)
+	raw, err := a.runWorkspaceGoChecks(ctx, repoPath, execCommand)
 	if err != nil {
 		// 保留旧路径兜底，避免本地 fallback 的工作区条件不满足时退化。
 		raw, err = a.checkTool.Call(ctx, legacyArgs)
@@ -303,6 +307,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	}
 	output := sandboxCommandOutput(raw)
 	run.StdoutDigest = digestString(output.Text)
+	run.Output = sandboxRunOutput(output.Text, a.cfg.OutputLimitBytes)
 	if output.ExitCode != nil {
 		run.ExitCode = *output.ExitCode
 	}
@@ -342,14 +347,32 @@ func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, comma
 		"command": command,
 		"cwd":     "work/repo",
 		"timeout": int(a.cfg.Timeout.Seconds()),
-		"env": map[string]string{
-			"GOCACHE": goSandboxCacheDir,
-		},
+		"env":     goSandboxEnv(a.cfg.Runtime),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return exec.Call(ctx, args)
+}
+
+// goSandboxExecCommand 返回 runtime 内实际执行命令。
+func goSandboxExecCommand(runtime string, command string) string {
+	if runtime == RuntimeContainer && strings.HasPrefix(command, "go ") {
+		return goSandboxBinary + strings.TrimPrefix(command, "go")
+	}
+	return command
+}
+
+// goSandboxEnv 固定 Go 检查的最小环境。
+func goSandboxEnv(runtime string) map[string]string {
+	pathValue := goSandboxPath
+	if runtime == RuntimeLocalFallback && os.Getenv("PATH") != "" {
+		pathValue = os.Getenv("PATH")
+	}
+	return map[string]string{
+		"GOCACHE": goSandboxCacheDir,
+		"PATH":    pathValue,
+	}
 }
 
 // decodeSkillRunOutput 将 trpc-agent-go 的 skill_run 返回值转为本地结构。
@@ -443,6 +466,15 @@ func sandboxCommandOutput(raw any) commandOutput {
 		Text:     out.Output,
 		ExitCode: out.ExitCode,
 	}
+}
+
+// sandboxRunOutput 保留受限、脱敏后的失败线索。
+func sandboxRunOutput(text string, limit int) string {
+	text = review.RedactSecrets(text)
+	if limit > 0 && len(text) > limit {
+		return text[:limit]
+	}
+	return text
 }
 
 type commandOutput struct {

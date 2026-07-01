@@ -51,6 +51,8 @@ const (
 	containerRepoMountPath  = "/workspace/repo"
 	defaultContainerImage   = "golang:1.25-bookworm"
 	goSandboxCacheDir       = "/tmp/cr-agent-gocache"
+	goSandboxBinary         = "/usr/local/go/bin/go"
+	goSandboxPath           = "/go/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
 	sandboxEnvWhitelist     = "PATH,HOME,TMPDIR,GOCACHE"
 )
 

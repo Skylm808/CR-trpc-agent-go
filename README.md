@@ -36,7 +36,7 @@
 
 仍需完善：
 
-- Docker `codeexecutor/container` 真实端到端验证已提供 env-gated 测试，仍需在有 Docker daemon 的 CI/机器上执行。
+- Docker `codeexecutor/container` 真实端到端验证已在 Docker Desktop 上跑通；CI 中仍建议显式开启 env-gated 测试。
 - 官方 artifact service 已接入报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - 官方 `session/sqlite` 尚未直接接入；当前 SQLite 是审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
 - 更完整的 telemetry hook 和外部观测集成；当前官方 trace span 已记录审查摘要属性。
@@ -59,7 +59,7 @@ runtime 策略：
 
 - 默认 `--runtime container`，通过 `codeexecutor/container` 创建隔离执行器，当前默认容器镜像为 `golang:1.25-bookworm`。
 - `--runtime local-fallback` 仅用于开发和测试。
-- container 模式下 `--repo-path` 会 bind mount 到容器内 `/workspace/repo`，Go check 命令在容器路径执行。
+- container 模式下 `--repo-path` 会 bind mount 到容器内 `/workspace/repo`，Go check 命令通过官方 `workspaceexec` 在容器 workspace 执行；Agent 会用容器内 Go 二进制绝对路径避免 PATH 被治理策略清理后失效。
 
 ## Quick Start
 
@@ -72,10 +72,13 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 运行真实 Docker container 集成测试：
 
 ```bash
+docker info
 CR_AGENT_RUN_CONTAINER_TESTS=1 \
 GOCACHE=/private/tmp/cr-agent-gocache \
 go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
 ```
+
+该测试需要 Docker Desktop、OrbStack 或 Colima 等 Docker daemon 正常运行，并且测试进程能访问 Docker socket。
 
 运行公开 fixture 评测：
 

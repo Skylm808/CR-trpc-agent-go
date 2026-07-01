@@ -7,7 +7,7 @@
 | # | Issue 要求 | 组件路径 | 测试覆盖 | 状态 | 缺口 |
 |---|-----------|---------|---------|------|------|
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
-| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | workspaceexec 主路径/fallback tests + env-gated Docker test | 🔶 | 本机 Docker daemon unavailable，container E2E 本阶段 Not-tested；E2B 入口当前未做最小 adapter |
+| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | workspaceexec 主路径/fallback tests + env-gated Docker test | ✅ | Docker Desktop 下 container E2E 已通过；E2B 入口当前未做最小 adapter |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go`、`agent_test.go` | 🔶 | diff / file-list / repo 和 Go metadata 已支持；base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
@@ -60,7 +60,7 @@
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` | — |
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补，契约见 `docs/eval-matrix.md` |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
-| 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test | container test 已加；本机 Docker daemon unavailable，Not-tested |
+| 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E | Docker Desktop 下 env-gated container test 已通过 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
@@ -82,7 +82,7 @@
 
 ## 下一步
 
-1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
+1. 在 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
 2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。

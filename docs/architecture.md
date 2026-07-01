@@ -30,7 +30,7 @@
 
 仍未完成的框架侧增强：
 
-- 真实 Docker container 端到端测试已加入 env gate；本地仍需 Docker daemon 才能执行。
+- 真实 Docker container 端到端测试已加入 env gate，并已在 Docker Desktop 上通过。
 - E2B/Cube runtime adapter。
 - 官方 artifact service 已接入报告和诊断产物保存；SQLite 继续保留引用记录和查询。
 - 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
@@ -58,7 +58,7 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | 🔶 尚未接入官方 Runner/Event；后续可演进为事件流和会话生命周期管理 |
 | Tool | `skill_load`、`skill_run`、`execute_code` 都以 `tool.CallableTool` 形式持有 | ✅ 已使用官方工具抽象 |
 | Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
-| CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 需 Docker 环境 |
+| CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 已通过 |
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
@@ -116,6 +116,8 @@ Filter 负责“内容能不能进入报告/数据库”：
 ## 沙箱执行
 
 默认 runtime 是 `container`，默认容器镜像为 `golang:1.25-bookworm`。如果本地没有 Docker，开发和测试必须显式传 `--runtime local-fallback`。
+
+container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方 `tool/workspaceexec` 进入容器 workspace。Agent 记录的审计命令保持为 `go test ./...` / `go vet ./...`，容器内实际执行使用 `/usr/local/go/bin/go`，避免治理策略清理 PATH 后找不到 Go 工具链。
 
 沙箱记录字段包括：
 

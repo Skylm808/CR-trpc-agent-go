@@ -1552,6 +1552,38 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 	}
 }
 
+func TestGoSandboxEnvIncludesContainerGoPath(t *testing.T) {
+	t.Parallel()
+
+	env := goSandboxEnv(RuntimeContainer)
+	if env["GOCACHE"] != goSandboxCacheDir {
+		t.Fatalf("GOCACHE = %q, want %q", env["GOCACHE"], goSandboxCacheDir)
+	}
+	if !strings.Contains(env["PATH"], "/usr/local/go/bin") {
+		t.Fatalf("PATH should include Go toolchain path, got %q", env["PATH"])
+	}
+	if !strings.Contains(sandboxEnvWhitelist, "PATH") {
+		t.Fatalf("sandbox whitelist should disclose PATH boundary, got %q", sandboxEnvWhitelist)
+	}
+}
+
+func TestGoSandboxExecCommandUsesContainerGoBinary(t *testing.T) {
+	t.Parallel()
+
+	containerCommand := goSandboxExecCommand(RuntimeContainer, "go test ./...")
+	if containerCommand != goSandboxBinary+" test ./..." {
+		t.Fatalf("container go command = %q, want absolute go binary", containerCommand)
+	}
+	localCommand := goSandboxExecCommand(RuntimeLocalFallback, "go test ./...")
+	if localCommand != "go test ./..." {
+		t.Fatalf("local fallback command = %q, want original command", localCommand)
+	}
+	staticcheckCommand := goSandboxExecCommand(RuntimeContainer, "staticcheck ./...")
+	if staticcheckCommand != "staticcheck ./..." {
+		t.Fatalf("staticcheck command = %q, want original command", staticcheckCommand)
+	}
+}
+
 // repoRoot 查找仓库根目录。
 func repoRoot(t *testing.T) string {
 	t.Helper()

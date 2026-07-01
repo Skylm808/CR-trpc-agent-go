@@ -71,7 +71,7 @@ M5  验收交付与评测                         ⬜
 
 | 任务 | 状态 | 验证方式 |
 |------|------|----------|
-| Docker container runtime 真实 E2E | 🔶 | env-gated test 已加；需 Docker daemon 执行 |
+| Docker container runtime 真实 E2E | ✅ | env-gated test 已在 Docker Desktop 上通过 |
 | container bind mount repo 到 `/workspace/repo` | ✅ | `ContainerRepoHostPath` + `WithBindMount` |
 | E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
 | ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
