@@ -24,7 +24,7 @@ M5  验收交付与评测                         ⬜
 | `tool.PermissionPolicy` 执行前决策 | ✅ | `defaultPermissionPolicy` |
 | 默认 `codeexecutor/container` | ✅ | `RuntimeContainer` 默认值 |
 | `local-fallback` 仅显式启用 | ✅ | CLI `--runtime local-fallback` |
-| `tool/codeexec` 执行 Go 检查 | ✅ | `runGoSandboxChecks` |
+| `tool/workspaceexec` 执行 Go 检查 | ✅ | `runGoSandboxChecks` 优先走 workspace，`tool/codeexec` 兜底 |
 | `dry-run` / `sandbox` / `fake-model` / `rule-only` mode | ✅ | CLI flag + Agent branch |
 
 ## M2：规则补全 + Fixture 预期 ✅
@@ -54,7 +54,7 @@ M5  验收交付与评测                         ⬜
 | SQLite 记录 filter_decisions | ✅ | 扩展非 secret filter |
 | SQLite 记录 sandbox_runs | ✅ | 增加 artifact_count / finished_at |
 | SQLite 记录 findings/warnings/human review items | ✅ | 统一写入 `findings` 表，用 `status` 区分 |
-| SQLite 记录 artifacts | ✅ | 当前是报告产物记录，未接官方 artifact service |
+| SQLite 记录 artifacts | ✅ | 报告和诊断产物引用已记录，官方 artifact service 已有最小接入 |
 | SQLite 记录 metrics | ✅ | 后续接官方 telemetry hook |
 | SQLite 记录 reports | ✅ | — |
 | 按 task_id 查询全部核心实体 | ✅ | — |
@@ -77,8 +77,8 @@ M5  验收交付与评测                         ⬜
 | ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
 | deny 不进入 executor | ✅ | Agent E2E 覆盖 deny |
 | env whitelist 强校验 | 🔶 | 当前记录 `PATH,HOME,TMPDIR`，未强制过滤所有 env |
-| artifact cap | ⬜ | 当前只记录 report artifacts |
-| 官方 telemetry hook | ⬜ | 当前是本地 metrics 表 |
+| artifact cap | 🔶 | 当前记录报告和诊断产物，未增加 size cap 字段 |
+| 官方 telemetry hook | 🔶 | 当前有 trace span + 本地 metrics 表 |
 
 ## M5：验收交付与评测 ⬜
 
@@ -125,7 +125,7 @@ M5  验收交付与评测                         ⬜
 - [x] DB 全表 secret 扫描测试。
 - [x] ask/deny/needs_human_review Agent E2E 测试。
 - [x] 公开 fixture eval 脚本。
-- [ ] 官方 artifact/session/telemetry 能力的最小接入或清晰边界说明。
+- [x] 官方 artifact/telemetry 能力的最小接入或清晰边界说明；session/sqlite 仍是后续演进。
 
 ## 相关文档
 

@@ -28,7 +28,8 @@ CLI 输入
   -> skill_load(code-review)
   -> PermissionPolicy
   -> skill_run(scripts/check.sh)
-  -> optional tool/codeexec(go test/go vet/staticcheck)
+  -> optional tool/workspaceexec(go test/go vet/staticcheck)
+  -> fallback tool/codeexec(go checks)
   -> redact + dedupe + warning/human-review split
   -> SQLite audit trail
   -> review_report.json / review_report.md

@@ -63,7 +63,7 @@
 
 ## SandboxRun
 
-每次 Skill 或 codeexec 执行记录，落库到 `sandbox_runs`。
+每次 Skill、workspaceexec 或 codeexec fallback 执行记录，落库到 `sandbox_runs`。
 
 | 字段 | 当前状态 |
 |------|----------|
@@ -106,18 +106,18 @@
 
 ## Artifact
 
-当前 artifact 是本地报告产物记录，落库到 `artifacts`。
+当前 artifact 包含本地报告和诊断产物引用，落库到 `artifacts`；配置 `ArtifactService` 时同步写入官方 artifact service。
 
 | 字段 | 当前状态 |
 |------|----------|
 | `task_id` | ✅ |
-| `name` | ✅ `review_report.json` / `review_report.md` |
-| `kind` | ✅ `report` |
+| `name` | ✅ `review_report.json` / `review_report.md` / `review_diagnostics.json` |
+| `kind` | ✅ `report` / `diagnostic` |
 | `path` | ✅ |
 | `digest` | ✅ |
 | `created_at` | ✅ |
 
-后续可接官方 artifact service，并增加 size_bytes、artifact cap。
+后续可增加 size_bytes、artifact cap 和更细粒度 artifact filter。
 
 ## MetricsSummary
 
