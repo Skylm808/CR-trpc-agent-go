@@ -63,7 +63,7 @@
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | secret fixture + report assertion + DB 全表扫描 | 需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
-| 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议 | ✅ | `report_test.go`、`agent_test.go` | 可补 conclusion |
+| 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议和 conclusion | ✅ | `report_test.go`、`agent_test.go` | — |
 
 ## 规则覆盖追踪
 
@@ -84,7 +84,7 @@
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
 2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入。
 3. 为隐藏样本扩展外部 expected matrix 输入。
-4. 如需正式交付，可再补 report conclusion。
+4. 如需正式交付，可继续补隐藏样本 expected matrix 和更多 secret 样本。
 
 ## 相关文档
 

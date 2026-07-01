@@ -248,6 +248,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if result.Summary == "" {
 		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
 	}
+	result.Conclusion = conclusion(result)
 
 	// 报告文件和 SQLite 使用同一份内容。
 	jsonReport, jsonErr := report.BuildJSON(result)

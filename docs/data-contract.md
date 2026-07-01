@@ -153,7 +153,7 @@
 | `sandbox_summary` | ✅ |
 | `metrics` | ✅ |
 | `artifacts` | ✅ |
-| `conclusion` | ⬜ 可后续补 |
+| `conclusion` | ✅ |
 
 ## 存储规则
 

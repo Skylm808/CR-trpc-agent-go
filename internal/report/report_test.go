@@ -88,6 +88,11 @@ func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testi
 			Kind: "report",
 			Path: "review_report.json",
 		}},
+		Conclusion: review.Conclusion{
+			Status:  "fail",
+			Reason:  "blocking_findings",
+			Summary: "Critical or high severity findings require changes before merge.",
+		},
 	}
 
 	j, err := BuildJSON(rep)
@@ -102,6 +107,8 @@ func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testi
 		"\"artifacts\"",
 		"\"severity_counts\"",
 		"\"recommendation\"",
+		"\"conclusion\"",
+		"\"blocking_findings\"",
 	} {
 		if !strings.Contains(jsonText, want) {
 			t.Fatalf("expected JSON report to include %s, got %s", want, jsonText)
@@ -114,6 +121,8 @@ func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testi
 		"Governance",
 		"Sandbox",
 		"Artifacts",
+		"Conclusion",
+		"blocking_findings",
 		"Move the value to a secret manager.",
 	} {
 		if !strings.Contains(md, want) {

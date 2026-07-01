@@ -25,6 +25,7 @@ func BuildMarkdown(result review.Result) string {
 		b.WriteString(result.Summary)
 		b.WriteString("\n\n")
 	}
+	writeConclusion(&b, result.Conclusion)
 	if result.Metrics.FindingCount > 0 || result.Metrics.TotalDurationMS > 0 {
 		fmt.Fprintf(&b, "Metrics: findings=%d total_ms=%d sandbox_ms=%d tool_calls=%d permission_blocks=%d redactions=%d\n\n",
 			result.Metrics.FindingCount,
@@ -68,6 +69,22 @@ func humanReviewItems(result review.Result) []review.Finding {
 		}
 	}
 	return review.DedupeFindings(items)
+}
+
+// writeConclusion 渲染最终结论。
+func writeConclusion(b *strings.Builder, conclusion review.Conclusion) {
+	if conclusion.Status == "" {
+		return
+	}
+	b.WriteString("## Conclusion\n\n")
+	fmt.Fprintf(b, "- Status: %s\n", conclusion.Status)
+	if conclusion.Reason != "" {
+		fmt.Fprintf(b, "- Reason: %s\n", conclusion.Reason)
+	}
+	if conclusion.Summary != "" {
+		fmt.Fprintf(b, "- Summary: %s\n", conclusion.Summary)
+	}
+	b.WriteString("\n")
 }
 
 // writeHumanReview 渲染人工复核项。

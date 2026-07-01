@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 	"go.opentelemetry.io/otel/attribute"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
@@ -67,6 +68,7 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 		"\"sandbox_summary\"",
 		"\"artifacts\"",
 		"\"human_review_items\"",
+		"\"conclusion\"",
 	} {
 		if !strings.Contains(string(jsonReport), want) {
 			t.Fatalf("expected json report to include %s, got %s", want, jsonReport)
@@ -379,6 +381,54 @@ func TestReportArtifactsRemainStable(t *testing.T) {
 	}
 	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" || arts[2].Name != "review_diagnostics.json" {
 		t.Fatalf("unexpected artifacts: %+v", arts)
+	}
+}
+
+// TestConclusionStatuses 固定最终结论规则。
+func TestConclusionStatuses(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		result review.Result
+		want   string
+	}{
+		{
+			name: "blocking finding",
+			result: review.Result{Findings: []review.Finding{{
+				Severity: "high",
+			}}},
+			want: "fail",
+		},
+		{
+			name: "human review",
+			result: review.Result{HumanReviewItems: []review.Finding{{
+				Severity: "low",
+			}}},
+			want: "needs_human_review",
+		},
+		{
+			name: "sandbox exception",
+			result: review.Result{Metrics: review.Metrics{
+				ExceptionCounts: map[string]int{"sandbox_failed": 1},
+			}},
+			want: "needs_human_review",
+		},
+		{
+			name:   "pass",
+			result: review.Result{},
+			want:   "pass",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := conclusion(tc.result)
+			if got.Status != tc.want {
+				t.Fatalf("conclusion status = %q, want %q", got.Status, tc.want)
+			}
+		})
 	}
 }
 

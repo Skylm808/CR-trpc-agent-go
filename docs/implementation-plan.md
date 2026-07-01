@@ -58,12 +58,12 @@ M5  验收交付与评测                         ⬜
 | SQLite 记录 metrics | ✅ | trace span 同步记录审查摘要属性 |
 | SQLite 记录 reports | ✅ | — |
 | 按 task_id 查询全部核心实体 | ✅ | — |
-| 报告含 governance/sandbox/human review/artifacts | ✅ | 补 conclusion 字段 |
+| 报告含 governance/sandbox/human review/artifacts | ✅ | 已补 conclusion 字段 |
 
 建议后续小改：
 
 1. ~~在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。~~ 已完成。
-2. 增加 report conclusion 字段，便于 CI 汇总。
+2. ~~增加 report conclusion 字段，便于 CI 汇总。~~ 已完成。
 
 ## M4：真实沙箱、治理与遥测增强 🔶
 
@@ -105,14 +105,14 @@ M5  验收交付与评测                         ⬜
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | DB 全表扫描已有；仍需更多 secret 样本 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | — |
 | 7 | 高风险命令须先过 Filter/Permission | ✅ | — |
-| 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 可补 conclusion |
+| 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 已补 conclusion |
 
 ## 下一阶段推荐顺序
 
 1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
 2. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
 3. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
-4. 给 report 增加 `conclusion` 字段。
+4. 扩展更多 secret 样本和隐藏样本 expected matrix。
 
 ## Definition of Done
 

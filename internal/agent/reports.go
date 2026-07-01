@@ -115,6 +115,48 @@ func sandboxSummary(runs []storage.SandboxRunRecord) review.SandboxSummary {
 	return out
 }
 
+// conclusion 生成最终审查结论。
+func conclusion(result review.Result) review.Conclusion {
+	if hasBlockingFinding(result.Findings) {
+		return review.Conclusion{
+			Status:  "fail",
+			Reason:  "blocking_findings",
+			Summary: "Critical or high severity findings require changes before merge.",
+		}
+	}
+	if len(result.HumanReviewItems) > 0 || hasSandboxException(result.Metrics.ExceptionCounts) {
+		return review.Conclusion{
+			Status:  "needs_human_review",
+			Reason:  "review_required",
+			Summary: "Manual review is required for governance or sandbox signals.",
+		}
+	}
+	return review.Conclusion{
+		Status:  "pass",
+		Reason:  "no_blocking_findings",
+		Summary: "No blocking findings were detected by the deterministic review chain.",
+	}
+}
+
+func hasBlockingFinding(findings []review.Finding) bool {
+	for _, finding := range findings {
+		switch strings.ToLower(finding.Severity) {
+		case "critical", "high":
+			return true
+		}
+	}
+	return false
+}
+
+func hasSandboxException(counts map[string]int) bool {
+	for name, count := range counts {
+		if count > 0 && strings.Contains(name, "sandbox") {
+			return true
+		}
+	}
+	return false
+}
+
 // reportArtifacts 声明报告产物。
 func reportArtifacts() []review.ArtifactSummary {
 	return []review.ArtifactSummary{

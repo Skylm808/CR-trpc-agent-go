@@ -23,7 +23,15 @@ type Result struct {
 	SandboxSummary    SandboxSummary    `json:"sandbox_summary"`
 	Artifacts         []ArtifactSummary `json:"artifacts"`
 	Summary           string            `json:"summary,omitempty"`
+	Conclusion        Conclusion        `json:"conclusion,omitempty"`
 	Created           time.Time         `json:"created_at,omitempty"`
+}
+
+// Conclusion 是最终审查结论。
+type Conclusion struct {
+	Status  string `json:"status,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Summary string `json:"summary,omitempty"`
 }
 
 // Metrics 保存审查指标。
