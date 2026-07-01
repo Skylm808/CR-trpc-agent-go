@@ -154,7 +154,7 @@ Filter 负责“内容能不能进入报告/数据库”：
 - `artifacts`
 - `metrics`
 
-按 `task_id` 可以查询 task、findings、report、decisions、filter decisions、sandbox runs、artifacts、metrics。
+按 `task_id` 可以查询 task、findings、report、decisions、filter decisions、sandbox runs、artifacts、metrics；报告或 artifact 阶段失败时 task 会标记为 `failed` 便于回放。
 
 ## 报告
 

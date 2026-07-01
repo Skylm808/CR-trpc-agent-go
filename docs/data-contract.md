@@ -13,7 +13,7 @@
 | `input_ref` | string | ✅ diff path / fixture path / repo path |
 | `input_digest` | string | ✅ SHA-256 |
 | `repo_path` | string | ✅ |
-| `status` | string | ✅ `running` / `done` |
+| `status` | string | ✅ `running` / `done` / `failed` |
 | `mode` | string | ✅ `rule-only` / `dry-run` / `sandbox` / `fake-model` |
 | `created_at` | time | ✅ |
 | `started_at` | time | ✅ |
@@ -158,7 +158,7 @@
 
 ## 存储规则
 
-1. 每个 task 对应唯一 `review_tasks` 行。
+1. 每个 task 对应唯一 `review_tasks` 行；报告或 artifact 阶段失败会标记为 `failed`。
 2. decisions、runs、findings、artifacts、metrics、reports 均通过 `task_id` 关联。
 3. Permission 非 allow 决策必须落库，即使命令未执行。
 4. sandbox 失败或超时必须落库，不能导致 review 整体失败。

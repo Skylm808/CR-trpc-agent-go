@@ -502,6 +502,39 @@ func TestAgentRunRejectsOversizedArtifacts(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(outDir, "review_report.json")); !os.IsNotExist(statErr) {
 		t.Fatalf("oversized report should not be written, stat err=%v", statErr)
 	}
+	store, openErr := sqlite.Open(dbPath)
+	if openErr != nil {
+		t.Fatalf("open sqlite: %v", openErr)
+	}
+	defer store.Close()
+	var tasks []sqlite.Task
+	db, openDBErr := sql.Open("sqlite", dbPath)
+	if openDBErr != nil {
+		t.Fatalf("open sqlite directly: %v", openDBErr)
+	}
+	defer db.Close()
+	rows, queryErr := db.QueryContext(context.Background(), `SELECT task_id FROM review_tasks`)
+	if queryErr != nil {
+		t.Fatalf("query tasks: %v", queryErr)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			t.Fatalf("scan task id: %v", scanErr)
+		}
+		task, loadErr := store.TaskByID(context.Background(), id)
+		if loadErr != nil {
+			t.Fatalf("load task: %v", loadErr)
+		}
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate task rows: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].Status != "failed" || tasks[0].FinishedAt.IsZero() {
+		t.Fatalf("expected failed task after artifact error, got %+v", tasks)
+	}
 }
 
 // TestConclusionStatuses 固定最终结论规则。

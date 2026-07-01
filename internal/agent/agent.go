@@ -186,17 +186,19 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	// taskID 便于报告和数据库关联。
 	taskID := newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
+	taskStarted := false
+	defer func() {
+		if err != nil && taskStarted && a.store != nil {
+			_ = a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "failed", start, time.Now())
+		}
+	}()
 
 	if a.store != nil {
 		// 先记录 running，失败也可回放。
-		if err := a.store.SaveTask(ctx, storage.Task{
-			ID: taskID, InputType: "diff", InputRef: inputRef,
-			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
-			Status: "running", Mode: mode, CreatedAt: start,
-			StartedAt: start,
-		}); err != nil {
+		if err := a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "running", start, time.Time{}); err != nil {
 			return review.Result{}, err
 		}
+		taskStarted = true
 	}
 
 	toolCallCount := 2
@@ -278,12 +280,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 			return review.Result{}, err
 		}
 		// 最后标记任务完成。
-		if err := a.store.SaveTask(ctx, storage.Task{
-			ID: taskID, InputType: "diff", InputRef: inputRef,
-			InputDigest: digestBytes(diff), RepoPath: req.RepoPath,
-			Status: "done", Mode: mode, CreatedAt: start,
-			StartedAt: start, FinishedAt: time.Now(),
-		}); err != nil {
+		if err := a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "done", start, time.Now()); err != nil {
 			return review.Result{}, err
 		}
 	}
@@ -297,6 +294,22 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	return a.store.Close()
+}
+
+// saveTaskStatus 保存任务状态。
+func (a *Agent) saveTaskStatus(ctx context.Context, taskID, inputRef, inputDigest, repoPath, mode, status string, startedAt, finishedAt time.Time) error {
+	return a.store.SaveTask(ctx, storage.Task{
+		ID:          taskID,
+		InputType:   "diff",
+		InputRef:    inputRef,
+		InputDigest: inputDigest,
+		RepoPath:    repoPath,
+		Status:      status,
+		Mode:        mode,
+		CreatedAt:   startedAt,
+		StartedAt:   startedAt,
+		FinishedAt:  finishedAt,
+	})
 }
 
 // saveArtifacts 使用官方 artifact service 持久化报告和诊断产物。
