@@ -362,20 +362,20 @@ func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
 	}
 }
 
-// TestReportArtifactsRemainStable 固定报告产物语义不变。
+// TestReportArtifactsRemainStable 固定报告和诊断产物语义不变。
 func TestReportArtifactsRemainStable(t *testing.T) {
 	t.Parallel()
 
 	arts := reportArtifacts()
-	if len(arts) != 2 {
-		t.Fatalf("expected 2 report artifacts, got %+v", arts)
+	if len(arts) != 3 {
+		t.Fatalf("expected 3 artifacts, got %+v", arts)
 	}
-	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" {
+	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" || arts[2].Name != "review_diagnostics.json" {
 		t.Fatalf("unexpected artifacts: %+v", arts)
 	}
 }
 
-// TestArtifactServiceReportsCanBeSavedAsArtifacts 固定报告可进入官方 artifact service。
+// TestArtifactServiceReportsCanBeSavedAsArtifacts 固定报告和诊断可进入官方 artifact service。
 func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	t.Parallel()
 
@@ -412,8 +412,11 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list artifact keys: %v", err)
 	}
-	if len(keys) == 0 {
-		t.Fatalf("expected artifacts to be saved in official artifact service")
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 artifacts to be saved in official artifact service, got %+v", keys)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "review_diagnostics.json")); err != nil {
+		t.Fatalf("expected diagnostics artifact: %v", err)
 	}
 
 	store, err := sqlite.Open(dbPath)
@@ -425,8 +428,8 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load artifact records: %v", err)
 	}
-	if len(recs) == 0 {
-		t.Fatalf("expected persisted artifact records")
+	if len(recs) != 3 {
+		t.Fatalf("expected persisted artifact records, got %+v", recs)
 	}
 }
 

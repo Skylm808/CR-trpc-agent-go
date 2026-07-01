@@ -25,6 +25,7 @@
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
 - `sandbox` 模式下优先通过官方 `tool/workspaceexec` 在工作区内执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`；失败时保留 `tool/codeexec` 兜底。
 - SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact、metrics、report。
+- `review_report.json`、`review_report.md`、`review_diagnostics.json` 会写入本地输出目录；配置 `ArtifactService` 时同步进入官方 artifact service。
 - 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
@@ -34,7 +35,7 @@
 仍需完善：
 
 - Docker `codeexecutor/container` 真实端到端验证已提供 env-gated 测试，仍需在有 Docker daemon 的 CI/机器上执行。
-- 官方 artifact service 接入；当前 artifact 为本地 SQLite 记录。
+- 官方 artifact service 已接入报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - `session/sqlite` 作为 Agent session/history 的直接使用。
 - 更完整的 telemetry hook 和外部观测集成；当前已挂最小 trace 边界。
 

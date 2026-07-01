@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,14 +11,35 @@ import (
 )
 
 // writeReports 写入报告文件。
-func writeReports(dir string, jsonReport, markdownReport []byte) error {
+func writeReports(dir string, jsonReport, markdownReport, diagnosticsReport []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "review_report.json"), jsonReport, 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "review_report.md"), markdownReport, 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "review_report.md"), markdownReport, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "review_diagnostics.json"), diagnosticsReport, 0o644)
+}
+
+// buildDiagnostics 生成独立诊断产物。
+func buildDiagnostics(result review.Result) ([]byte, error) {
+	payload := struct {
+		TaskID            string                   `json:"task_id"`
+		Metrics           review.Metrics           `json:"metrics"`
+		GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
+		SandboxSummary    review.SandboxSummary    `json:"sandbox_summary"`
+		Artifacts         []review.ArtifactSummary `json:"artifacts"`
+	}{
+		TaskID:            result.TaskID,
+		Metrics:           result.Metrics,
+		GovernanceSummary: result.GovernanceSummary,
+		SandboxSummary:    result.SandboxSummary,
+		Artifacts:         result.Artifacts,
+	}
+	return json.MarshalIndent(payload, "", "  ")
 }
 
 // severityCounts 汇总严重级别。
@@ -98,6 +120,7 @@ func reportArtifacts() []review.ArtifactSummary {
 	return []review.ArtifactSummary{
 		{Name: "review_report.json", Kind: "report", Path: "review_report.json"},
 		{Name: "review_report.md", Kind: "report", Path: "review_report.md"},
+		{Name: "review_diagnostics.json", Kind: "diagnostic", Path: "review_diagnostics.json"},
 	}
 }
 

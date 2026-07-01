@@ -7,8 +7,8 @@
 | # | Issue 要求 | 组件路径 | 测试覆盖 | 状态 | 缺口 |
 |---|-----------|---------|---------|------|------|
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，≥4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests | ✅ | 脚本输出 schema 可再文档化 |
-| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/codeexec` | local fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
-| 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
+| 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | local fallback tests + env-gated Docker test | 🔶 | Docker test 需在有 daemon 的环境执行；E2B 入口当前未做最小 adapter |
+| 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go` | 🔶 | 文件路径列表、base/head ref 未支持 |
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
@@ -25,6 +25,7 @@
 | 测试 fixture | `--fixture` + `testdata/fixtures/` | ✅ |
 | `review_report.json` | `internal/report.BuildJSON` | ✅ |
 | `review_report.md` | `internal/report.BuildMarkdown` | ✅ |
+| `review_diagnostics.json` | `internal/agent.buildDiagnostics` | ✅ |
 | SQLite 查询 task 状态 | `TaskByID` | ✅ |
 | SQLite 查询 sandbox run | `SandboxRunsByTaskID` | ✅ |
 | SQLite 查询 permission decision | `DecisionsByTaskID` | ✅ |
@@ -81,7 +82,7 @@
 ## 下一步
 
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
-2. 明确 E2B、artifact service、session/sqlite、telemetry 的最小接入边界。
+2. 明确 E2B、session/sqlite、telemetry 的进一步接入边界；artifact service 已有报告和诊断产物最小接入。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可再补 report conclusion 和 sandbox finished_at / artifact_count。
 

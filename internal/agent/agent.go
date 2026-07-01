@@ -13,13 +13,13 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 
-	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
+	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
+	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	toolcodeexec "trpc.group/trpc-go/trpc-agent-go/tool/codeexec"
 	toolskill "trpc.group/trpc-go/trpc-agent-go/tool/skill"
-	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 )
 
 const (
@@ -142,13 +142,13 @@ func New(cfg Config) (*Agent, error) {
 	)
 
 	return &Agent{
-		cfg:       cfg,
-		loadTool:  toolskill.NewLoadTool(repo),
-		runTool:   runTool,
-		checkTool: toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
-		exec:      exec,
-		policy:    defaultPermissionPolicy(),
-		store:     store,
+		cfg:             cfg,
+		loadTool:        toolskill.NewLoadTool(repo),
+		runTool:         runTool,
+		checkTool:       toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
+		exec:            exec,
+		policy:          defaultPermissionPolicy(),
+		store:           store,
 		artifactService: cfg.ArtifactService,
 	}, nil
 }
@@ -244,17 +244,21 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 		return review.Result{}, jsonErr
 	}
 	md := report.BuildMarkdown(result)
-	if err := writeReports(a.cfg.OutputDir, jsonReport, []byte(md)); err != nil {
+	diagnosticsReport, err := buildDiagnostics(result)
+	if err != nil {
+		return review.Result{}, err
+	}
+	if err := writeReports(a.cfg.OutputDir, jsonReport, []byte(md), diagnosticsReport); err != nil {
 		return review.Result{}, err
 	}
 	if a.artifactService != nil {
-		if err := a.saveArtifacts(ctx, taskID, result, jsonReport, []byte(md)); err != nil {
+		if err := a.saveArtifacts(ctx, taskID, result, jsonReport, []byte(md), diagnosticsReport); err != nil {
 			return review.Result{}, err
 		}
 	}
 	if a.store != nil {
 		// 写入完整审计数据。
-		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md)); err != nil {
+		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md), diagnosticsReport); err != nil {
 			return review.Result{}, err
 		}
 		// 最后标记任务完成。
@@ -278,8 +282,8 @@ func (a *Agent) Close() error {
 	return a.store.Close()
 }
 
-// saveArtifacts 使用官方 artifact service 持久化报告产物。
-func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, jsonReport, markdownReport []byte) error {
+// saveArtifacts 使用官方 artifact service 持久化报告和诊断产物。
+func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, jsonReport, markdownReport, diagnosticsReport []byte) error {
 	sessionInfo := artifact.SessionInfo{
 		AppName:   "cr-agent",
 		UserID:    "local",
@@ -295,6 +299,9 @@ func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.
 		case "review_report.md":
 			payload = markdownReport
 			mime = "text/markdown"
+		case "review_diagnostics.json":
+			payload = diagnosticsReport
+			mime = "application/json"
 		default:
 			continue
 		}
