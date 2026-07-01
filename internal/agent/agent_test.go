@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
+	"go.opentelemetry.io/otel/attribute"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
+	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -433,6 +437,52 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	}
 }
 
+// TestAgentRunRecordsTelemetryAttributes 固定官方 telemetry span 摘要。
+func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
+	recorder := useAgentTelemetrySpanRecorder(t)
+
+	root := repoRoot(t)
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	span := findAgentReviewSpan(t, recorder)
+	attrs := agentSpanAttributes(span.Attributes())
+	if attrs["cr_agent.task_id"].AsString() != result.TaskID {
+		t.Fatalf("task id attribute mismatch: got %q want %q", attrs["cr_agent.task_id"].AsString(), result.TaskID)
+	}
+	if attrs["cr_agent.mode"].AsString() != ModeRuleOnly {
+		t.Fatalf("mode attribute mismatch: %+v", attrs["cr_agent.mode"])
+	}
+	if attrs["cr_agent.input_type"].AsString() != "diff_file" {
+		t.Fatalf("input type attribute mismatch: %+v", attrs["cr_agent.input_type"])
+	}
+	if attrs["cr_agent.finding_count"].AsInt64() != int64(len(result.Findings)) {
+		t.Fatalf("finding count attribute mismatch: %+v", attrs["cr_agent.finding_count"])
+	}
+	if attrs["cr_agent.artifact_count"].AsInt64() != 3 {
+		t.Fatalf("expected 3 artifact telemetry records, got %+v", attrs["cr_agent.artifact_count"])
+	}
+	if attrs["cr_agent.tool_call_count"].AsInt64() != int64(result.Metrics.ToolCallCount) {
+		t.Fatalf("tool call count attribute mismatch: %+v", attrs["cr_agent.tool_call_count"])
+	}
+}
+
 // TestAgentRunRecordsSandboxFailureWithoutCrashing 固定失败不崩溃。
 func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	t.Parallel()
@@ -822,6 +872,44 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = next
 	}
+}
+
+// useAgentTelemetrySpanRecorder 捕获官方 telemetry trace。
+func useAgentTelemetrySpanRecorder(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+
+	recorder := tracetest.NewSpanRecorder()
+	provider := tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(recorder))
+	originalProvider := telemetrytrace.TracerProvider
+	originalTracer := telemetrytrace.Tracer
+	telemetrytrace.TracerProvider = provider
+	telemetrytrace.Tracer = provider.Tracer("cr-agent-test")
+	t.Cleanup(func() {
+		telemetrytrace.TracerProvider = originalProvider
+		telemetrytrace.Tracer = originalTracer
+		_ = provider.Shutdown(context.Background())
+	})
+	return recorder
+}
+
+func findAgentReviewSpan(t *testing.T, recorder *tracetest.SpanRecorder) tracesdk.ReadOnlySpan {
+	t.Helper()
+
+	for _, span := range recorder.Ended() {
+		if span.Name() == "cr-agent.review" {
+			return span
+		}
+	}
+	t.Fatalf("cr-agent.review span not found; got %d spans", len(recorder.Ended()))
+	return nil
+}
+
+func agentSpanAttributes(attrs []attribute.KeyValue) map[string]attribute.Value {
+	out := make(map[string]attribute.Value, len(attrs))
+	for _, attr := range attrs {
+		out[string(attr.Key)] = attr.Value
+	}
+	return out
 }
 
 // assertDecisionForCommand 检查 allow 决策。

@@ -82,7 +82,7 @@
 ## 下一步
 
 1. 在有 Docker daemon 的 CI/机器上运行 container runtime E2E。
-2. 明确 E2B、session/sqlite、telemetry 的进一步接入边界；artifact service 已有报告和诊断产物最小接入。
+2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可再补 report conclusion 和 sandbox finished_at / artifact_count。
 

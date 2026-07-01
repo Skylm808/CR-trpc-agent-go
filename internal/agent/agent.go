@@ -13,6 +13,9 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -154,11 +157,22 @@ func New(cfg Config) (*Agent, error) {
 }
 
 // Run 执行一次完整审查。
-func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
+func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err error) {
 	ctx, span := telemetrytrace.Tracer.Start(ctx, "cr-agent.review")
-	defer span.End()
+	defer func() {
+		if err != nil {
+			recordReviewErrorTelemetry(span, err)
+		}
+		span.End()
+	}()
 
 	start := time.Now()
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = ModeRuleOnly
+	}
+	recordReviewStartTelemetry(span, a.cfg, req, mode)
+
 	// 统一把输入收敛成 diff。
 	diff, inputRef, err := readInput(a.cfg, req)
 	if err != nil {
@@ -166,10 +180,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	}
 	// taskID 便于报告和数据库关联。
 	taskID := newTaskID(diff)
-	mode := strings.TrimSpace(req.Mode)
-	if mode == "" {
-		mode = ModeRuleOnly
-	}
+	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
 
 	if a.store != nil {
 		// 先记录 running，失败也可回放。
@@ -184,7 +195,6 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	}
 
 	toolCallCount := 2
-	var result review.Result
 	var runRecord storage.SandboxRunRecord
 	var decision storage.DecisionRecord
 	if mode == ModeDryRun {
@@ -271,6 +281,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 			return review.Result{}, err
 		}
 	}
+	recordReviewResultTelemetry(span, result)
 	return result, nil
 }
 
@@ -331,4 +342,59 @@ func normalizeConfig(cfg Config) Config {
 		cfg.OutputDir = "."
 	}
 	return cfg
+}
+
+// recordReviewStartTelemetry 记录审查入口边界。
+func recordReviewStartTelemetry(span oteltrace.Span, cfg Config, req Request, mode string) {
+	span.SetAttributes(
+		attribute.String("cr_agent.runtime", cfg.Runtime),
+		attribute.String("cr_agent.mode", mode),
+		attribute.String("cr_agent.input_type", requestInputKind(req)),
+		attribute.Bool("cr_agent.staticcheck_enabled", cfg.EnableStaticcheck),
+	)
+}
+
+// recordReviewResultTelemetry 记录审查结果摘要。
+func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
+	span.SetAttributes(
+		attribute.Int("cr_agent.finding_count", len(result.Findings)),
+		attribute.Int("cr_agent.warning_count", len(result.Warnings)),
+		attribute.Int("cr_agent.human_review_count", len(result.HumanReviewItems)),
+		attribute.Int("cr_agent.artifact_count", len(result.Artifacts)),
+		attribute.Int("cr_agent.permission_block_count", result.Metrics.PermissionBlocks),
+		attribute.Int("cr_agent.tool_call_count", result.Metrics.ToolCallCount),
+		attribute.Int("cr_agent.sandbox_run_count", len(result.SandboxSummary.Runs)),
+		attribute.Int("cr_agent.redaction_count", result.Metrics.RedactionCount),
+		attribute.Int("cr_agent.exception_count", exceptionCount(result.Metrics.ExceptionCounts)),
+		attribute.Int64("cr_agent.total_duration_ms", result.Metrics.TotalDurationMS),
+		attribute.Int64("cr_agent.sandbox_duration_ms", result.Metrics.SandboxDurationMS),
+	)
+}
+
+// recordReviewErrorTelemetry 记录失败状态但不写入敏感错误正文。
+func recordReviewErrorTelemetry(span oteltrace.Span, err error) {
+	span.SetStatus(codes.Error, "review failed")
+	span.SetAttributes(attribute.String("cr_agent.error_type", fmt.Sprintf("%T", err)))
+}
+
+// requestInputKind 返回审查输入类型。
+func requestInputKind(req Request) string {
+	switch {
+	case strings.TrimSpace(req.DiffFile) != "":
+		return "diff_file"
+	case strings.TrimSpace(req.RepoPath) != "":
+		return "repo_path"
+	case strings.TrimSpace(req.Fixture) != "":
+		return "fixture"
+	default:
+		return "unknown"
+	}
+}
+
+func exceptionCount(counts map[string]int) int {
+	total := 0
+	for _, count := range counts {
+		total += count
+	}
+	return total
 }

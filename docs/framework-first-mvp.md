@@ -16,7 +16,7 @@
 - SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 - 旧的 `internal/governance` / `internal/sandbox` 本地包装已删除，主链路不再维护第二套治理和沙箱抽象。
 - `review_report.json` / `review_report.md` / `review_diagnostics.json` 已同步写入官方 artifact service，SQLite 继续保留引用记录。
-- `Run` 已挂官方 telemetry trace 边界，metrics 表仍保留本地聚合结果。
+- `Run` 已挂官方 telemetry trace 边界和审查摘要属性，metrics 表仍保留本地聚合结果。
 
 当前是基于 trpc-agent-go Tool/Skill/CodeExecutor 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 

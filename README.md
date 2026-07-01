@@ -37,7 +37,7 @@
 - Docker `codeexecutor/container` 真实端到端验证已提供 env-gated 测试，仍需在有 Docker daemon 的 CI/机器上执行。
 - 官方 artifact service 已接入报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - `session/sqlite` 作为 Agent session/history 的直接使用。
-- 更完整的 telemetry hook 和外部观测集成；当前已挂最小 trace 边界。
+- 更完整的 telemetry hook 和外部观测集成；当前官方 trace span 已记录审查摘要属性。
 
 ## Architecture
 

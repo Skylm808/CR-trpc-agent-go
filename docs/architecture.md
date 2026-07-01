@@ -34,7 +34,7 @@
 - E2B/Cube runtime adapter。
 - 官方 artifact service 已接入报告和诊断产物保存；SQLite 继续保留引用记录和查询。
 - `session/sqlite` 作为 Agent session/history 的直接使用；当前使用本项目 SQLite store。
-- 已接入最小 telemetry trace 边界；当前 metrics 表继续记录耗时、异常、severity 分布等。
+- 已接入最小 telemetry trace 边界和审查摘要属性；当前 metrics 表继续记录耗时、异常、severity 分布等。
 
 ## 系统流程
 

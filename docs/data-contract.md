@@ -136,7 +136,7 @@
 | `redaction_count` | ✅ |
 | `created_at` | ✅ |
 
-当前 metrics 是本地聚合。后续应接官方 telemetry hook 或把 hook 输出映射到同一 schema。
+当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、输入类型、task、finding、artifact、权限拦截、工具调用、沙箱和异常摘要。后续可把外部 telemetry hook 输出映射到同一 schema。
 
 ## ReviewReport
 
