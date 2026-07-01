@@ -57,12 +57,14 @@ func buildDiagnostics(result review.Result) ([]byte, error) {
 		GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
 		SandboxSummary    review.SandboxSummary    `json:"sandbox_summary"`
 		Artifacts         []review.ArtifactSummary `json:"artifacts"`
+		Conclusion        review.Conclusion        `json:"conclusion"`
 	}{
 		TaskID:            result.TaskID,
 		Metrics:           result.Metrics,
 		GovernanceSummary: result.GovernanceSummary,
 		SandboxSummary:    result.SandboxSummary,
 		Artifacts:         result.Artifacts,
+		Conclusion:        result.Conclusion,
 	}
 	return json.MarshalIndent(payload, "", "  ")
 }

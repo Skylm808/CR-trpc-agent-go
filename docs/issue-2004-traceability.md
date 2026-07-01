@@ -25,7 +25,7 @@
 | 测试 fixture | `--fixture` + `testdata/fixtures/` | ✅ |
 | `review_report.json` | `internal/report.BuildJSON` | ✅ |
 | `review_report.md` | `internal/report.BuildMarkdown` | ✅ |
-| `review_diagnostics.json` | `internal/agent.buildDiagnostics` | ✅ |
+| `review_diagnostics.json` | `internal/agent.buildDiagnostics`，包含 metrics / governance / sandbox / artifacts / conclusion | ✅ |
 | SQLite 查询 task 状态 | `TaskByID` | ✅ |
 | SQLite 查询 sandbox run | `SandboxRunsByTaskID` | ✅ |
 | SQLite 查询 permission decision | `DecisionsByTaskID` | ✅ |

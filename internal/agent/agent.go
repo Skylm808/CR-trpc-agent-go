@@ -391,6 +391,8 @@ func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
 		attribute.Int("cr_agent.exception_count", exceptionCount(result.Metrics.ExceptionCounts)),
 		attribute.Int64("cr_agent.total_duration_ms", result.Metrics.TotalDurationMS),
 		attribute.Int64("cr_agent.sandbox_duration_ms", result.Metrics.SandboxDurationMS),
+		attribute.String("cr_agent.conclusion_status", result.Conclusion.Status),
+		attribute.String("cr_agent.conclusion_reason", result.Conclusion.Reason),
 	)
 }
 

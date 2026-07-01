@@ -628,6 +628,15 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "review_diagnostics.json")); err != nil {
 		t.Fatalf("expected diagnostics artifact: %v", err)
 	}
+	diagnostics, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics artifact: %v", err)
+	}
+	for _, want := range []string{`"conclusion"`, result.Conclusion.Status, result.Conclusion.Reason} {
+		if !strings.Contains(string(diagnostics), want) {
+			t.Fatalf("expected diagnostics artifact to include %q, got %s", want, diagnostics)
+		}
+	}
 
 	store, err := sqlite.Open(dbPath)
 	if err != nil {
@@ -691,6 +700,12 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	}
 	if attrs["cr_agent.tool_call_count"].AsInt64() != int64(result.Metrics.ToolCallCount) {
 		t.Fatalf("tool call count attribute mismatch: %+v", attrs["cr_agent.tool_call_count"])
+	}
+	if attrs["cr_agent.conclusion_status"].AsString() != result.Conclusion.Status {
+		t.Fatalf("conclusion status attribute mismatch: got %q want %q", attrs["cr_agent.conclusion_status"].AsString(), result.Conclusion.Status)
+	}
+	if attrs["cr_agent.conclusion_reason"].AsString() != result.Conclusion.Reason {
+		t.Fatalf("conclusion reason attribute mismatch: got %q want %q", attrs["cr_agent.conclusion_reason"].AsString(), result.Conclusion.Reason)
 	}
 }
 
