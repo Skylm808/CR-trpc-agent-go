@@ -115,9 +115,10 @@
 | `kind` | ✅ `report` / `diagnostic` |
 | `path` | ✅ |
 | `digest` | ✅ |
+| `size_bytes` | ✅ |
 | `created_at` | ✅ |
 
-后续可增加 size_bytes、artifact cap 和更细粒度 artifact filter。
+后续可增加 artifact cap 和更细粒度 artifact filter。
 
 ## MetricsSummary
 

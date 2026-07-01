@@ -67,14 +67,18 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 	// 保存产物引用。
 	for _, artifact := range result.Artifacts {
 		digest := artifact.Digest
+		var size int64
 		if artifact.Name == "review_report.json" {
 			digest = digestBytes(jsonReport)
+			size = int64(len(jsonReport))
 		}
 		if artifact.Name == "review_report.md" {
 			digest = digestBytes(markdownReport)
+			size = int64(len(markdownReport))
 		}
 		if artifact.Name == "review_diagnostics.json" {
 			digest = digestBytes(diagnosticsReport)
+			size = int64(len(diagnosticsReport))
 		}
 		if err := a.store.SaveArtifact(ctx, storage.ArtifactRecord{
 			TaskID: taskID,
@@ -82,6 +86,7 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			Kind:   artifact.Kind,
 			Path:   artifact.Path,
 			Digest: digest,
+			Size:   size,
 			At:     time.Now(),
 		}); err != nil {
 			return err

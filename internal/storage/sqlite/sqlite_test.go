@@ -211,6 +211,7 @@ func TestStorePersistsFilterDecisionsAndArtifacts(t *testing.T) {
 		Kind:   "report",
 		Path:   "review_report.json",
 		Digest: "digest-1",
+		Size:   128,
 		At:     now,
 	}); err != nil {
 		t.Fatalf("SaveArtifact returned error: %v", err)
@@ -227,7 +228,57 @@ func TestStorePersistsFilterDecisionsAndArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ArtifactsByTaskID returned error: %v", err)
 	}
-	if len(artifacts) != 1 || artifacts[0].Name != "review_report.json" || artifacts[0].Digest != "digest-1" {
+	if len(artifacts) != 1 || artifacts[0].Name != "review_report.json" || artifacts[0].Digest != "digest-1" || artifacts[0].Size != 128 {
 		t.Fatalf("unexpected artifacts: %+v", artifacts)
+	}
+}
+
+func TestStoreMigratesArtifactSizeColumn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-artifacts.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  path TEXT,
+  digest TEXT,
+  created_at TEXT NOT NULL
+);`)
+	if err != nil {
+		t.Fatalf("create legacy artifacts: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy db: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open should migrate legacy artifacts: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := store.SaveArtifact(context.Background(), ArtifactRecord{
+		TaskID: "task-legacy-artifact",
+		Name:   "review_report.md",
+		Kind:   "report",
+		Path:   "review_report.md",
+		Digest: "digest-md",
+		Size:   64,
+		At:     now,
+	}); err != nil {
+		t.Fatalf("SaveArtifact after migration returned error: %v", err)
+	}
+	artifacts, err := store.ArtifactsByTaskID(context.Background(), "task-legacy-artifact")
+	if err != nil {
+		t.Fatalf("ArtifactsByTaskID returned error: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].Size != 64 {
+		t.Fatalf("migration did not preserve artifact size: %+v", artifacts)
 	}
 }

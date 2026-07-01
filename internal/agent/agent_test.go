@@ -127,6 +127,11 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if len(artifacts) < 2 || artifacts[0].Name == "" {
 		t.Fatalf("expected report artifacts, got %+v", artifacts)
 	}
+	for _, artifact := range artifacts {
+		if artifact.Size == 0 {
+			t.Fatalf("expected artifact size to be persisted, got %+v", artifacts)
+		}
+	}
 }
 
 // TestAgentRunDoesNotPersistRawSecretsInSQLite 固定明文密钥不落库。
@@ -554,6 +559,11 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	}
 	if len(recs) != 3 {
 		t.Fatalf("expected persisted artifact records, got %+v", recs)
+	}
+	for _, rec := range recs {
+		if rec.Size == 0 {
+			t.Fatalf("expected artifact size, got %+v", recs)
+		}
 	}
 }
 

@@ -82,6 +82,7 @@ type ArtifactRecord struct {
 	Kind   string
 	Path   string
 	Digest string
+	Size   int64
 	At     time.Time
 }
 
@@ -206,6 +207,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   kind TEXT NOT NULL,
   path TEXT,
   digest TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metrics (
@@ -232,6 +234,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	for _, stmt := range []string{
 		`ALTER TABLE sandbox_runs ADD COLUMN finished_at TEXT`,
 		`ALTER TABLE sandbox_runs ADD COLUMN artifact_count INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE artifacts ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumnError(err) {
 			return err
@@ -383,9 +386,9 @@ VALUES(?, ?, ?, ?, ?)
 // SaveArtifact 写入产物记录。
 func (s *Store) SaveArtifact(ctx context.Context, rec ArtifactRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO artifacts(task_id, name, kind, path, digest, created_at)
-VALUES(?, ?, ?, ?, ?, ?)
-`, rec.TaskID, rec.Name, rec.Kind, rec.Path, rec.Digest, rec.At.UTC().Format(time.RFC3339Nano))
+INSERT INTO artifacts(task_id, name, kind, path, digest, size_bytes, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?)
+`, rec.TaskID, rec.Name, rec.Kind, rec.Path, rec.Digest, rec.Size, rec.At.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -471,7 +474,7 @@ ORDER BY id
 // ArtifactsByTaskID 查询产物记录。
 func (s *Store) ArtifactsByTaskID(ctx context.Context, taskID string) ([]ArtifactRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT task_id, name, kind, path, digest, created_at
+SELECT task_id, name, kind, path, digest, size_bytes, created_at
 FROM artifacts WHERE task_id=?
 ORDER BY id
 `, taskID)
@@ -484,7 +487,7 @@ ORDER BY id
 	for rows.Next() {
 		var rec ArtifactRecord
 		var createdAt string
-		if err := rows.Scan(&rec.TaskID, &rec.Name, &rec.Kind, &rec.Path, &rec.Digest, &createdAt); err != nil {
+		if err := rows.Scan(&rec.TaskID, &rec.Name, &rec.Kind, &rec.Path, &rec.Digest, &rec.Size, &createdAt); err != nil {
 			return nil, err
 		}
 		rec.At, _ = time.Parse(time.RFC3339Nano, createdAt)
