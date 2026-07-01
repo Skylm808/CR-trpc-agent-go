@@ -236,10 +236,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 			incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
 		}
 	}
-	if decision.Action != string(tool.PermissionActionAllow) {
-		// 当前只统计主 Skill 权限拦截。
-		result.Metrics.PermissionBlocks = 1
-	}
+	result.Metrics.PermissionBlocks = permissionBlockCount(decisions)
 	// 补齐报告摘要字段。
 	result.HumanReviewItems = humanReviewItems(result.Warnings)
 	result.GovernanceSummary = governanceSummary(decisions, result.Metrics.PermissionBlocks)

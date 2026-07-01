@@ -92,6 +92,20 @@ func governanceSummary(decisions []storage.DecisionRecord, blocks int) review.Go
 	return out
 }
 
+// permissionBlockCount 统计所有非 allow 治理决策。
+func permissionBlockCount(decisions []storage.DecisionRecord) int {
+	blocks := 0
+	for _, decision := range decisions {
+		if decision.Command == "" && decision.Action == "" {
+			continue
+		}
+		if decision.Action != "allow" && decision.Action != "dry_run" {
+			blocks++
+		}
+	}
+	return blocks
+}
+
 // sandboxSummary 生成沙箱摘要。
 func sandboxSummary(runs []storage.SandboxRunRecord) review.SandboxSummary {
 	out := review.SandboxSummary{}

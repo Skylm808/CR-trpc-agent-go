@@ -129,7 +129,7 @@
 | `total_duration_ms` | ✅ |
 | `sandbox_duration_ms` | ✅ |
 | `tool_call_count` | ✅ |
-| `permission_block_count` | ✅ |
+| `permission_block_count` | ✅ 统计所有非 allow / 非 dry-run 决策 |
 | `finding_count` | ✅ |
 | `severity_counts_json` | ✅ |
 | `exception_counts_json` | ✅ |

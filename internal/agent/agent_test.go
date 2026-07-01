@@ -299,6 +299,73 @@ func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
 	}
 }
 
+// TestAgentRunCountsAllPermissionBlocks 固定所有非 allow 决策都会计数。
+func TestAgentRunCountsAllPermissionBlocks(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/blocked\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package blocked\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	ag.policy = tool.PermissionPolicyFunc(func(ctx context.Context, req *tool.PermissionRequest) (tool.PermissionDecision, error) {
+		_ = ctx
+		if req.ToolName == "workspace_exec" {
+			return tool.DenyPermission("go checks blocked by test policy"), nil
+		}
+		return tool.AllowPermission(), nil
+	})
+
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo,
+		Mode:     ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.Metrics.PermissionBlocks != 2 || result.GovernanceSummary.PermissionBlocks != 2 {
+		t.Fatalf("expected two blocked Go check decisions, got metrics=%+v governance=%+v", result.Metrics, result.GovernanceSummary)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	metrics, err := store.MetricsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load metrics: %v", err)
+	}
+	if metrics.PermissionBlockCount != 2 {
+		t.Fatalf("expected persisted permission block count 2, got %+v", metrics)
+	}
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	for _, run := range runs {
+		if strings.HasPrefix(run.Command, "go ") && run.Status != "deny" {
+			t.Fatalf("expected denied Go check run to skip executor, got %+v", run)
+		}
+	}
+}
+
 // TestAgentRunAcceptsFixtureInput 固定 fixture 输入路径。
 func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 	t.Parallel()
