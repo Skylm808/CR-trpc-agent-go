@@ -73,7 +73,7 @@
 | `status` | ✅ `ok` / `failed` / `error` / `timed_out` / `skipped` / permission action |
 | `timeout_ms` | ✅ |
 | `output_limit_bytes` | ✅ |
-| `env_whitelist` | ✅ 当前记录 `PATH,HOME,TMPDIR` |
+| `env_whitelist` | ✅ 当前统一记录 `PATH,HOME,TMPDIR,GOCACHE` |
 | `exit_code` | ✅ |
 | `stdout_digest` | ✅ |
 | `stderr_digest` | ✅ |

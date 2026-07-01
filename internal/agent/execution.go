@@ -111,7 +111,7 @@ func (a *Agent) runDryRun(ctx context.Context, taskID string) (review.Result, st
 		Status:           "skipped",
 		TimeoutMS:        a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
-		EnvWhitelist:     "PATH,HOME,TMPDIR",
+		EnvWhitelist:     sandboxEnvWhitelist,
 		At:               now,
 	}
 	return review.Result{
@@ -171,7 +171,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 		TaskID: taskID, Command: defaultSkillCommand,
 		Runtime: a.cfg.Runtime, TimeoutMS: a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
-		EnvWhitelist:     "PATH,HOME,TMPDIR",
+		EnvWhitelist:     sandboxEnvWhitelist,
 		At:               time.Now(),
 	}
 	if perm.Action != tool.PermissionActionAllow {
@@ -276,7 +276,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 		TaskID: taskID, Command: command, Runtime: a.cfg.Runtime,
 		Status: "skipped", TimeoutMS: a.cfg.Timeout.Milliseconds(),
 		OutputLimitBytes: a.cfg.OutputLimitBytes,
-		EnvWhitelist:     "PATH,HOME,TMPDIR,GOCACHE",
+		EnvWhitelist:     sandboxEnvWhitelist,
 		At:               time.Now(),
 	}
 	if perm.Action != tool.PermissionActionAllow {

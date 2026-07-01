@@ -50,6 +50,7 @@ const (
 	containerRepoMountPath  = "/workspace/repo"
 	defaultContainerImage   = "golang:1.25-bookworm"
 	goSandboxCacheDir       = "/tmp/cr-agent-gocache"
+	sandboxEnvWhitelist     = "PATH,HOME,TMPDIR,GOCACHE"
 )
 
 // Config 保存一次审查的依赖和边界。

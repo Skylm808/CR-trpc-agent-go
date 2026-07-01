@@ -76,7 +76,7 @@ M5  验收交付与评测                         ⬜
 | E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
 | ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
 | deny 不进入 executor | ✅ | Agent E2E 覆盖 deny |
-| env whitelist 强校验 | 🔶 | 当前记录 `PATH,HOME,TMPDIR`，未强制过滤所有 env |
+| env whitelist 强校验 | 🔶 | Agent 审计统一记录 `PATH,HOME,TMPDIR,GOCACHE`，runtime 级强隔离后续增强 |
 | artifact cap | ✅ | 默认单产物 1MiB，Config 可调整 |
 | 官方 telemetry hook | 🔶 | 当前有 trace span + 审查摘要属性 + 本地 metrics 表 |
 

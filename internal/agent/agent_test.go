@@ -110,6 +110,9 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if len(runs) == 0 || runs[0].TimeoutMS == 0 || runs[0].OutputLimitBytes == 0 {
 		t.Fatalf("expected bounded sandbox run record, got %+v", runs)
 	}
+	if runs[0].EnvWhitelist != sandboxEnvWhitelist {
+		t.Fatalf("expected env whitelist %q, got %+v", sandboxEnvWhitelist, runs[0])
+	}
 	if runs[0].FinishedAt.IsZero() || runs[0].ArtifactCount != 3 {
 		t.Fatalf("expected sandbox audit completion fields, got %+v", runs[0])
 	}
@@ -799,6 +802,9 @@ func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != "skipped" {
 		t.Fatalf("expected skipped sandbox run, got %+v", runs)
 	}
+	if runs[0].EnvWhitelist != sandboxEnvWhitelist {
+		t.Fatalf("expected dry-run env whitelist %q, got %+v", sandboxEnvWhitelist, runs[0])
+	}
 	decisions, err := store.DecisionsByTaskID(context.Background(), result.TaskID)
 	if err != nil {
 		t.Fatalf("load decisions: %v", err)
@@ -1166,8 +1172,8 @@ func assertRunForCommand(t *testing.T, runs []sqlite.SandboxRunRecord, command s
 	t.Helper()
 	for _, run := range runs {
 		if run.Command == command && run.Status == "ok" && run.DurationMS >= 0 {
-			if !strings.Contains(run.EnvWhitelist, "GOCACHE") {
-				t.Fatalf("expected sandbox env whitelist to include GOCACHE, got %+v", run)
+			if run.EnvWhitelist != sandboxEnvWhitelist {
+				t.Fatalf("expected sandbox env whitelist %q, got %+v", sandboxEnvWhitelist, run)
 			}
 			return
 		}
