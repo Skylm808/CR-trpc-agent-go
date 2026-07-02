@@ -1,8 +1,8 @@
 # CR-trpc-agent-go
 
-基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `artifact` 保存报告和诊断产物，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
+基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -12,7 +12,7 @@
 - 默认 container runtime，local fallback 仅显式用于开发与测试。
 - 结构化 findings、warnings、human review items、治理摘要、沙箱摘要、metrics、artifacts。
 - SQLite 审计库可按 task id 查询 task、decision、run、finding、artifact、report。
-- 公开 fixture 和 `scripts/eval.sh` 已能跑通，适合作为第一版验收基线。
+- 公开 fixture、sample 输出、SQLite 回放测试和 `scripts/eval.sh` 已能跑通，适合作为第一版验收基线。
 
 ## Current Status
 
@@ -31,7 +31,7 @@
 - `review_diagnostics.json` 包含 Go input metadata：changed_go_files、package_names、module_path、has_tests、touched_test_files。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
-- 公开 fixture 覆盖安全、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
+- 公开 fixture 覆盖安全、secret 多形态脱敏、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
 - 早期 `internal/governance` / `internal/sandbox` 本地包装已删除；主链路只使用官方 `tool.PermissionPolicy`、`tool/codeexec` 和 `codeexecutor/container` / `codeexecutor/local`。
 
 仍需完善：
@@ -131,6 +131,22 @@ go run ./cmd/review-agent \
 
 - [examples/review_report.json](examples/review_report.json)
 - [examples/review_report.md](examples/review_report.md)
+- [examples/review_diagnostics.json](examples/review_diagnostics.json)
+
+重新生成示例输出：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
+  --fixture secret-shapes.diff \
+  --fixtures-root testdata/fixtures \
+  --skills-root skills \
+  --runtime local-fallback \
+  --mode rule-only \
+  --sqlite examples/review.db \
+  --output-dir examples
+```
+
+`examples/review.db` 是本地回放用 SQLite 文件，受 `.gitignore` 的 `*.db` 规则忽略；文本交付物是三个 report 文件。
 
 ## CLI
 
@@ -170,17 +186,20 @@ SQLite tables are created automatically:
 - `metrics`
 - `reports`
 
-Example query:
+Example task-id replay query:
 
 ```sql
 SELECT task_id, status, mode FROM review_tasks ORDER BY created_at DESC;
 SELECT command, action, reason FROM permission_decisions WHERE task_id = ?;
+SELECT target, action, reason FROM filter_decisions WHERE task_id = ?;
 SELECT command, status, timeout_ms, output_limit_bytes, duration_ms FROM sandbox_runs WHERE task_id = ?;
 SELECT severity, category, file, line, title, status FROM findings WHERE task_id = ? ORDER BY file, line;
-SELECT name, kind, path, digest FROM artifacts WHERE task_id = ?;
-SELECT total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count FROM metrics WHERE task_id = ?;
+SELECT name, kind, path, digest, size_bytes FROM artifacts WHERE task_id = ?;
+SELECT total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, redaction_count FROM metrics WHERE task_id = ?;
 SELECT json_report, markdown_report FROM reports WHERE task_id = ?;
 ```
+
+`cmd/review-agent` 的 `TestAcceptanceEvidenceReportsAndSQLiteReplay` 会读取报告中的 `task_id`，并按上述数据类别查询 SQLite，保证报告和审计库可回放。
 
 ## Fixtures
 
@@ -190,6 +209,7 @@ SELECT json_report, markdown_report FROM reports WHERE task_id = ?;
 |---------|----------------|
 | `safe.diff` | No finding. |
 | `secret.diff` | `secret-leak` critical finding with redacted evidence. |
+| `secret-shapes.diff` | API key、LLM key、Bearer、GitHub token、password 多形态脱敏和 placeholder 降噪。 |
 | `panic.diff` | `panic-direct` high finding. |
 | `todo.diff` | `todo-marker` medium finding. |
 | `test-missing.diff` | `missing-test-hint` warning. |
@@ -220,6 +240,7 @@ scripts/eval.sh         public fixture recall / precision evaluator
 
 - [docs/framework-first-mvp.md](docs/framework-first-mvp.md)
 - [docs/architecture.md](docs/architecture.md)
+- [docs/issue-acceptance.md](docs/issue-acceptance.md)
 - [docs/implementation-plan.md](docs/implementation-plan.md)
 - [docs/data-contract.md](docs/data-contract.md)
 - [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)

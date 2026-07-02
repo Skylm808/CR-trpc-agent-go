@@ -47,8 +47,8 @@
 | 沙箱脚本 | `skills/code-review/scripts/check.sh` | ✅ |
 | Agent 编排 | `internal/agent/agent.go` | ✅ |
 | DB schema | `internal/storage/sqlite/sqlite.go` | ✅ artifacts 表只保存引用、摘要和大小 |
-| 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 13 个 |
-| 示例 report 输出 | `examples/review_report.json/md` | ✅ |
+| 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 14 个 |
+| 示例 report 输出 | `examples/review_report.json/md`、`examples/review_diagnostics.json` | ✅ |
 | README | `README.md` | ✅ |
 | 300–500 字方案说明 | `docs/design-summary.md` | ✅ |
 | Goal prompt | `docs/goal-prompt-framework-mvp.md` | ✅ |
@@ -57,11 +57,11 @@
 
 | # | 验收标准 | 状态 | 验证方式 | 缺口 |
 |---|---------|------|---------|------|
-| 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` | — |
+| 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` 覆盖 14 条 fixture | — |
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补，契约见 `docs/eval-matrix.md` |
-| 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go` | — |
+| 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E | Docker Desktop 下 env-gated container test 已通过 |
-| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
+| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、LLM key、OpenAI key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
 | 8 | 报告含 findings 摘要、severity 统计、人工复核项、治理拦截、监控、沙箱摘要、修复建议和 conclusion | ✅ | `report_test.go`、`agent_test.go` | — |
@@ -71,6 +71,7 @@
 | 规则类别 | rule_id | fixture | 检出 | severity/status |
 |---------|---------|---------|------|-----------------|
 | 敏感信息泄漏 | `secret-leak` | `secret.diff` | ✅ | critical/finding |
+| 敏感信息多形态脱敏 | `secret-leak` | `secret-shapes.diff` | ✅ | critical/finding |
 | 错误处理 | `panic-direct` | `panic.diff` | ✅ | high/finding |
 | 可维护性 | `todo-marker` | `todo.diff` | ✅ | medium/finding |
 | 测试缺失 | `missing-test-hint` | `test-missing.diff` | ✅ | low/warning |
@@ -83,13 +84,14 @@
 ## 下一步
 
 1. 在 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
-2. 明确 E2B、session/sqlite 的进一步接入边界；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
+2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。
 
 ## 相关文档
 
 - [architecture.md](architecture.md)
+- [issue-acceptance.md](issue-acceptance.md)
 - [framework-first-mvp.md](framework-first-mvp.md)
 - [implementation-plan.md](implementation-plan.md)
 - [fixtures-matrix.md](fixtures-matrix.md)

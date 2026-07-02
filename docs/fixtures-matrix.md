@@ -8,6 +8,7 @@
 |---------|------|-------------|---------------|-------------|----------|
 | `safe.diff` | 干净 Go 变更，无风险 | — | — | — | ✅ 零 finding |
 | `secret.diff` | 硬编码 API Key / token | `secret-leak` | critical | finding | ✅ |
+| `secret-shapes.diff` | API key、LLM key、OpenAI key、Bearer、GitHub token、password 多形态 | `secret-leak` | critical | finding | ✅ 6 条，placeholder 不报 |
 | `panic.diff` | 新增函数直接 panic | `panic-direct` | high | finding | ✅ |
 | `todo.diff` | 新增 TODO/FIXME 标记 | `todo-marker` | medium | finding | ✅ |
 | `test-missing.diff` | 新增无 error 返回的函数，缺测试 | `missing-test-hint` | low | warning | ✅ |
@@ -34,6 +35,7 @@
 - secret evidence 中不包含原始密钥。
 - `safe.diff` 零 finding。
 - `dedupe.diff` 只保留一条 finding。
+- `secret-shapes.diff` 对多形态 secret 生成多条脱敏 finding，同时不把 placeholder 当高危。
 
 ## 样本摘要
 
@@ -44,6 +46,10 @@
 ### secret.diff
 
 预期：`secret-leak` critical；evidence 中密钥脱敏。
+
+### secret-shapes.diff
+
+预期：6 条 `secret-leak` critical；覆盖 `apiKey`、`llmkey`、`openaiKey`、`client_secret`、Bearer token 和 password；`tokenPlaceholder = "dummy"` 与 `retryTokenTimeoutSeconds` 不报 critical。
 
 ### panic.diff
 
@@ -107,6 +113,7 @@ Issue 要求隐藏样本检出率 ≥ 80%、误报 ≤ 15%。当前还缺：
 ```text
 examples/review_report.json
 examples/review_report.md
+examples/review_diagnostics.json
 ```
 
 如需 fixture 级 golden report，后续可新增：

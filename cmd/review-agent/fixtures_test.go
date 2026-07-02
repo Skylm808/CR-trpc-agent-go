@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 )
 
 type reportFixture struct {
@@ -29,6 +31,24 @@ func TestAllFixturesMatchExpectedReviewResults(t *testing.T) {
 		"secret.diff": {
 			Findings: []findingExpectation{{RuleID: "secret-leak", Severity: "critical", Status: "finding"}},
 			Secrets:  []string{"sk-1234567890abcdef"},
+		},
+		"secret-shapes.diff": {
+			Findings: []findingExpectation{
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+			},
+			Secrets: []string{
+				"sk-proj-1234567890abcdef",
+				"llm-live-1234567890abcdef",
+				"sk-1234567890abcdef",
+				"github_pat_1234567890abcdef1234567890abcdef",
+				"abc.def.ghi",
+				"plain-password",
+			},
 		},
 		"panic.diff": {
 			Findings: []findingExpectation{{RuleID: "panic-direct", Severity: "high", Status: "finding"}},
@@ -99,6 +119,75 @@ func TestRunCanUseFixtureName(t *testing.T) {
 	}
 }
 
+func TestAcceptanceEvidenceReportsAndSQLiteReplay(t *testing.T) {
+	out := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	if err := Run(Options{
+		Fixture:      "secret-shapes.diff",
+		FixturesRoot: filepath.Join("..", "..", "testdata", "fixtures"),
+		OutputDir:    out,
+		SQLitePath:   dbPath,
+		Mode:         cragent.ModeRuleOnly,
+		Runtime:      cragent.RuntimeLocalFallback,
+		SkillsRoot:   filepath.Join("..", "..", "skills"),
+	}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	reportPath := filepath.Join(out, "review_report.json")
+	reportBytes, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read json report: %v", err)
+	}
+	var result reportData
+	if err := json.Unmarshal(reportBytes, &result); err != nil {
+		t.Fatalf("unmarshal report json: %v", err)
+	}
+	assertReportAcceptanceContract(t, string(reportBytes), result)
+
+	if _, err := os.Stat(filepath.Join(out, "review_report.md")); err != nil {
+		t.Fatalf("expected markdown report: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "review_diagnostics.json")); err != nil {
+		t.Fatalf("expected diagnostics report: %v", err)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	task, err := store.TaskByID(ctx, result.TaskID)
+	if err != nil {
+		t.Fatalf("query task by id: %v", err)
+	}
+	if task.ID != result.TaskID || task.Status != "done" {
+		t.Fatalf("unexpected task replay record: %+v", task)
+	}
+	if findings, err := store.FindingsByTaskID(ctx, result.TaskID); err != nil || len(findings) == 0 {
+		t.Fatalf("expected replayable findings, findings=%+v err=%v", findings, err)
+	}
+	if decisions, err := store.DecisionsByTaskID(ctx, result.TaskID); err != nil || len(decisions) == 0 {
+		t.Fatalf("expected permission decisions, decisions=%+v err=%v", decisions, err)
+	}
+	if runs, err := store.SandboxRunsByTaskID(ctx, result.TaskID); err != nil || len(runs) == 0 {
+		t.Fatalf("expected sandbox runs, runs=%+v err=%v", runs, err)
+	}
+	if filters, err := store.FilterDecisionsByTaskID(ctx, result.TaskID); err != nil || len(filters) == 0 {
+		t.Fatalf("expected filter decisions, filters=%+v err=%v", filters, err)
+	}
+	if artifacts, err := store.ArtifactsByTaskID(ctx, result.TaskID); err != nil || len(artifacts) < 3 {
+		t.Fatalf("expected report artifacts, artifacts=%+v err=%v", artifacts, err)
+	}
+	if metrics, err := store.MetricsByTaskID(ctx, result.TaskID); err != nil || metrics.FindingCount == 0 {
+		t.Fatalf("expected metrics replay, metrics=%+v err=%v", metrics, err)
+	}
+	if report, err := store.ReportByTaskID(ctx, result.TaskID); err != nil || len(report.JSON) == 0 || len(report.Markdown) == 0 {
+		t.Fatalf("expected stored reports, report=%+v err=%v", report, err)
+	}
+}
+
 func runFixture(t *testing.T, root, name string) reportData {
 	t.Helper()
 	out := t.TempDir()
@@ -124,8 +213,18 @@ func runFixture(t *testing.T, root, name string) reportData {
 }
 
 type reportData struct {
-	Findings []findingData `json:"findings"`
-	Warnings []findingData `json:"warnings"`
+	TaskID             string              `json:"task_id"`
+	Summary            string              `json:"summary"`
+	Findings           []findingData       `json:"findings"`
+	Warnings           []findingData       `json:"warnings"`
+	HumanReviewItems   []findingData       `json:"human_review_items"`
+	GovernanceSummary  json.RawMessage     `json:"governance_summary"`
+	SandboxSummary     json.RawMessage     `json:"sandbox_summary"`
+	Metrics            metricsData         `json:"metrics"`
+	Artifacts          []map[string]string `json:"artifacts"`
+	Conclusion         json.RawMessage     `json:"conclusion"`
+	InputMetadata      json.RawMessage     `json:"input_metadata"`
+	DiagnosticsVersion string              `json:"diagnostics_version,omitempty"`
 }
 
 type findingData struct {
@@ -165,4 +264,34 @@ func assertSecretsRedacted(t *testing.T, result reportData, secrets []string) {
 			}
 		}
 	}
+}
+
+func assertReportAcceptanceContract(t *testing.T, jsonText string, result reportData) {
+	t.Helper()
+	if result.TaskID == "" || result.Summary == "" {
+		t.Fatalf("report missing task id or summary: %+v", result)
+	}
+	for _, want := range []string{
+		`"findings"`,
+		`"severity_counts"`,
+		`"human_review_items"`,
+		`"governance_summary"`,
+		`"metrics"`,
+		`"sandbox_summary"`,
+		`"recommendation"`,
+		`"artifacts"`,
+		`"conclusion"`,
+	} {
+		if !strings.Contains(jsonText, want) {
+			t.Fatalf("report missing acceptance field %s: %s", want, jsonText)
+		}
+	}
+	if len(result.Findings) == 0 || result.Metrics.FindingCount == 0 || len(result.Artifacts) < 3 {
+		t.Fatalf("report missing replayable findings, metrics, or artifacts: %+v", result)
+	}
+}
+
+type metricsData struct {
+	FindingCount   int            `json:"finding_count"`
+	SeverityCounts map[string]int `json:"severity_counts"`
 }

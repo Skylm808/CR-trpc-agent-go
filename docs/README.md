@@ -10,6 +10,7 @@
 | [framework-first-mvp.md](framework-first-mvp.md) | 基于 trpc-agent-go 的第一个小版本边界与实现顺序 |
 | [implementation-plan.md](implementation-plan.md) | 分阶段实现计划（M1–M5）、Definition of Done、验收对照 |
 | [data-contract.md](data-contract.md) | 实体字段、SQLite schema、按 task_id 查询契约 |
+| [issue-acceptance.md](issue-acceptance.md) | 面向验收的命令、sample、SQLite 回放和框架模块证据 |
 | [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) | 可直接复制给 Goal 模式的下一阶段执行 prompt |
 
 ## Issue #2004 专项
@@ -27,6 +28,7 @@
 1. [design-summary.md](design-summary.md) — 快速把握整体设计
 2. [architecture.md](architecture.md) — 组件与流程
 3. [issue-2004-traceability.md](issue-2004-traceability.md) — 当前进度与缺口
+4. [issue-acceptance.md](issue-acceptance.md) — 最终验收命令与证据
 
 **开始开发：**
 

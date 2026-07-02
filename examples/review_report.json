@@ -1,13 +1,78 @@
 {
-  "task_id": "task-b5a58f11ceb0-1782451188050581000",
+  "task_id": "task-21d1ca85fd66-1782977345277550000",
   "findings": [
     {
       "severity": "critical",
       "category": "security",
       "file": "config.go",
-      "line": 1,
+      "line": 2,
       "title": "Potential secret appears in added code",
       "evidence": "const apiKey=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    },
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 3,
+      "title": "Potential secret appears in added code",
+      "evidence": "const llmkey=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    },
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 4,
+      "title": "Potential secret appears in added code",
+      "evidence": "const openaiKey=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    },
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 5,
+      "title": "Potential secret appears in added code",
+      "evidence": "const client_secret=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    },
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 6,
+      "title": "Potential secret appears in added code",
+      "evidence": "const bearerToken=[REDACTED]",
+      "recommendation": "Replace the literal with a secret manager or environment lookup.",
+      "confidence": "high",
+      "source": "skill_run",
+      "rule_id": "secret-leak",
+      "status": "finding"
+    },
+    {
+      "severity": "critical",
+      "category": "security",
+      "file": "config.go",
+      "line": 7,
+      "title": "Potential secret appears in added code",
+      "evidence": "const password=[REDACTED]",
       "recommendation": "Replace the literal with a secret manager or environment lookup.",
       "confidence": "high",
       "source": "skill_run",
@@ -17,14 +82,22 @@
   ],
   "human_review_items": [],
   "metrics": {
-    "total_duration_ms": 2212,
-    "sandbox_duration_ms": 2211,
+    "total_duration_ms": 2144,
+    "sandbox_duration_ms": 2142,
     "tool_call_count": 2,
-    "finding_count": 1,
+    "finding_count": 6,
     "severity_counts": {
-      "critical": 1
+      "critical": 6
     },
-    "redaction_count": 1
+    "redaction_count": 6
+  },
+  "input_metadata": {
+    "changed_go_files": [
+      "config.go"
+    ],
+    "package_names": [
+      "foo"
+    ]
   },
   "governance_summary": {
     "permission_decisions": [
@@ -42,10 +115,10 @@
         "status": "ok",
         "timeout_ms": 30000,
         "output_limit_bytes": 65536,
-        "env_whitelist": "PATH,HOME,TMPDIR",
-        "stdout_digest": "fa3c0bc2fd5510a55cf7610b3e8f53570958d0b4c07430308949175d2cb69533",
+        "env_whitelist": "PATH,HOME,TMPDIR,GOCACHE",
+        "stdout_digest": "3c38c2fd2bb25abe3b055ecbafa10d5cd10c0c757fad7da64d80ed026abd6649",
         "stderr_digest": "2a13af67601624cb4924e88c89583b6d14c362a01c585716097d241c0a47bd61",
-        "duration_ms": 2211
+        "duration_ms": 2142
       }
     ]
   },
@@ -59,8 +132,18 @@
       "name": "review_report.md",
       "kind": "report",
       "path": "review_report.md"
+    },
+    {
+      "name": "review_diagnostics.json",
+      "kind": "diagnostic",
+      "path": "review_diagnostics.json"
     }
   ],
-  "summary": "1 findings, 0 warnings",
-  "created_at": "2026-06-26T13:19:50.26304+08:00"
+  "summary": "6 findings, 0 warnings",
+  "conclusion": {
+    "status": "fail",
+    "reason": "blocking_findings",
+    "summary": "Critical or high severity findings require changes before merge."
+  },
+  "created_at": "2026-07-02T15:29:07.421482+08:00"
 }
