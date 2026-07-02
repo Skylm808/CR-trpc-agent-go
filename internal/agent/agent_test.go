@@ -933,6 +933,42 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	}
 }
 
+// TestAgentDefaultArtifactService 保存默认官方产物边界。
+func TestAgentDefaultArtifactService(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	if ag.artifactService == nil {
+		t.Fatal("expected default artifact service")
+	}
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		Mode:     ModeRuleOnly,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	art, err := ag.artifactService.LoadArtifact(context.Background(), artifactSessionInfo(result.TaskID), "review_report.json", nil)
+	if err != nil {
+		t.Fatalf("load default artifact: %v", err)
+	}
+	if art == nil || art.MimeType != "application/json" || !strings.Contains(string(art.Data), `"task_id"`) {
+		t.Fatalf("expected saved JSON report artifact, got %+v", art)
+	}
+}
+
 // TestAgentRunRecordsTelemetryAttributes 固定官方 telemetry span 摘要。
 func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	recorder := useAgentTelemetrySpanRecorder(t)

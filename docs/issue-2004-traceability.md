@@ -83,8 +83,8 @@
 
 ## 下一步
 
-1. 在 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
-2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有 trace span 和审查摘要属性，artifact service 已有报告和诊断产物最小接入，SQLite artifacts 表仅作为引用索引。
+1. 在宿主 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
+2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有 trace span 和审查摘要属性，artifact service 默认用 inmemory 保存报告和诊断产物，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。
 

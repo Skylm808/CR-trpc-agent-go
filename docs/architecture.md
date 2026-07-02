@@ -32,7 +32,7 @@
 
 - 真实 Docker container 端到端测试已加入 env gate，并已在 Docker Desktop 上通过。
 - E2B/Cube runtime adapter。
-- 官方 artifact service 已接入报告和诊断产物保存；SQLite 继续保留引用记录和查询。
+- 官方 artifact service 默认用 inmemory 保存报告和诊断产物；SQLite 继续保留引用记录和查询。
 - 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
 - 已接入最小 telemetry trace 边界和审查摘要属性；当前 metrics 表继续记录耗时、异常、severity 分布等。
 
@@ -63,7 +63,7 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
 | Observability | metrics 表记录耗时、异常、权限拦截、severity 分布，Run 已挂 trace span | 🔶 仍缺更完整的 OTLP 导出和统一 dashboard |
-| Artifact | `review_report.json` / `review_report.md` / `review_diagnostics.json` 保存到本地，且同步写入官方 artifact service | ✅ 已有最小 artifact 接入，SQLite 继续保留引用记录 |
+| Artifact | `review_report.json` / `review_report.md` / `review_diagnostics.json` 保存到本地，且同步写入官方 artifact service | ✅ 默认使用官方 inmemory service，SQLite 继续保留引用记录 |
 
 ## CLI Mode
 

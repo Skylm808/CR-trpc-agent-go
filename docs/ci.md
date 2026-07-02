@@ -31,14 +31,31 @@ GOCACHE=/private/tmp/cr-agent-gocache \
 scripts/acceptance.sh
 ```
 
-## GitHub Actions
+## 宿主 CI 接入
 
-`.github/workflows/acceptance.yml` 包含两个 job：
+本 example 不提交仓库级 `.github/workflows/*.yml`。GitHub Actions 不是 Issue 硬性要求；未来迁移到官方 `trpc-agent-go/examples` 时，应由宿主仓库决定如何接入 CI。
 
-- `acceptance`：默认运行 deterministic acceptance，显式 `CR_AGENT_ACCEPTANCE_DOCKER=skip`，避免 Docker 权限或镜像拉取导致基础检查不稳定。
-- `container-e2e`：仅当仓库 variable `CR_AGENT_RUN_CONTAINER_E2E=1` 时运行，内部设置 `CR_AGENT_ACCEPTANCE_DOCKER=always`。
+推荐宿主 CI 拆成两个入口：
 
-这样基础 CI 始终覆盖公开 fixture、报告字段、SQLite 回放和 eval 统计；需要验证真实容器时再打开独立 job。
+- 基础 acceptance：运行 `scripts/acceptance.sh`，显式 `CR_AGENT_ACCEPTANCE_DOCKER=skip`，覆盖公开 fixture、报告字段、SQLite 回放、eval 统计和格式检查。
+- container E2E：在有 Docker daemon 的 runner 上设置 `CR_AGENT_ACCEPTANCE_DOCKER=always`，单独验证真实容器沙箱。
+
+GitHub Actions 可按需使用下面的宿主仓库片段：
+
+```yaml
+- name: Acceptance
+  run: |
+    CR_AGENT_ACCEPTANCE_DOCKER=skip \
+    GOCACHE=/private/tmp/cr-agent-gocache \
+    scripts/acceptance.sh
+
+- name: Container E2E
+  if: vars.CR_AGENT_RUN_CONTAINER_E2E == '1'
+  run: |
+    CR_AGENT_ACCEPTANCE_DOCKER=always \
+    GOCACHE=/private/tmp/cr-agent-gocache \
+    scripts/acceptance.sh
+```
 
 ## Hidden Sample 接入
 

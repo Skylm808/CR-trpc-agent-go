@@ -118,7 +118,7 @@
 
 ## Artifact
 
-当前 artifact 包含本地报告和诊断产物引用。配置 `ArtifactService` 时，报告和诊断正文写入官方 artifact service；SQLite `artifacts` 表只保存引用、摘要和大小，作为审计索引。
+当前 artifact 包含本地报告和诊断产物引用。Agent 默认使用官方 `artifact/inmemory` service 保存报告和诊断正文；业务侧也可以注入 COS/S3 等其他 `artifact.Service`。SQLite `artifacts` 表只保存引用、摘要和大小，作为审计索引。
 
 | 字段 | 当前状态 |
 |------|----------|

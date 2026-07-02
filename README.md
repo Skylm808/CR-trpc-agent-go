@@ -26,7 +26,7 @@
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
 - `sandbox` 模式下优先通过官方 `tool/workspaceexec` 在工作区内执行 `go test ./...`、`go vet ./...`，`--staticcheck` 显式开启 `staticcheck ./...`；失败时保留 `tool/codeexec` 兜底。
 - SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact 引用、metrics、report。
-- `review_report.json`、`review_report.md`、`review_diagnostics.json` 会写入本地输出目录；配置 `ArtifactService` 时同步进入官方 artifact service。
+- `review_report.json`、`review_report.md`、`review_diagnostics.json` 会写入本地输出目录，并同步进入官方 artifact service；SQLite 只保存引用、摘要和大小。
 - 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
 - `review_diagnostics.json` 包含 Go input metadata：changed_go_files、package_names、module_path、has_tests、touched_test_files。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
@@ -36,8 +36,8 @@
 
 仍需完善：
 
-- Docker `codeexecutor/container` 真实端到端验证已在 Docker Desktop 上跑通；CI 中仍建议显式开启 env-gated 测试。
-- 官方 artifact service 已接入报告和诊断产物；SQLite 继续保留 artifact 引用记录。
+- Docker `codeexecutor/container` 真实端到端验证已在 Docker Desktop 上跑通；宿主 CI 中仍建议显式开启 env-gated 测试。
+- 官方 artifact service 默认使用 inmemory 保存报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - 官方 `session/sqlite` 尚未直接接入；当前 SQLite 是审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
 - 更完整的 telemetry hook 和外部观测集成；当前官方 trace span 已记录审查摘要属性。
 

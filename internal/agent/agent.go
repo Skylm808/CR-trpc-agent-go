@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
+	artifactinmemory "trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
 	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
@@ -321,25 +322,14 @@ func (a *Agent) saveTaskStatus(ctx context.Context, taskID, inputRef, inputDiges
 
 // saveArtifacts 使用官方 artifact service 持久化报告和诊断产物。
 func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.Result, payloads []artifactPayload) error {
-	sessionInfo := artifact.SessionInfo{
-		AppName:   "cr-agent",
-		UserID:    "local",
-		SessionID: taskID,
-	}
+	sessionInfo := artifactSessionInfo(taskID)
 	payloadByName := make(map[string][]byte, len(payloads))
 	for _, payload := range payloads {
 		payloadByName[payload.Name] = payload.Data
 	}
 	for _, art := range result.Artifacts {
-		var mime string
-		switch art.Name {
-		case "review_report.json":
-			mime = "application/json"
-		case "review_report.md":
-			mime = "text/markdown"
-		case "review_diagnostics.json":
-			mime = "application/json"
-		default:
+		mime := artifactMIMEType(art.Name)
+		if mime == "" {
 			continue
 		}
 		payload := payloadByName[art.Name]
@@ -352,6 +342,26 @@ func (a *Agent) saveArtifacts(ctx context.Context, taskID string, result review.
 		}
 	}
 	return nil
+}
+
+// artifactSessionInfo 让报告产物按 task 维度归档。
+func artifactSessionInfo(taskID string) artifact.SessionInfo {
+	return artifact.SessionInfo{
+		AppName:   "cr-agent",
+		UserID:    "local",
+		SessionID: taskID,
+	}
+}
+
+func artifactMIMEType(name string) string {
+	switch name {
+	case "review_report.json", "review_diagnostics.json":
+		return "application/json"
+	case "review_report.md":
+		return "text/markdown"
+	default:
+		return ""
+	}
 }
 
 // normalizeConfig 填充默认配置。
@@ -370,6 +380,9 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.OutputDir == "" {
 		cfg.OutputDir = "."
+	}
+	if cfg.ArtifactService == nil {
+		cfg.ArtifactService = artifactinmemory.NewService()
 	}
 	return cfg
 }
