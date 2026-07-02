@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,61 @@ func TestSkillCheckScriptFallsBackToGoWhenPythonUnavailable(t *testing.T) {
 	if len(payload.Findings) != 1 || payload.Findings[0].RuleID != "secret-leak" {
 		t.Fatalf("expected secret-leak finding from Go fallback, got %+v", payload.Findings)
 	}
+}
+
+// TestSkillCheckScriptDetectsSecretShapes 固定 Skill 规则的密钥覆盖面。
+func TestSkillCheckScriptDetectsSecretShapes(t *testing.T) {
+	t.Parallel()
+
+	skillRoot, err := SkillRoot()
+	if err != nil {
+		t.Fatalf("SkillRoot returned error: %v", err)
+	}
+	repoRoot := filepath.Dir(filepath.Dir(skillRoot))
+	diff, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "fixtures", "secret-shapes.diff"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	cmd := exec.Command(mustLookPath(t, "bash"), filepath.Join(skillRoot, "scripts", "check.sh"))
+	cmd.Stdin = bytes.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("check.sh failed: %v\n%s", err, out)
+	}
+
+	var payload struct {
+		Findings []Finding `json:"findings"`
+	}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("unmarshal check output: %v\n%s", err, out)
+	}
+	if got := countSkillRule(payload.Findings, "secret-leak"); got != 6 {
+		t.Fatalf("expected six high-confidence secret findings, got %d: %+v", got, payload.Findings)
+	}
+	for _, raw := range []string{
+		"sk-proj-1234567890abcdef",
+		"llm-live-1234567890abcdef",
+		"sk-1234567890abcdef",
+		"github_pat_1234567890abcdef1234567890abcdef",
+		"abc.def.ghi",
+		"plain-password",
+		"dummy",
+	} {
+		if strings.Contains(string(out), raw) {
+			t.Fatalf("check.sh output leaked or overreported raw value %q: %s", raw, out)
+		}
+	}
+}
+
+func countSkillRule(findings []Finding, ruleID string) int {
+	total := 0
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			total++
+		}
+	}
+	return total
 }
 
 // mustLookPath 查找测试工具。

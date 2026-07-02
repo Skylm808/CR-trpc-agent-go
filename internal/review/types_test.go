@@ -17,7 +17,11 @@ func TestFindingKeyDedupesSameFileLineRule(t *testing.T) {
 func TestRedactSecretsMasksCommonTokenShapes(t *testing.T) {
 	input := strings.Join([]string{
 		`apiKey=sk-1234567890abcdef`,
+		`llmkey="llm-live-1234567890abcdef"`,
+		`openaiKey="sk-proj-1234567890abcdef"`,
 		`Authorization: Bearer abc.def.ghi`,
+		`passwd="super-secret-passphrase"`,
+		`client_secret="github_pat_1234567890abcdef1234567890abcdef"`,
 		`password=plain-password`,
 		`githubToken="ghp_1234567890abcdef1234567890abcdef1234"`,
 		`token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature`,
@@ -28,7 +32,11 @@ func TestRedactSecretsMasksCommonTokenShapes(t *testing.T) {
 	got := RedactSecrets(input)
 	for _, raw := range []string{
 		"sk-1234567890abcdef",
+		"llm-live-1234567890abcdef",
+		"sk-proj-1234567890abcdef",
 		"abc.def.ghi",
+		"super-secret-passphrase",
+		"github_pat_1234567890abcdef1234567890abcdef",
 		"plain-password",
 		"ghp_1234567890abcdef1234567890abcdef1234",
 		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
@@ -39,7 +47,7 @@ func TestRedactSecretsMasksCommonTokenShapes(t *testing.T) {
 			t.Fatalf("redacted output still contains %q: %s", raw, got)
 		}
 	}
-	for _, wantContext := range []string{"apiKey=", "Authorization:", "password=", "githubToken=", "token=", "private_key=", "postgres://reviewer:"} {
+	for _, wantContext := range []string{"apiKey=", "llmkey=", "openaiKey=", "Authorization:", "passwd=", "client_secret=", "password=", "githubToken=", "token=", "private_key=", "postgres://reviewer:"} {
 		if !strings.Contains(got, wantContext) {
 			t.Fatalf("redaction should preserve context %q, got %s", wantContext, got)
 		}

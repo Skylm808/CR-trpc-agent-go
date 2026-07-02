@@ -219,9 +219,12 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 	diffPath := filepath.Join(t.TempDir(), "secrets.diff")
 	rawSecrets := []string{
 		"sk-1234567890abcdef",
+		"llm-live-1234567890abcdef",
+		"sk-proj-1234567890abcdef",
 		"abc.def.ghi",
 		"plain-password",
 		"ghp_1234567890abcdef1234567890abcdef1234",
+		"github_pat_1234567890abcdef1234567890abcdef",
 		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
 		"-----BEGIN PRIVATE KEY-----",
 		"db-password-123",
@@ -229,16 +232,21 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 	diff := `diff --git a/leak.go b/leak.go
 --- /dev/null
 +++ b/leak.go
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,14 @@
 +package redactiondemo
 +
 +const apiKey = "sk-1234567890abcdef"
++const llmkey = "llm-live-1234567890abcdef"
++const openaiKey = "sk-proj-1234567890abcdef"
 +const bearerToken = "Bearer abc.def.ghi"
 +const password = "plain-password"
 +const githubToken = "ghp_1234567890abcdef1234567890abcdef1234"
++const client_secret = "github_pat_1234567890abcdef1234567890abcdef"
 +const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature"
 +const privateKey = "-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----"
 +const secretDSN = "postgres://reviewer:db-password-123@db.example.com/app?sslmode=require"
++const tokenPlaceholder = "dummy"
++const retryTokenTimeoutSeconds = 30
 `
 	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
 		t.Fatalf("write diff: %v", err)
@@ -293,6 +301,27 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 	}
 	if len(leaks) > 0 {
 		t.Fatalf("sqlite persisted raw secrets: %s", strings.Join(leaks, ", "))
+	}
+}
+
+// TestParseSkillFindingsDedupesAndRedactsSecretFindings 固定脚本输出进入 Agent 的安全边界。
+func TestParseSkillFindingsDedupesAndRedactsSecretFindings(t *testing.T) {
+	t.Parallel()
+
+	stdout := `{"findings":[` +
+		`{"severity":"critical","category":"security","file":"config.go","line":7,"title":"Potential secret appears in added code","evidence":"const llmkey = \"llm-live-1234567890abcdef\"","recommendation":"Replace the literal with a secret manager or environment lookup.","confidence":"high","source":"skill_run","rule_id":"secret-leak","status":"finding"},` +
+		`{"severity":"critical","category":"security","file":"config.go","line":7,"title":"Potential secret appears in added code","evidence":"const llmkey = \"llm-live-1234567890abcdef\"","recommendation":"Replace the literal with a secret manager or environment lookup.","confidence":"high","source":"skill_run","rule_id":"secret-leak","status":"finding"}` +
+		`],"warnings":[]}`
+
+	result, err := parseSkillFindings(stdout)
+	if err != nil {
+		t.Fatalf("parseSkillFindings returned error: %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected duplicate secret finding to be deduped, got %+v", result.Findings)
+	}
+	if strings.Contains(result.Findings[0].Evidence, "llm-live-1234567890abcdef") {
+		t.Fatalf("expected Agent safety boundary to redact evidence, got %+v", result.Findings[0])
 	}
 }
 

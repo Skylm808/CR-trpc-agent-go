@@ -50,8 +50,6 @@ func AnalyzeDiff(input string) (Result, error) {
 func runRules(diff ParsedDiff) Analysis {
 	var out Analysis
 	out.Diff = diff
-	// 密钥字面量优先按高风险处理。
-	secretToken := regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`)
 	for _, file := range diff.Files {
 		for _, hunk := range file.Hunks {
 			hunkText := hunkJoinedText(hunk)
@@ -186,10 +184,7 @@ func runRules(diff ParsedDiff) Analysis {
 					}
 				}
 				// secret 证据在报告和落库前会脱敏。
-				if strings.Contains(strings.ToLower(text), "password") ||
-					strings.Contains(strings.ToLower(text), "token") ||
-					strings.Contains(strings.ToLower(text), "secret") ||
-					secretToken.MatchString(text) {
+				if shouldReportSecret(text) {
 					out.Findings = append(out.Findings, Finding{
 						Severity:       "critical",
 						Category:       "security",
@@ -238,6 +233,46 @@ func hasRuleInFile(findings []Finding, file string, ruleID string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	secretValuePattern = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9\-._~+/=]{8,}|[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s/]+@)`)
+	secretNamePattern  = regexp.MustCompile(`(?i)(api[_-]?key|apikey|llm[_-]?key|openai[_-]?(api[_-]?)?key|client[_-]?secret|secret|token|bearer[_-]?token|password|passwd|pwd|github[_-]?token|private[_-]?key)`)
+	stringLiteralValue = regexp.MustCompile(`=\s*("([^"]*)"|'([^']*)'|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
+	placeholderSecret  = regexp.MustCompile(`(?i)^(test|example|dummy|placeholder|changeme|change-me|your[-_ ]?token|your[-_ ]?key|xxx+|<.*>)$`)
+)
+
+// shouldReportSecret 判断新增行是否包含高置信密钥。
+func shouldReportSecret(text string) bool {
+	if secretValuePattern.MatchString(text) {
+		return true
+	}
+	if !secretNamePattern.MatchString(text) {
+		return false
+	}
+	value, ok := extractAssignedString(text)
+	if !ok {
+		return false
+	}
+	value = strings.TrimSpace(value)
+	if len(value) < 12 {
+		return false
+	}
+	return !placeholderSecret.MatchString(value)
+}
+
+// extractAssignedString 提取赋值右侧的字符串字面量。
+func extractAssignedString(text string) (string, bool) {
+	match := stringLiteralValue.FindStringSubmatch(text)
+	if len(match) == 0 {
+		return "", false
+	}
+	for _, group := range match[2:] {
+		if group != "" {
+			return group, true
+		}
+	}
+	return "", false
 }
 
 var ErrEmptyInput = errors.New("empty review input")

@@ -1,6 +1,9 @@
 package review
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAnalyzeDiffWarnsOnMissingTests(t *testing.T) {
 	diff := "" +
@@ -37,6 +40,34 @@ func TestAnalyzeDiffFindsSecrets(t *testing.T) {
 	}
 	if len(result.Findings) == 0 {
 		t.Fatal("expected at least one finding")
+	}
+}
+
+func TestAnalyzeDiffFindsSecretShapesAndSuppressesPlaceholders(t *testing.T) {
+	diff := "" +
+		"diff --git a/config.go b/config.go\n" +
+		"index 1111111..2222222 100644\n" +
+		"--- a/config.go\n" +
+		"+++ b/config.go\n" +
+		"@@ -1,2 +1,9 @@\n" +
+		" package foo\n" +
+		"+const llmkey = \"llm-live-1234567890abcdef\"\n" +
+		"+const openaiKey = \"sk-proj-1234567890abcdef\"\n" +
+		"+const client_secret = \"github_pat_1234567890abcdef1234567890abcdef\"\n" +
+		"+const tokenPlaceholder = \"dummy\"\n" +
+		"+const retryTokenTimeoutSeconds = 30\n"
+
+	result, err := AnalyzeDiff(diff)
+	if err != nil {
+		t.Fatalf("AnalyzeDiff returned error: %v", err)
+	}
+	if got := countRule(result.Findings, "secret-leak"); got != 3 {
+		t.Fatalf("expected three high-confidence secret findings, got %d: %+v", got, result.Findings)
+	}
+	for _, finding := range result.Findings {
+		if finding.RuleID == "secret-leak" && containsRawSecretEvidence(finding.Evidence) {
+			t.Fatalf("secret evidence was not redacted: %+v", finding)
+		}
 	}
 }
 
@@ -158,4 +189,18 @@ func countRule(findings []Finding, ruleID string) int {
 		}
 	}
 	return total
+}
+
+func containsRawSecretEvidence(text string) bool {
+	for _, raw := range []string{
+		"llm-live-1234567890abcdef",
+		"sk-proj-1234567890abcdef",
+		"github_pat_1234567890abcdef1234567890abcdef",
+		"dummy",
+	} {
+		if strings.Contains(text, raw) {
+			return true
+		}
+	}
+	return false
 }

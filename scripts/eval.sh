@@ -6,7 +6,7 @@ FIXTURES_ROOT="${CR_AGENT_EVAL_FIXTURES_ROOT:-"$ROOT/testdata/fixtures"}"
 SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
-FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
+FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
 if [[ -n "$REPORT_ROOT" ]]; then
@@ -28,6 +28,7 @@ if [[ -n "$EXPECTED_OVERRIDE" ]]; then
 else
   cat > "$EXPECTED_FILE" <<'TSV'
 secret.diff	secret-leak	critical	finding	true
+secret-shapes.diff	secret-leak	critical	finding	true
 panic.diff	panic-direct	high	finding	true
 todo.diff	todo-marker	medium	finding	true
 test-missing.diff	missing-test-hint	low	warning	true

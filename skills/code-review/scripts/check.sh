@@ -20,16 +20,49 @@ current_hunk = []
 new_line = 0
 
 def redact(text: str) -> str:
-    text = re.sub(r"sk-[A-Za-z0-9]{12,}", "sk-[REDACTED]", text)
-    text = re.sub(r"(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)", r"\1=[REDACTED]", text)
+    text = re.sub(r"(?i)\b(api[_-]?key|apikey|llm[_-]?key|openai[_-]?(api[_-]?)?key|client[_-]?secret|secret|token|bearer[_-]?token|password|passwd|pwd|github[_-]?token|private[_-]?key)\b\s*[:=]\s*(\"[^\"]+\"|'[^']+'|[^\s,;]+)", r"\1=[REDACTED]", text)
     text = re.sub(r"(?i)bearer\s+[A-Za-z0-9\-._~+/=]+", "bearer [REDACTED]", text)
+    text = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "[REDACTED]", text)
+    text = re.sub(r"ghp_[A-Za-z0-9_]{20,}", "[REDACTED]", text)
+    text = re.sub(r"github_pat_[A-Za-z0-9_]{20,}", "[REDACTED]", text)
+    text = re.sub(r"[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}", "[REDACTED]", text)
+    text = re.sub(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", "[REDACTED_PRIVATE_KEY]", text)
+    text = re.sub(r"([a-z][a-z0-9+.-]*://[^/\s:@]+):([^@\s/]+)@", r"\1:[REDACTED]@", text)
+    text = re.sub(r"(?i)(password=)[^&\s]+", r"\1[REDACTED]", text)
     return text
 
 def contains_any(text: str, *items: str) -> bool:
     return any(item in text for item in items)
 
+secret_value_pattern = re.compile(r"(?i)(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9\-._~+/=]{8,}|[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s/]+@)")
+secret_name_pattern = re.compile(r"(?i)(api[_-]?key|apikey|llm[_-]?key|openai[_-]?(api[_-]?)?key|client[_-]?secret|secret|token|bearer[_-]?token|password|passwd|pwd|github[_-]?token|private[_-]?key)")
+string_literal_pattern = re.compile(r"=\s*(\"([^\"]*)\"|'([^']*)'|`([^`]*)`)")
+placeholder_secret_pattern = re.compile(r"(?i)^(test|example|dummy|placeholder|changeme|change-me|your[-_ ]?token|your[-_ ]?key|xxx+|<.*>)$")
+
+def assigned_string(text: str):
+    match = string_literal_pattern.search(text)
+    if not match:
+        return None
+    for group in match.groups()[1:]:
+        if group:
+            return group
+    return ""
+
+def should_report_secret(text: str) -> bool:
+    if secret_value_pattern.search(text):
+        return True
+    if not secret_name_pattern.search(text):
+        return False
+    value = assigned_string(text)
+    if value is None:
+        return False
+    value = value.strip()
+    if len(value) < 12:
+        return False
+    return not placeholder_secret_pattern.match(value)
+
 def add_finding(severity, category, file, line, title, evidence, recommendation, rule_id, status="finding", confidence="high"):
-    key = (file, rule_id)
+    key = (file, line, category, rule_id) if rule_id == "secret-leak" else (file, rule_id)
     if key in emitted_findings:
         return
     emitted_findings.add(key)
@@ -48,7 +81,7 @@ def add_finding(severity, category, file, line, title, evidence, recommendation,
     })
 
 def add_warning(severity, category, file, line, title, evidence, recommendation, rule_id, status="warning", confidence="medium"):
-    key = (file, rule_id)
+    key = (file, line, category, rule_id) if rule_id == "secret-leak" else (file, rule_id)
     if key in emitted_warnings:
         return
     emitted_warnings.add(key)
@@ -120,7 +153,7 @@ with open(path, "r", encoding="utf-8", errors="replace") as f:
                             "Database handle or transaction has no cleanup path", text,
                             "Defer Close() for handles and Rollback() for transactions in the same scope.",
                             "db-lifecycle")
-            if "password" in lower or "token" in lower or "secret" in lower or re.search(r"sk-[A-Za-z0-9]{12,}", text):
+            if should_report_secret(text):
                 add_finding("critical", "security", current_file, new_line,
                             "Potential secret appears in added code", text,
                             "Replace the literal with a secret manager or environment lookup.",
@@ -203,10 +236,12 @@ func main() {
 			text := strings.TrimSpace(strings.TrimPrefix(line, "+"))
 			currentHunk = append(currentHunk, text)
 			hunkText := strings.Join(currentHunk, "\n")
-			lower := strings.ToLower(text)
 
 			addFinding := func(severity, category, title, recommendation, ruleID string) {
 				key := currentFile + "|" + ruleID
+				if ruleID == "secret-leak" {
+					key = fmt.Sprintf("%s|%d|%s|%s", currentFile, newLine, category, ruleID)
+				}
 				if emittedFindings[key] {
 					return
 				}
@@ -219,6 +254,9 @@ func main() {
 			}
 			addWarning := func(severity, category, title, recommendation, ruleID string) {
 				key := currentFile + "|" + ruleID
+				if ruleID == "secret-leak" {
+					key = fmt.Sprintf("%s|%d|%s|%s", currentFile, newLine, category, ruleID)
+				}
 				if emittedWarnings[key] {
 					return
 				}
@@ -264,8 +302,7 @@ func main() {
 				addFinding("high", "database", "Database handle or transaction has no cleanup path",
 					"Defer Close() for handles and Rollback() for transactions in the same scope.", "db-lifecycle")
 			}
-			if strings.Contains(lower, "password") || strings.Contains(lower, "token") ||
-				strings.Contains(lower, "secret") || regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`).MatchString(text) {
+			if shouldReportSecret(text) {
 				addFinding("critical", "security", "Potential secret appears in added code",
 					"Replace the literal with a secret manager or environment lookup.", "secret-leak")
 			}
@@ -287,16 +324,63 @@ func main() {
 }
 
 func redact(text string) string {
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`sk-[A-Za-z0-9]{12,}`),
-		regexp.MustCompile(`(?i)\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*([^\s,;]+)`),
-		regexp.MustCompile(`(?i)\bearer\s+[A-Za-z0-9\-._~+/=]+`),
-	}
 	out := text
-	for _, pattern := range patterns {
-		out = pattern.ReplaceAllString(out, "$1=[REDACTED]")
+	replacers := []struct {
+		re   *regexp.Regexp
+		with string
+	}{
+		{regexp.MustCompile(`(?i)\b(api[_-]?key|apikey|llm[_-]?key|openai[_-]?(api[_-]?)?key|client[_-]?secret|secret|token|bearer[_-]?token|password|passwd|pwd|github[_-]?token|private[_-]?key)\b\s*[:=]\s*("[^"]+"|'[^']+'|[^\s,;]+)`), `$1=[REDACTED]`},
+		{regexp.MustCompile(`(?i)\bearer\s+[A-Za-z0-9\-._~+/=]+`), `Bearer [REDACTED]`},
+		{regexp.MustCompile(`sk-[A-Za-z0-9_-]{8,}`), `[REDACTED]`},
+		{regexp.MustCompile(`ghp_[A-Za-z0-9_]{20,}`), `[REDACTED]`},
+		{regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`), `[REDACTED]`},
+		{regexp.MustCompile(`[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}`), `[REDACTED]`},
+		{regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`), `[REDACTED_PRIVATE_KEY]`},
+		{regexp.MustCompile(`([a-z][a-z0-9+.-]*://[^/\s:@]+):([^@\s/]+)@`), `${1}:[REDACTED]@`},
+		{regexp.MustCompile(`(?i)(password=)[^&\s]+`), `${1}[REDACTED]`},
+	}
+	for _, replacer := range replacers {
+		out = replacer.re.ReplaceAllString(out, replacer.with)
 	}
 	return out
+}
+
+var (
+	secretValuePattern = regexp.MustCompile(`(?i)(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9\-._~+/=]{8,}|[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s/]+@)`)
+	secretNamePattern  = regexp.MustCompile(`(?i)(api[_-]?key|apikey|llm[_-]?key|openai[_-]?(api[_-]?)?key|client[_-]?secret|secret|token|bearer[_-]?token|password|passwd|pwd|github[_-]?token|private[_-]?key)`)
+	stringLiteralValue = regexp.MustCompile(`=\s*("([^"]*)"|'([^']*)'|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
+	placeholderSecret  = regexp.MustCompile(`(?i)^(test|example|dummy|placeholder|changeme|change-me|your[-_ ]?token|your[-_ ]?key|xxx+|<.*>)$`)
+)
+
+func shouldReportSecret(text string) bool {
+	if secretValuePattern.MatchString(text) {
+		return true
+	}
+	if !secretNamePattern.MatchString(text) {
+		return false
+	}
+	value, ok := extractAssignedString(text)
+	if !ok {
+		return false
+	}
+	value = strings.TrimSpace(value)
+	if len(value) < 12 {
+		return false
+	}
+	return !placeholderSecret.MatchString(value)
+}
+
+func extractAssignedString(text string) (string, bool) {
+	match := stringLiteralValue.FindStringSubmatch(text)
+	if len(match) == 0 {
+		return "", false
+	}
+	for _, group := range match[2:] {
+		if group != "" {
+			return group, true
+		}
+	}
+	return "", false
 }
 
 func containsAny(text string, items ...string) bool {
