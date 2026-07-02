@@ -69,6 +69,14 @@ runtime 策略：
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 ```
 
+运行完整本地验收：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
+```
+
+`scripts/acceptance.sh` 会运行 `go test ./...`、`scripts/eval.sh`、`git diff --check`，并在 Docker daemon 可用时自动追加 container E2E。可通过 `CR_AGENT_ACCEPTANCE_DOCKER=skip|auto|always` 控制 Docker 步骤。
+
 运行真实 Docker container 集成测试：
 
 ```bash
@@ -89,6 +97,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 评测输出包含 `recall`、`precision`、`false_positive_rate`、`missing_findings` 和 `unexpected_findings`。可用 `CR_AGENT_EVAL_FIXTURES_ROOT` 指向外部/隐藏样本目录，用 `CR_AGENT_EVAL_FIXTURES` 选择样本子集，用 `CR_AGENT_EVAL_EXPECTED` 指向外部 expected matrix。
 
 隐藏样本的推荐契约见 [docs/eval-matrix.md](docs/eval-matrix.md)。
+
+CI 和 hidden sample 接入见 [docs/ci.md](docs/ci.md)。
 
 用 fixture 生成报告：
 
@@ -241,6 +251,7 @@ scripts/eval.sh         public fixture recall / precision evaluator
 - [docs/framework-first-mvp.md](docs/framework-first-mvp.md)
 - [docs/architecture.md](docs/architecture.md)
 - [docs/issue-acceptance.md](docs/issue-acceptance.md)
+- [docs/ci.md](docs/ci.md)
 - [docs/implementation-plan.md](docs/implementation-plan.md)
 - [docs/data-contract.md](docs/data-contract.md)
 - [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)

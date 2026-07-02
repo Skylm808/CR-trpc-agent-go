@@ -10,6 +10,12 @@
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 ```
 
+本地和 CI 的统一入口是：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
+```
+
 可选环境变量：
 
 - `CR_AGENT_EVAL_FIXTURES_ROOT`：外部 fixture 根目录。
@@ -82,6 +88,36 @@ scripts/eval.sh
 - `false_positive_rate`：`FP / (TP + FP)`。
 - `missing_findings`：漏检项数量；非零时脚本会输出 `missing=` 明细。
 - `unexpected_findings`：未声明项数量；非零时脚本会输出 `unexpected=` 明细。
+
+Issue 验收阈值：
+
+- 高危检出率：`recall >= 0.800`。
+- 误报率：`false_positive_rate <= 0.150`。
+- 公开样本：必须 `false_positive=0`、`false_negative=0`。
+- 隐藏样本：允许用第五列 optional 标记低置信或可人工判断项；optional 命中不算误报，未命中不算漏报。
+
+## CI 注入示例
+
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT="$RUNNER_TEMP/hidden-fixtures" \
+CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff hidden-003.diff" \
+CR_AGENT_EVAL_EXPECTED="$RUNNER_TEMP/expected.tsv" \
+CR_AGENT_EVAL_REPORT_ROOT="$RUNNER_TEMP/cr-agent-reports" \
+GOCACHE="$RUNNER_TEMP/cr-agent-gocache" \
+scripts/eval.sh
+```
+
+如果 Docker daemon 不可用，基础 CI 使用：
+
+```bash
+CR_AGENT_ACCEPTANCE_DOCKER=skip scripts/acceptance.sh
+```
+
+如果 Docker daemon 可用并且希望把 container sandbox 作为必过门禁：
+
+```bash
+CR_AGENT_ACCEPTANCE_DOCKER=always scripts/acceptance.sh
+```
 
 ## 建议
 
