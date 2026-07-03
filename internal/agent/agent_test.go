@@ -22,6 +22,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
 	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
+	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
+	agentmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -1400,6 +1402,134 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 	}
 }
 
+// TestModelReviewProviderModelImplementsOfficialModel 固定模型 provider 可走官方 model.Model 接口。
+func TestModelReviewProviderModelImplementsOfficialModel(t *testing.T) {
+	t.Parallel()
+
+	rawSecret := "sk-officialmodel-1234567890"
+	var seenInput ModelReviewInput
+	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+		_ = ctx
+		seenInput = input
+		if strings.Contains(input.DiffSummary, rawSecret) {
+			t.Fatalf("official model adapter leaked raw input secret: %s", input.DiffSummary)
+		}
+		return ModelReviewOutput{Findings: []review.Finding{{
+			Severity:       "medium",
+			Category:       "logic",
+			File:           "main.go",
+			Line:           7,
+			Title:          "Official adapter model signal",
+			Evidence:       "adapter evidence " + rawSecret,
+			Recommendation: "Inspect the official model adapter path.",
+			Confidence:     "high",
+			Source:         "model",
+			RuleID:         "official-model-adapter",
+		}}}, nil
+	})
+	var official agentmodel.Model = modelReviewProviderModel{
+		name:     "cr-agent-test-model",
+		provider: provider,
+	}
+
+	ch, err := official.GenerateContent(context.Background(), modelReviewInputRequest(ModelReviewInput{
+		DiffSummary: "+ secret = \"" + rawSecret + "\"",
+		InputMetadata: review.InputMetadata{
+			ChangedGoFiles: []string{"main.go"},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("GenerateContent returned error: %v", err)
+	}
+	var responses []*agentmodel.Response
+	for rsp := range ch {
+		responses = append(responses, rsp)
+	}
+	if len(responses) != 1 {
+		t.Fatalf("expected one official model response, got %+v", responses)
+	}
+	if responses[0].Error != nil {
+		t.Fatalf("unexpected official model response error: %+v", responses[0].Error)
+	}
+	if responses[0].Model != "cr-agent-test-model" || responses[0].Object != agentmodel.ObjectTypeChatCompletion {
+		t.Fatalf("unexpected official model metadata: %+v", responses[0])
+	}
+	var output ModelReviewOutput
+	if err := json.Unmarshal([]byte(responses[0].Choices[0].Message.Content), &output); err != nil {
+		t.Fatalf("decode official model response content: %v", err)
+	}
+	if !hasRuleID(output.Findings, "official-model-adapter") {
+		t.Fatalf("expected adapter finding in official response, got %+v", output.Findings)
+	}
+	for _, finding := range output.Findings {
+		if strings.Contains(finding.Evidence, rawSecret) {
+			t.Fatalf("official model adapter leaked raw output secret: %+v", finding)
+		}
+	}
+	if seenInput.DiffSummary == "" || !strings.Contains(seenInput.DiffSummary, "[REDACTED]") {
+		t.Fatalf("expected provider to receive redacted model input, got %+v", seenInput)
+	}
+	if official.Info().Name != "cr-agent-test-model" {
+		t.Fatalf("unexpected official model info: %+v", official.Info())
+	}
+}
+
+// TestAgentRunEmitsOfficialEvents 固定 CLI 编排阶段通过官方 event.Event facade 暴露。
+func TestAgentRunEmitsOfficialEvents(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	var events []*agentevent.Event
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+		EventSink: func(ctx context.Context, ev *agentevent.Event) {
+			_ = ctx
+			if ev != nil {
+				events = append(events, ev.Clone())
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.TaskID == "" {
+		t.Fatalf("expected task id")
+	}
+	objects := eventObjects(events)
+	for _, want := range []string{
+		reviewEventInputLoaded,
+		reviewEventSkillRun,
+		reviewEventSandboxRun,
+		reviewEventModelReview,
+		reviewEventReportWritten,
+		reviewEventTaskFinished,
+	} {
+		if !containsString(objects, want) {
+			t.Fatalf("expected event %q in %+v", want, objects)
+		}
+	}
+	for _, ev := range events {
+		if ev.InvocationID != result.TaskID {
+			t.Fatalf("expected event invocation id %q, got %+v", result.TaskID, ev)
+		}
+		if ev.Author != "cr-agent" {
+			t.Fatalf("expected cr-agent author, got %+v", ev)
+		}
+	}
+}
+
 // TestModelProviderMergesFindingsByConfidenceAndDedupe 固定模型增量合并规则。
 func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
 	t.Parallel()
@@ -2355,6 +2485,25 @@ func findAgentReviewSpan(t *testing.T, recorder *tracetest.SpanRecorder) tracesd
 	}
 	t.Fatalf("cr-agent.review span not found; got %d spans", len(recorder.Ended()))
 	return nil
+}
+
+func eventObjects(events []*agentevent.Event) []string {
+	out := make([]string, 0, len(events))
+	for _, ev := range events {
+		if ev != nil && ev.Response != nil {
+			out = append(out, ev.Object)
+		}
+	}
+	return out
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func agentSpanAttributes(attrs []attribute.KeyValue) map[string]attribute.Value {

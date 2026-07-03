@@ -2,7 +2,7 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 LLM 路线也不是官方 `trpc-agent-go/model.Model` / Runner / Event。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 provider 已通过薄 adapter 走官方 `trpc-agent-go/model.Model` 接口，并通过官方 `event.Event` facade 暴露关键阶段事件，但还不是完整 `runner.Run` 托管的官方 Agent。Runner 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -38,7 +38,7 @@
 
 仍需完善：
 
-- 把当前 LLM provider 适配到官方 `trpc-agent-go/model.Model` / Runner / Event 路线。
+- 将当前 `event.Event` facade 继续收敛到完整官方 Runner 路线。
 - 给 E2B runtime 做最小 unsupported/adapter 入口。
 - 补 `base/head` ref 输入；当前 repo 输入读取 working tree diff 或目录内容。
 - 用真实 hidden fixture matrix 跑一次验收；当前仓库只提交外部注入契约，不提交 hidden 样本本体。
@@ -55,8 +55,9 @@ CLI
   -> trpc-agent-go/tool/skill skill_load
   -> tool.PermissionPolicy
   -> trpc-agent-go/tool/skill skill_run
-  -> optional ModelReviewProvider fake-model/http boundary
+  -> optional official model.Model adapter over ModelReviewProvider fake-model/http boundary
   -> optional trpc-agent-go/tool/workspaceexec go checks
+  -> official event.Event facade for input/skill/model/sandbox/report/task phases
   -> fallback trpc-agent-go/tool/codeexec go checks
   -> report JSON/Markdown
   -> SQLite audit store
@@ -208,7 +209,7 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 
 ## LLM Review Provider Boundary
 
-`internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
+`internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. The provider is wrapped through a thin official `trpc-agent-go/model.Model` adapter before review results are merged back into the CR report. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
 
 The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. No real vendor SDK is linked.
 

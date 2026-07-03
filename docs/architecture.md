@@ -16,7 +16,7 @@
 
 本仓库是 **trpc-agent-go 之上的应用示例**，不是框架 fork。本仓库负责 Go CR 业务逻辑、规则、报告、schema、fixture 和验收测试；官方框架负责 Skill、Tool、PermissionPolicy、CodeExecutor 等可复用原语。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，已接入模型审查 provider 边界、默认 fake provider 和可选 HTTP provider，但未绑定真实 LLM 厂商 SDK，也尚未接入官方 `model.Model` / Runner / Event。下一阶段应把当前 provider 边界适配到官方模型和事件流路线，而不是继续扩展一套只属于本仓库的模型抽象。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，已接入模型审查 provider 边界、默认 fake provider 和可选 HTTP provider，但未绑定真实 LLM 厂商 SDK。模型调用已通过薄 adapter 接到官方 `model.Model` 接口；CLI 编排已通过官方 `event.Event` facade 暴露关键阶段事件，但还不是完整 `runner.Run` 托管的官方 Agent。
 
 当前代码已经接入：
 
@@ -27,12 +27,12 @@
 - `tool/workspaceexec` 的工作区内 Go 检查入口
 - `tool.PermissionPolicy`
 - `codeexecutor/container` 和显式 `codeexecutor/local` fallback
-- `internal/agent.ModelReviewProvider` 边界、无 API Key 的 fake provider 和显式 opt-in HTTP provider
+- `internal/agent.ModelReviewProvider` 边界、无 API Key 的 fake provider、显式 opt-in HTTP provider，以及官方 `model.Model` 薄 adapter
 - 早期 `internal/governance` / `internal/sandbox` 本地包装已删除，避免和官方治理、执行边界混淆。
 
 仍未完成的框架侧增强：
 
-- 官方 `model.Model` / Runner / Event 适配。
+- 完整官方 Runner 托管；当前只有 `event.Event` facade。
 - E2B/Cube runtime adapter。
 - 官方 artifact service 默认用 inmemory 保存报告和诊断产物；SQLite 继续保留引用记录和查询。
 - 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
@@ -46,8 +46,9 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
   -> trpc-agent-go/tool/skill skill_load(code-review)
   -> tool.PermissionPolicy 决策 scripts/check.sh
   -> trpc-agent-go/tool/skill skill_run(scripts/check.sh)
-  -> fake-model 模式：redacted input -> ModelReviewProvider(fake/http) -> finding/warning merge
+  -> fake-model 模式：redacted input -> official model.Model adapter -> ModelReviewProvider(fake/http) -> finding/warning merge
   -> 可选 sandbox 模式：优先 tool/workspaceexec 执行 go test / go vet / staticcheck，失败时退回 tool/codeexec
+  -> 通过 official event.Event facade 输出 input/skill/model/sandbox/report/task 阶段事件
   -> 合并 Skill 输出，去重，脱敏，分流 warnings / human_review_items
   -> 生成 review_report.json 和 review_report.md
   -> SQLite 保存 task / decisions / runs / findings / artifact references / metrics / report
@@ -58,10 +59,10 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | 官方模块 | 本仓库对应实现 | 当前状态 |
 |---------|----------------|---------|
 | Agent | `internal/agent.Agent` 是 CLI 编排器，负责输入、工具调用、报告和审计闭环 | ✅ 应用层 Agent 原型，未实现官方 `agent.Agent` 事件流接口 |
-| Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | ⬜ 尚未接入官方 Runner/Event；下一阶段应暴露 input loaded、skill run、model review、sandbox run、report written、task finished/failed 等事件 |
+| Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)`，可选 `EventSink` 接收官方 `event.Event` 阶段事件 | 🔶 Event facade 已覆盖 input loaded、skill run、model review、sandbox run、report written、task finished/failed；尚未由完整官方 Runner 托管 |
 | Tool | `skill_load`、`skill_run`、`execute_code` 都以 `tool.CallableTool` 形式持有 | ✅ 已使用官方工具抽象 |
 | Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
-| Model Review Provider | `internal/agent.ModelReviewProvider` 接收脱敏 diff 摘要、input metadata、existing findings、sandbox/governance summary，输出复用 `review.Finding`；默认 fake provider，显式 opt-in HTTP provider 使用标准库 `net/http` | 🔶 当前是自定义 provider 边界；下一阶段适配官方 `trpc-agent-go/model.Model` |
+| Model Review Provider | `internal/agent.ModelReviewProvider` 接收脱敏 diff 摘要、input metadata、existing findings、sandbox/governance summary，输出复用 `review.Finding`；默认 fake provider，显式 opt-in HTTP provider 使用标准库 `net/http` | ✅ 已通过薄 adapter 实现官方 `trpc-agent-go/model.Model` 调用路径，无 API Key 默认路径保持可测 |
 | CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 已通过 |
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
@@ -80,19 +81,19 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 
 ## LLM Review Provider
 
-当前新增的是模型审查边界和一个最小 generic HTTP provider，不绑定真实厂商 SDK。`ModelReviewProvider` 的输入只包含脱敏后的 diff summary、Go input metadata、已有 findings、sandbox summary 和 governance summary；raw diff secret 不允许进入 prompt。Provider 输出继续使用 `review.Finding` 字段：`severity`、`category`、`file`、`line`、`title`、`evidence`、`recommendation`、`confidence`、`source`、`rule_id`、`status`。
+当前新增的是模型审查边界和一个最小 generic HTTP provider，不绑定真实厂商 SDK。`ModelReviewProvider` 的输入只包含脱敏后的 diff summary、Go input metadata、已有 findings、sandbox summary 和 governance summary；raw diff secret 不允许进入 prompt。运行时会先把 provider 包成官方 `model.Model`，通过 `GenerateContent(ctx,*model.Request)` 生成结构化 JSON，再映射回 `ModelReviewOutput`。Provider 输出继续使用 `review.Finding` 字段：`severity`、`category`、`file`、`line`、`title`、`evidence`、`recommendation`、`confidence`、`source`、`rule_id`、`status`。
 
 合并规则保持确定性：`source` 归一为 `model` 或 `fake_model`；高置信模型项进入 `findings`；低置信模型项降级为 `warnings` / `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型失败不让 review 崩溃，会增加 `model_provider` exception，生成人工复核项，并继续输出报告和 SQLite 审计。
 
-HTTP provider 通过 `--model-provider http`、`--model-endpoint`、`--model-api-key-env`、`--model-name` 显式开启；API key 只从 env 读取，不进入报告、diagnostics、SQLite 或 telemetry。HTTP 请求失败、非 2xx、JSON 解析失败或 deadline/timeout 都会降级为人工复核。真实 OpenAI / Claude / Gemini SDK 绑定、Runner/Event、Session/Memory 和 E2B 都不属于当前阶段。
+HTTP provider 通过 `--model-provider http`、`--model-endpoint`、`--model-api-key-env`、`--model-name` 显式开启；API key 只从 env 读取，不进入报告、diagnostics、SQLite 或 telemetry。HTTP 请求失败、非 2xx、JSON 解析失败或 deadline/timeout 都会降级为人工复核。真实 OpenAI / Claude / Gemini SDK 绑定、完整 Runner 托管、Session/Memory 和 E2B 都不属于当前阶段。
 
 ## 官方 model/Runner/Event 适配路径
 
-下一阶段的目标是保留当前脱敏、分流、去重和审计语义，同时把模型调用接到官方路线：
+当前阶段已经保留脱敏、分流、去重和审计语义，同时把模型调用接到官方 `model.Model` 路线，并用官方 `event.Event` 作为阶段事件载体：
 
 ```text
 CLI Request
-  -> Runner
+  -> Agent.Run(ctx, Request)
   -> Event(input_loaded)
   -> Skill tool events(skill_load / skill_run)
   -> model.Model adapter(redacted ModelReviewInput)
@@ -102,12 +103,11 @@ CLI Request
   -> Event(task_finished / task_failed)
 ```
 
-适配顺序：
+后续适配顺序：
 
-1. 在 `internal/agent` 增加薄 adapter，把 fake provider 和 HTTP provider 包装成官方 `model.Model` 所需的输入输出形态。
-2. 保留 `ModelReviewProvider` 或等价 facade 作为过渡层，直到 CLI、tests 和 reports 都切到官方模型事件后再删除。
-3. 给 Agent.Run 增加事件 sink 或 Runner facade，先在 CLI 内消费事件，再考虑 Web/UI 或多轮恢复。
-4. telemetry 和 SQLite metrics 继续记录当前摘要字段，避免事件流接入造成审计 contract 断裂。
+1. 保留当前 `ModelReviewProvider` facade，直到 CLI、tests 和 reports 都可以直接消费官方模型事件。
+2. 将 `EventSink` facade 收敛为完整官方 `agent.Agent` + `runner.NewRunner(...).Run(...)` 路线。
+3. telemetry 和 SQLite metrics 继续记录当前摘要字段，避免事件流接入造成审计 contract 断裂。
 
 非目标：不在这一步绑定真实厂商 SDK，不要求 API Key，不重写规则脚本，不改变报告 JSON contract。
 
@@ -218,7 +218,7 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 
 下一阶段不是重新写本地原型，而是在现有 framework-first 链路上补齐验收缺口：
 
-1. 把 LLM provider 适配到官方 `trpc-agent-go/model.Model` / Runner / Event 路线。
+1. 把当前 `event.Event` facade 收敛到完整官方 Runner 路线。
 2. 给 E2B runtime 做最小 unsupported/adapter 入口。
 3. 补 `base/head` ref 输入。
 4. 用真实 hidden fixture matrix 跑一次验收。

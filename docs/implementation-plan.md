@@ -12,8 +12,9 @@
 | artifact | ✅ | 报告和 diagnostics 写本地并同步写入官方 artifact service，SQLite 保存引用 |
 | telemetry | ✅ | 官方 trace span 记录 task、mode、runtime、tool/model 调用、异常、finding 和 conclusion 摘要 |
 | SQLite 审计 | ✅ | task、decision、sandbox run、finding、artifact、metrics、report 均可按 task_id 查询 |
-| deterministic fake provider | ✅ | 默认无 API Key、无网络模型，走 `ModelReviewProvider` 边界 |
-| opt-in HTTP provider | ✅ | `--model-provider http` 显式开启，输入/输出脱敏，失败降级人工复核 |
+| deterministic fake provider | ✅ | 默认无 API Key、无网络模型，经官方 `model.Model` adapter 调用 `ModelReviewProvider` 边界 |
+| opt-in HTTP provider | ✅ | `--model-provider http` 显式开启，经官方 `model.Model` adapter 调用，输入/输出脱敏，失败降级人工复核 |
+| event.Event facade | ✅ | `EventSink` 输出 input_loaded、skill_run、sandbox_run、model_review、report_written、task_finished/task_failed |
 | Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
 | 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_EXPECTED` / `CR_AGENT_EVAL_REPORT_ROOT` |
@@ -23,7 +24,7 @@
 
 ### 1. 官方 model.Model / Runner / Event 适配
 
-**目标：** 把当前 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`，并让 CLI 审查过程能通过 Runner/Event 暴露阶段性事件，而不是只在 `Agent.Run(ctx, Request)` 内部直接编排。
+**目标：** 当前已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`，并让 CLI 审查过程通过官方 `event.Event` facade 暴露阶段性事件。剩余目标是把 facade 继续收敛到完整 `runner.Run` 托管的官方 Agent 路线。
 
 **影响文件：**
 
@@ -39,8 +40,8 @@
 
 - 默认 fake provider 和 opt-in HTTP provider 仍可用，且仍不要求 API Key。
 - 当前 `ModelReviewProvider` 的脱敏、分流、去重、失败降级语义不丢失。
-- 新 adapter 明确实现或包装官方 `model.Model`，并有单元测试覆盖 request/response、redaction、timeout/error。
-- Runner/Event 路线至少能输出 input loaded、skill run、model review、sandbox run、report written、task finished/failed 等事件。
+- adapter 明确实现并包装官方 `model.Model`，单元测试覆盖 request/response 和 redaction；HTTP timeout/error 继续由既有 provider 测试覆盖。
+- Event facade 输出 input_loaded、skill_run、model_review、sandbox_run、report_written、task_finished/task_failed 等事件。
 - 老 CLI 输出和 SQLite 审计 contract 保持兼容。
 
 **测试/验证命令：**
@@ -55,7 +56,7 @@ CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/ac
 
 - 不在这一步绑定 OpenAI / Claude / Gemini 厂商 SDK。
 - 不删除无 API Key 默认路径。
-- 不为了接 Runner/Event 重写规则引擎、SQLite schema 或报告 contract。
+- 不为了接完整 Runner 重写规则引擎、SQLite schema 或报告 contract。
 
 ### 2. E2B runtime 最小 unsupported/adapter 入口
 
@@ -178,7 +179,7 @@ scripts/eval.sh
 **验收标准：**
 
 - docs 索引不引用已删除文件。
-- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；当前 LLM 不是官方 model/Runner 路线；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 与 base/head ref 未接入。
+- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；当前 LLM 已经有官方 model.Model adapter 但 Runner 仍是事件 facade；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 与 base/head ref 未接入。
 - 任何新增阶段性 prompt 不作为长期文档入口。
 
 **测试/验证命令：**
@@ -205,7 +206,8 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 - [x] container runtime 真实 E2E 有 env-gated 测试，并已在 Docker daemon 环境验证过。
 - [x] 公开 fixture eval 脚本和外部 hidden matrix 注入契约。
 - [x] 官方 artifact/telemetry 最小接入或清晰边界说明。
-- [ ] LLM provider 适配官方 model.Model / Runner / Event。
+- [x] LLM provider 适配官方 model.Model，并通过 event.Event facade 暴露阶段事件。
+- [ ] 完整官方 Runner 托管。
 - [ ] E2B runtime unsupported/adapter 入口。
 - [ ] base/head ref 输入。
 - [ ] 真实 hidden fixture matrix 验收记录。

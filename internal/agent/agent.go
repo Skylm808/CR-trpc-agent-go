@@ -19,6 +19,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	artifactinmemory "trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
+	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	skillrepo "trpc.group/trpc-go/trpc-agent-go/skill"
 	telemetrytrace "trpc.group/trpc-go/trpc-agent-go/telemetry/trace"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -84,6 +85,8 @@ type Config struct {
 	ModelProvider ModelReviewProvider
 	// ModelHTTP 是显式开启的 HTTP 模型 provider 配置。
 	ModelHTTP HTTPModelProviderConfig
+	// EventSink 接收本项目通过官方 event.Event 暴露的阶段事件。
+	EventSink func(context.Context, *agentevent.Event)
 }
 
 // Request 描述一次审查输入。
@@ -176,9 +179,13 @@ func New(cfg Config) (*Agent, error) {
 // Run 执行一次完整审查。
 func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err error) {
 	ctx, span := telemetrytrace.Tracer.Start(ctx, "cr-agent.review")
+	taskID := ""
 	defer func() {
 		if err != nil {
 			recordReviewErrorTelemetry(span, err)
+			if taskID != "" {
+				a.emitReviewEvent(ctx, taskID, reviewEventTaskFailed, "review failed")
+			}
 		}
 		span.End()
 	}()
@@ -197,8 +204,9 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	}
 	inputMeta := inputMetadata(diff, req.RepoPath)
 	// taskID 便于报告和数据库关联。
-	taskID := newTaskID(diff)
+	taskID = newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
+	a.emitReviewEvent(ctx, taskID, reviewEventInputLoaded, requestInputKind(req))
 	taskStarted := false
 	defer func() {
 		if err != nil && taskStarted && a.store != nil {
@@ -215,6 +223,10 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	}
 
 	result, decisions, runs, toolCallCount, runErr := a.runReviewChecks(ctx, taskID, mode, req.RepoPath, diff)
+	a.emitReviewEvent(ctx, taskID, reviewEventSkillRun, defaultSkillCommand)
+	for _, run := range runs {
+		a.emitReviewEvent(ctx, taskID, reviewEventSandboxRun, run.Command)
+	}
 	if runErr != nil {
 		// 执行失败降级为人工复核项。
 		result = resultWithRunError(result, runErr)
@@ -230,6 +242,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if provider := a.configuredModelProvider(mode); provider != nil {
 		var modelSummary modelRunSummary
 		result, modelSummary = a.runModelReview(ctx, taskID, provider, result, diff, inputMeta)
+		a.emitReviewEvent(ctx, taskID, reviewEventModelReview, fmt.Sprintf("calls=%d findings=%d exceptions=%d", modelSummary.CallCount, modelSummary.FindingCount, modelSummary.ExceptionCount))
 		result = finalizeReviewResult(result, reviewResultContext{
 			TaskID:        taskID,
 			InputMetadata: inputMeta,
@@ -249,6 +262,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if err := a.writeReviewArtifacts(ctx, taskID, result, reports); err != nil {
 		return review.Result{}, err
 	}
+	a.emitReviewEvent(ctx, taskID, reviewEventReportWritten, "review_report.json")
 	if a.store != nil {
 		// 写入完整审计数据。
 		if err := a.persist(ctx, taskID, result, decisions, runs, reports.JSON, reports.Markdown, reports.Diagnostics); err != nil {
@@ -260,6 +274,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 		}
 	}
 	recordReviewResultTelemetry(span, result)
+	a.emitReviewEvent(ctx, taskID, reviewEventTaskFinished, result.Conclusion.Status)
 	return result, nil
 }
 

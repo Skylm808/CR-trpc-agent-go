@@ -105,12 +105,20 @@ func (a *Agent) configuredModelProvider(mode string) ModelReviewProvider {
 				return ModelReviewOutput{}, err
 			})
 		}
-		return provider
+		return officialModelBackedProvider(modelProviderName(a.cfg.ModelHTTP.Model), provider)
 	}
 	if a.modelProvider != nil {
-		return a.modelProvider
+		return officialModelBackedProvider(defaultOfficialModelName, a.modelProvider)
 	}
-	return fakeModelProvider{}
+	return officialModelBackedProvider(modelSourceFake, fakeModelProvider{})
+}
+
+func modelProviderName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return defaultOfficialModelName
+	}
+	return name
 }
 
 func (a *Agent) runModelReview(ctx context.Context, taskID string, provider ModelReviewProvider, result review.Result, diff []byte, inputMeta review.InputMetadata) (review.Result, modelRunSummary) {
