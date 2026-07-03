@@ -27,11 +27,15 @@ func BuildMarkdown(result review.Result) string {
 	}
 	writeConclusion(&b, result.Conclusion)
 	if result.Metrics.FindingCount > 0 || result.Metrics.TotalDurationMS > 0 {
-		fmt.Fprintf(&b, "Metrics: findings=%d total_ms=%d sandbox_ms=%d tool_calls=%d permission_blocks=%d redactions=%d\n\n",
+		fmt.Fprintf(&b, "Metrics: findings=%d total_ms=%d sandbox_ms=%d model_ms=%d tool_calls=%d model_calls=%d model_findings=%d model_exceptions=%d permission_blocks=%d redactions=%d\n\n",
 			result.Metrics.FindingCount,
 			result.Metrics.TotalDurationMS,
 			result.Metrics.SandboxDurationMS,
+			result.Metrics.ModelDurationMS,
 			result.Metrics.ToolCallCount,
+			result.Metrics.ModelCallCount,
+			result.Metrics.ModelFindingCount,
+			result.Metrics.ModelExceptionCount,
 			result.Metrics.PermissionBlocks,
 			result.Metrics.RedactionCount,
 		)

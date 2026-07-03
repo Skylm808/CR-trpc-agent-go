@@ -46,14 +46,18 @@ type Conclusion struct {
 
 // Metrics 保存审查指标。
 type Metrics struct {
-	TotalDurationMS   int64          `json:"total_duration_ms,omitempty"`
-	SandboxDurationMS int64          `json:"sandbox_duration_ms,omitempty"`
-	ToolCallCount     int            `json:"tool_call_count,omitempty"`
-	PermissionBlocks  int            `json:"permission_block_count,omitempty"`
-	FindingCount      int            `json:"finding_count,omitempty"`
-	SeverityCounts    map[string]int `json:"severity_counts,omitempty"`
-	ExceptionCounts   map[string]int `json:"exception_counts,omitempty"`
-	RedactionCount    int            `json:"redaction_count,omitempty"`
+	TotalDurationMS     int64          `json:"total_duration_ms,omitempty"`
+	SandboxDurationMS   int64          `json:"sandbox_duration_ms,omitempty"`
+	ModelDurationMS     int64          `json:"model_duration_ms,omitempty"`
+	ToolCallCount       int            `json:"tool_call_count,omitempty"`
+	ModelCallCount      int            `json:"model_call_count,omitempty"`
+	PermissionBlocks    int            `json:"permission_block_count,omitempty"`
+	FindingCount        int            `json:"finding_count,omitempty"`
+	ModelFindingCount   int            `json:"model_finding_count,omitempty"`
+	ModelExceptionCount int            `json:"model_exception_count,omitempty"`
+	SeverityCounts      map[string]int `json:"severity_counts,omitempty"`
+	ExceptionCounts     map[string]int `json:"exception_counts,omitempty"`
+	RedactionCount      int            `json:"redaction_count,omitempty"`
 }
 
 // GovernanceSummary 汇总治理决策。

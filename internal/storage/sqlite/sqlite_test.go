@@ -99,9 +99,13 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 		TaskID:               "task-1",
 		TotalDurationMS:      10,
 		SandboxDurationMS:    5,
+		ModelDurationMS:      3,
 		ToolCallCount:        1,
+		ModelCallCount:       1,
 		PermissionBlockCount: 0,
 		FindingCount:         1,
+		ModelFindingCount:    1,
+		ModelExceptionCount:  0,
 		SeverityCountsJSON:   `{"high":1}`,
 		ExceptionCountsJSON:  `{}`,
 		RedactionCount:       1,
@@ -116,6 +120,9 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	}
 	if gotMetrics.FindingCount != 1 || gotMetrics.ToolCallCount != 1 {
 		t.Fatalf("unexpected metrics: %+v", gotMetrics)
+	}
+	if gotMetrics.ModelDurationMS != 3 || gotMetrics.ModelCallCount != 1 || gotMetrics.ModelFindingCount != 1 {
+		t.Fatalf("unexpected model metrics: %+v", gotMetrics)
 	}
 }
 

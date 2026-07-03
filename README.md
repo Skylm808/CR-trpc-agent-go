@@ -2,7 +2,7 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界和 deterministic fake provider。尚未绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；也尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -21,6 +21,7 @@
 - `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
 - `skill_load` 加载 `skills/code-review/SKILL.md`。
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
+- `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider。
 - `--file-list` 路径列表输入会转换为新增文件 diff，复用同一审查链路。
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
@@ -28,6 +29,7 @@
 - SQLite 保存 task、permission decision、filter decision、sandbox run、finding、artifact 引用、metrics、report。
 - `review_report.json`、`review_report.md`、`review_diagnostics.json` 会写入本地输出目录，并同步进入官方 artifact service；SQLite 只保存引用、摘要和大小。
 - 报告包含 findings、warnings、human_review_items、severity counts、governance_summary、sandbox_summary、metrics、artifacts 和修复建议。
+- metrics / diagnostics / telemetry / SQLite 记录 model 是否运行、model finding 数、model duration 和 model exception 数。
 - `review_diagnostics.json` 包含 Go input metadata：changed_go_files、package_names、module_path、has_tests、touched_test_files。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
@@ -49,6 +51,7 @@ CLI
   -> trpc-agent-go/tool/skill skill_load
   -> tool.PermissionPolicy
   -> trpc-agent-go/tool/skill skill_run
+  -> optional ModelReviewProvider fake-model boundary
   -> optional trpc-agent-go/tool/workspaceexec go checks
   -> fallback trpc-agent-go/tool/codeexec go checks
   -> report JSON/Markdown
@@ -193,7 +196,13 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `rule-only` | Loads the skill and runs deterministic `scripts/check.sh`. |
 | `dry-run` | Loads the skill, records a `dry_run` permission decision and a skipped sandbox run, but does not execute. |
 | `sandbox` | Runs `skill_run`, then permission-gated `go test ./...`, `go vet ./...`, and optional `staticcheck ./...`. |
-| `fake-model` | Same deterministic skill path as `rule-only`; no model API Key required. |
+| `fake-model` | Runs deterministic Skill, then the LLM Review Provider boundary with the built-in fake provider; no model API Key required and no real vendor SDK is called. |
+
+## LLM Review Provider Boundary
+
+`internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
+
+The current built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, or any network API. Deterministic rules and sandbox checks remain the base safety path; future real providers can plug into the same boundary without changing default CLI behavior.
 
 ## SQLite Audit Data
 
@@ -217,7 +226,7 @@ SELECT target, action, reason FROM filter_decisions WHERE task_id = ?;
 SELECT command, status, timeout_ms, output_limit_bytes, duration_ms FROM sandbox_runs WHERE task_id = ?;
 SELECT severity, category, file, line, title, status FROM findings WHERE task_id = ? ORDER BY file, line;
 SELECT name, kind, path, digest, size_bytes FROM artifacts WHERE task_id = ?;
-SELECT total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, redaction_count FROM metrics WHERE task_id = ?;
+SELECT total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, permission_block_count, finding_count, model_finding_count, model_exception_count, redaction_count FROM metrics WHERE task_id = ?;
 SELECT json_report, markdown_report FROM reports WHERE task_id = ?;
 ```
 

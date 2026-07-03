@@ -17,6 +17,7 @@
 - 旧的 `internal/governance` / `internal/sandbox` 本地包装已删除，主链路不再维护第二套治理和沙箱抽象。
 - `review_report.json` / `review_report.md` / `review_diagnostics.json` 已同步写入官方 artifact service，默认使用 inmemory，SQLite 继续保留引用记录。
 - `Run` 已挂官方 telemetry trace 边界和审查摘要属性，metrics 表仍保留可查询聚合结果。
+- `fake-model` 已接入 `ModelReviewProvider` 边界，默认 fake provider，不绑定真实厂商 SDK，不需要 API Key。
 
 当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
 
@@ -28,6 +29,7 @@ CLI 输入
   -> skill_load(code-review)
   -> PermissionPolicy
   -> skill_run(scripts/check.sh)
+  -> optional fake-model provider boundary
   -> optional tool/workspaceexec(go test/go vet/staticcheck)
   -> fallback tool/codeexec(go checks)
   -> redact + dedupe + warning/human-review split
@@ -65,10 +67,11 @@ go run ./cmd/review-agent \
 | Permission | ✅ allowlist 与 ask/deny Agent E2E 已接入 | 扩展更细粒度命令策略 |
 | 输入 | 🔶 diff/fixture/repo/file-list 支持 | 补 base/head ref |
 | 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测，契约见 `docs/eval-matrix.md` |
+| LLM Provider | ✅ fake-model 经过 provider 边界，输入/输出脱敏，高低置信分流，失败降级 | 后续接真实 provider，不改变无 API Key 默认路径 |
 | 存储 | ✅ SQLite 核心表和查询方法完成 | `internal/storage/store.go` 已抽出独立接口 |
 | 报告 | ✅ 核心摘要字段和 conclusion 完成 | 可增加更稳定 golden report |
 | 安全 | 🔶 timeout/output limit/digest/redaction/artifact cap/env whitelist 有记录，矩阵见 `docs/sandbox-safety.md` | 增加 runtime 级 env 强隔离 |
-| 监控 | 🔶 官方 trace span 记录审查摘要，SQLite metrics 表记录可查询聚合指标 | 后续接官方 metric exporter 和 OTLP dashboard |
+| 监控 | 🔶 官方 trace span 记录审查摘要和 model 调用指标，SQLite metrics 表记录可查询聚合指标 | 后续接官方 metric exporter 和 OTLP dashboard |
 | Runner/Event | ⏳ CLI 直接编排 `internal/agent.Agent.Run` | 后续接官方 Runner 事件流 |
 | Session/Memory | ⏳ 当前 SQLite 是审计库，不是官方 Session/Memory Service | 多轮评审需要时再接入 |
 
@@ -77,6 +80,7 @@ go run ./cmd/review-agent \
 - 不 fork 或复制 `trpc-agent-go` 框架代码。
 - 不把 `local-fallback` 当生产默认方案。
 - 不用纯文本 LLM 评论替代 Skill、Permission、沙箱和数据库链路。
+- 不在当前阶段接真实 OpenAI / Claude / Gemini SDK 或要求 API Key。
 - 不优先做复杂 AST；当前更重要的是验收链路和审计数据完整。
 
 ## 下一阶段 v0.2 Definition of Done
@@ -88,6 +92,7 @@ go run ./cmd/review-agent \
 - ask/deny 非 allow 决策不会进入 executor，并会进入报告治理摘要和 SQLite。
 - SQLite 可按 task_id 查询 task、permission/filter decision、sandbox run、finding、artifact、metrics、report。
 - 报告和数据库中无明文 API key/token/password。
+- fake-model 走 provider 边界；model 调用数、耗时、finding 数和异常数进入 diagnostics、SQLite 和 telemetry。
 - README、docs、examples 与 CLI flag 和 JSON contract 保持一致。
 
 ## 相关文档

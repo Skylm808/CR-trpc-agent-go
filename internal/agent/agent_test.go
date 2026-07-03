@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1004,9 +1005,13 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 		"cr_agent.artifact_count",
 		"cr_agent.permission_block_count",
 		"cr_agent.tool_call_count",
+		"cr_agent.model_call_count",
+		"cr_agent.model_finding_count",
+		"cr_agent.model_exception_count",
 		"cr_agent.sandbox_run_count",
 		"cr_agent.total_duration_ms",
 		"cr_agent.sandbox_duration_ms",
+		"cr_agent.model_duration_ms",
 		"cr_agent.severity_counts",
 		"cr_agent.exception_counts",
 		"cr_agent.conclusion_status",
@@ -1040,6 +1045,15 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	if attrs["cr_agent.tool_call_count"].AsInt64() != int64(result.Metrics.ToolCallCount) {
 		t.Fatalf("tool call count attribute mismatch: %+v", attrs["cr_agent.tool_call_count"])
 	}
+	if attrs["cr_agent.model_call_count"].AsInt64() != int64(result.Metrics.ModelCallCount) {
+		t.Fatalf("model call count attribute mismatch: %+v", attrs["cr_agent.model_call_count"])
+	}
+	if attrs["cr_agent.model_finding_count"].AsInt64() != int64(result.Metrics.ModelFindingCount) {
+		t.Fatalf("model finding count attribute mismatch: %+v", attrs["cr_agent.model_finding_count"])
+	}
+	if attrs["cr_agent.model_exception_count"].AsInt64() != int64(result.Metrics.ModelExceptionCount) {
+		t.Fatalf("model exception count attribute mismatch: %+v", attrs["cr_agent.model_exception_count"])
+	}
 	if attrs["cr_agent.sandbox_run_count"].AsInt64() != int64(len(result.SandboxSummary.Runs)) {
 		t.Fatalf("sandbox run count attribute mismatch: %+v", attrs["cr_agent.sandbox_run_count"])
 	}
@@ -1048,6 +1062,9 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	}
 	if attrs["cr_agent.sandbox_duration_ms"].AsInt64() != result.Metrics.SandboxDurationMS {
 		t.Fatalf("sandbox duration attribute mismatch: %+v", attrs["cr_agent.sandbox_duration_ms"])
+	}
+	if attrs["cr_agent.model_duration_ms"].AsInt64() != result.Metrics.ModelDurationMS {
+		t.Fatalf("model duration attribute mismatch: %+v", attrs["cr_agent.model_duration_ms"])
 	}
 	if !strings.Contains(attrs["cr_agent.severity_counts"].AsString(), `"critical":1`) {
 		t.Fatalf("severity distribution attribute mismatch: %+v", attrs["cr_agent.severity_counts"])
@@ -1301,15 +1318,32 @@ func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 	}
 }
 
-// TestAgentRunFakeModelUsesDeterministicSkill 固定 fake-model 规则链路。
-func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
+// TestAgentRunFakeModelUsesProviderBoundary 固定 fake-model 经过模型审查边界。
+func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 	t.Parallel()
 
 	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	diffPath := filepath.Join(t.TempDir(), "fake-model.diff")
+	diff := `diff --git a/model.go b/model.go
+--- /dev/null
++++ b/model.go
+@@ -0,0 +1,5 @@
++package modeldemo
++
++func RiskyModelPath() {
++	_ = "CR_AGENT_FAKE_MODEL_HIGH"
++}
+`
+	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
+		t.Fatalf("write diff: %v", err)
+	}
 	ag, err := New(Config{
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
-		OutputDir:  t.TempDir(),
+		SQLitePath: dbPath,
+		OutputDir:  outDir,
 		Timeout:    5 * time.Second,
 	})
 	if err != nil {
@@ -1318,14 +1352,296 @@ func TestAgentRunFakeModelUsesDeterministicSkill(t *testing.T) {
 	defer ag.Close()
 
 	result, err := ag.Run(context.Background(), Request{
-		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+		DiffFile: diffPath,
 		Mode:     ModeFakeModel,
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if len(result.Findings) == 0 || result.Findings[0].Source != "skill_run" {
-		t.Fatalf("expected fake-model to use skill_run findings, got %+v", result.Findings)
+	if !hasFindingSource(result.Findings, "fake_model") {
+		t.Fatalf("expected fake-model provider finding, got %+v", result.Findings)
+	}
+	if result.Metrics.ModelCallCount != 1 || result.Metrics.ModelFindingCount == 0 || result.Metrics.ModelDurationMS == 0 {
+		t.Fatalf("expected model metrics, got %+v", result.Metrics)
+	}
+
+	diagnostics, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics: %v", err)
+	}
+	for _, want := range []string{`"model_call_count": 1`, `"model_finding_count": 1`} {
+		if !strings.Contains(string(diagnostics), want) {
+			t.Fatalf("expected diagnostics to include %q, got %s", want, diagnostics)
+		}
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	metrics, err := store.MetricsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load metrics: %v", err)
+	}
+	if metrics.ModelCallCount != 1 || metrics.ModelFindingCount != 1 {
+		t.Fatalf("expected persisted model metrics, got %+v", metrics)
+	}
+	items, err := store.FindingsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load findings: %v", err)
+	}
+	if !hasFindingSource(items, "fake_model") {
+		t.Fatalf("expected sqlite model finding source, got %+v", items)
+	}
+}
+
+// TestModelProviderMergesFindingsByConfidenceAndDedupe 固定模型增量合并规则。
+func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+		_ = ctx
+		return ModelReviewOutput{Findings: []review.Finding{
+			{
+				Severity:       "high",
+				Category:       "error_handling",
+				File:           "panic.go",
+				Line:           2,
+				Title:          "Duplicate model panic finding",
+				Evidence:       "panic duplicate",
+				Recommendation: "Use errors.",
+				Confidence:     "high",
+				Source:         "model",
+				RuleID:         "panic-direct",
+			},
+			{
+				Severity:       "medium",
+				Category:       "logic",
+				File:           "main.go",
+				Line:           5,
+				Title:          "High confidence semantic risk",
+				Evidence:       "model_review_high",
+				Recommendation: "Add the missing branch.",
+				Confidence:     "high",
+				Source:         "model",
+				RuleID:         "model-semantic-risk",
+			},
+			{
+				Severity:       "low",
+				Category:       "maintainability",
+				File:           "main.go",
+				Line:           6,
+				Title:          "Low confidence model hint",
+				Evidence:       "model_review_low",
+				Recommendation: "Ask a reviewer to confirm.",
+				Confidence:     "low",
+				Source:         "model",
+				RuleID:         "model-low-confidence",
+			},
+		}}, nil
+	})
+	ag, err := New(Config{
+		SkillsRoot:    filepath.Join(root, "skills"),
+		Runtime:       RuntimeLocalFallback,
+		OutputDir:     t.TempDir(),
+		Timeout:       5 * time.Second,
+		ModelProvider: provider,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "panic.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := countRuleID(result.Findings, "panic-direct"); got != 1 {
+		t.Fatalf("expected duplicate rule/model finding to dedupe to one finding, got %d in %+v", got, result.Findings)
+	}
+	if !hasRuleID(result.Findings, "model-semantic-risk") {
+		t.Fatalf("expected high confidence model finding in findings, got %+v", result.Findings)
+	}
+	if hasRuleID(result.Findings, "model-low-confidence") {
+		t.Fatalf("low confidence model finding must not enter findings, got %+v", result.Findings)
+	}
+	if !hasRuleID(result.Warnings, "model-low-confidence") || !hasRuleID(result.HumanReviewItems, "model-low-confidence") {
+		t.Fatalf("expected low confidence model finding in warnings and human review, warnings=%+v human=%+v", result.Warnings, result.HumanReviewItems)
+	}
+}
+
+// TestModelProviderRedactsInputOutputReportsAndSQLite 固定模型输入输出都经过脱敏边界。
+func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	diffPath := filepath.Join(t.TempDir(), "model-secret.diff")
+	rawSecret := "sk-modelsecret-1234567890"
+	diff := `diff --git a/secret.go b/secret.go
+--- /dev/null
++++ b/secret.go
+@@ -0,0 +1,5 @@
++package secretdemo
++
++func Configure() {
++	_ = "` + rawSecret + `"
++}
+`
+	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
+		t.Fatalf("write diff: %v", err)
+	}
+	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+		_ = ctx
+		if strings.Contains(input.DiffSummary, rawSecret) {
+			t.Fatalf("model input leaked raw secret: %s", input.DiffSummary)
+		}
+		return ModelReviewOutput{Findings: []review.Finding{{
+			Severity:       "medium",
+			Category:       "security",
+			File:           "secret.go",
+			Line:           4,
+			Title:          "Model evidence contains secret",
+			Evidence:       "model saw " + rawSecret,
+			Recommendation: "Remove the secret.",
+			Confidence:     "high",
+			Source:         "model",
+			RuleID:         "model-secret-risk",
+		}}}, nil
+	})
+	ag, err := New(Config{
+		SkillsRoot:    filepath.Join(root, "skills"),
+		Runtime:       RuntimeLocalFallback,
+		SQLitePath:    dbPath,
+		OutputDir:     outDir,
+		Timeout:       5 * time.Second,
+		ModelProvider: provider,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: diffPath,
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !hasRuleID(result.Findings, "model-secret-risk") {
+		t.Fatalf("expected model secret risk finding, got %+v", result.Findings)
+	}
+	for _, finding := range result.Findings {
+		if strings.Contains(finding.Evidence, rawSecret) {
+			t.Fatalf("result finding leaked raw model output secret: %+v", finding)
+		}
+	}
+	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if strings.Contains(string(data), rawSecret) {
+			t.Fatalf("%s leaked raw model secret: %s", name, data)
+		}
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite directly: %v", err)
+	}
+	defer db.Close()
+	leaks, err := scanSQLiteForRawSecrets(context.Background(), db, []string{rawSecret})
+	if err != nil {
+		t.Fatalf("scan sqlite: %v", err)
+	}
+	if len(leaks) > 0 {
+		t.Fatalf("sqlite persisted raw model secret: %s", strings.Join(leaks, ", "))
+	}
+}
+
+// TestModelProviderFailureDoesNotAbortReview 固定模型失败降级为人工复核和指标异常。
+func TestModelProviderFailureDoesNotAbortReview(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+		_ = ctx
+		_ = input
+		return ModelReviewOutput{}, errors.New("provider failed with token=sk-modelboom-1234567890")
+	})
+	ag, err := New(Config{
+		SkillsRoot:    filepath.Join(root, "skills"),
+		Runtime:       RuntimeLocalFallback,
+		OutputDir:     t.TempDir(),
+		Timeout:       5 * time.Second,
+		ModelProvider: provider,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("model provider failure should not abort review: %v", err)
+	}
+	if result.Metrics.ModelExceptionCount != 1 || result.Metrics.ExceptionCounts["model_provider"] != 1 {
+		t.Fatalf("expected model exception metrics, got %+v", result.Metrics)
+	}
+	if result.Conclusion.Status != "needs_human_review" {
+		t.Fatalf("expected model failure to require human review, got %+v", result.Conclusion)
+	}
+	if !hasRuleID(result.HumanReviewItems, "model-provider-failed") {
+		t.Fatalf("expected model failure human review item, got %+v", result.HumanReviewItems)
+	}
+	for _, item := range result.HumanReviewItems {
+		if strings.Contains(item.Evidence, "sk-modelboom-1234567890") {
+			t.Fatalf("model failure leaked raw secret: %+v", item)
+		}
+	}
+}
+
+// TestRuleOnlyAndDryRunSkipModelProvider 固定兼容模式不调用模型边界。
+func TestRuleOnlyAndDryRunSkipModelProvider(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	provider := &countingModelProvider{}
+	for _, mode := range []string{ModeRuleOnly, ModeDryRun} {
+		ag, err := New(Config{
+			SkillsRoot:    filepath.Join(root, "skills"),
+			Runtime:       RuntimeLocalFallback,
+			OutputDir:     t.TempDir(),
+			Timeout:       5 * time.Second,
+			ModelProvider: provider,
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+		result, err := ag.Run(context.Background(), Request{
+			DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
+			Mode:     mode,
+		})
+		_ = ag.Close()
+		if err != nil {
+			t.Fatalf("Run(%s) returned error: %v", mode, err)
+		}
+		if result.Metrics.ModelCallCount != 0 || result.Metrics.ModelFindingCount != 0 {
+			t.Fatalf("%s should not record model metrics, got %+v", mode, result.Metrics)
+		}
+	}
+	if provider.calls != 0 {
+		t.Fatalf("rule-only and dry-run must not call model provider, calls=%d", provider.calls)
 	}
 }
 
@@ -1795,6 +2111,51 @@ func (t *recordingTool) Declaration() *tool.Declaration {
 func (t *recordingTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	t.calls++
 	return t.call(ctx, jsonArgs)
+}
+
+type modelProviderFunc func(context.Context, ModelReviewInput) (ModelReviewOutput, error)
+
+func (f modelProviderFunc) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	return f(ctx, input)
+}
+
+type countingModelProvider struct {
+	calls int
+}
+
+func (p *countingModelProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	_ = ctx
+	_ = input
+	p.calls++
+	return ModelReviewOutput{}, nil
+}
+
+func hasFindingSource(findings []review.Finding, source string) bool {
+	for _, finding := range findings {
+		if finding.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRuleID(findings []review.Finding, ruleID string) bool {
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			return true
+		}
+	}
+	return false
+}
+
+func countRuleID(findings []review.Finding, ruleID string) int {
+	count := 0
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			count++
+		}
+	}
+	return count
 }
 
 // assertDecisionForCommand 检查 allow 决策。

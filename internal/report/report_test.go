@@ -63,6 +63,9 @@ func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testi
 			ExceptionCounts:   map[string]int{"skill_run": 1},
 			PermissionBlocks:  1,
 			ToolCallCount:     2,
+			ModelCallCount:    1,
+			ModelFindingCount: 1,
+			ModelDurationMS:   3,
 			SandboxDurationMS: 12,
 			TotalDurationMS:   20,
 		},
@@ -122,6 +125,8 @@ func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testi
 		"Sandbox",
 		"Artifacts",
 		"Conclusion",
+		"model_calls=1",
+		"model_findings=1",
 		"blocking_findings",
 		"Move the value to a secret manager.",
 	} {

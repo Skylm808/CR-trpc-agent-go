@@ -32,6 +32,20 @@
 | `base_ref` / `head_ref` | ⬜ |
 | `parsed_files` / `parsed_hunks` | ✅ 由 parser 和 Skill 脚本处理 |
 
+## ModelReviewInput
+
+`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库，也不发送到真实模型 API。
+
+| 字段 | 当前状态 |
+|------|----------|
+| `diff_summary` | ✅ 由 unified diff 脱敏后生成，raw secret 不进入 provider |
+| `input_metadata` | ✅ 复用 `InputMetadata` |
+| `existing_findings` | ✅ 复用并脱敏后的 `Finding` |
+| `sandbox_summary` | ✅ 复用 `SandboxSummary` |
+| `governance_summary` | ✅ 复用 `GovernanceSummary` |
+
+当前 fake provider 是 deterministic provider；真实 OpenAI / Claude / Gemini provider、API Key 和 SDK 绑定留到后续阶段。
+
 ## InputMetadata
 
 输入元数据进入 `review_report.json` 和 `review_diagnostics.json` 的 `input_metadata` 字段，用于评测和回放时识别 Go 工程范围。
@@ -109,12 +123,14 @@
 | `evidence` | ✅ 写入前脱敏 |
 | `recommendation` | ✅ |
 | `confidence` | ✅ |
-| `source` | ✅ `skill_run` / `rule` / `sandbox` / `mode` / `permission` |
+| `source` | ✅ `skill_run` / `rule` / `sandbox` / `mode` / `permission` / `model` / `fake_model` |
 | `rule_id` | ✅ |
 | `dedupe_key` | ✅ `file + line + category + rule_id` |
 | `status` | ✅ `finding` / `warning` / `needs_human_review` |
 
 当前 SQLite 会把 `result.Findings`、`result.Warnings` 和 `result.HumanReviewItems` 都写入 `findings` 表，并通过 `status` 区分 `finding`、`warning`、`needs_human_review`。这样报告和数据库回放使用同一份结构化 review item 数据。
+
+模型输出也复用同一结构。高置信模型项进入 `findings`；低置信模型项进入 `warnings` 并标记 `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型 evidence 在进入报告和 SQLite 前必须走同一套脱敏逻辑。
 
 ## Artifact
 
@@ -141,15 +157,19 @@
 | `task_id` | ✅ |
 | `total_duration_ms` | ✅ |
 | `sandbox_duration_ms` | ✅ |
+| `model_duration_ms` | ✅ |
 | `tool_call_count` | ✅ |
+| `model_call_count` | ✅ |
 | `permission_block_count` | ✅ 统计所有非 allow / 非 dry-run 决策 |
 | `finding_count` | ✅ |
+| `model_finding_count` | ✅ |
+| `model_exception_count` | ✅ |
 | `severity_counts_json` | ✅ |
 | `exception_counts_json` | ✅ |
 | `redaction_count` | ✅ |
 | `created_at` | ✅ |
 
-当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、runtime、输入类型、task、finding、artifact、权限拦截、工具调用、总耗时、沙箱耗时、severity 分布、exception 类型分布和结论。trpc-agent-go 的公开 metric 包主要初始化框架内置 LLM/tool/workflow 指标；本 CLI 原型不硬接官方 internal 指标，后续部署时可启动官方 metric exporter 和 OTLP dashboard。
+当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、runtime、输入类型、task、finding、artifact、权限拦截、工具调用、model 调用/耗时/异常/finding 数、总耗时、沙箱耗时、severity 分布、exception 类型分布和结论。trpc-agent-go 的公开 metric 包主要初始化框架内置 LLM/tool/workflow 指标；本 CLI 原型不硬接官方 internal 指标，后续部署时可启动官方 metric exporter 和 OTLP dashboard。
 
 ## ReviewReport
 

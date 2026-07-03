@@ -32,6 +32,7 @@ type reviewResultContext struct {
 	ToolCallCount int
 	Decisions     []storage.DecisionRecord
 	Runs          []storage.SandboxRunRecord
+	Model         modelRunSummary
 }
 
 // finalizeReviewResult 补齐报告、落库和 telemetry 共用字段。
@@ -42,6 +43,10 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	result.Metrics.TotalDurationMS = time.Since(ctx.StartedAt).Milliseconds()
 	result.Metrics.ToolCallCount = ctx.ToolCallCount
 	result.Metrics.SandboxDurationMS = totalSandboxDuration(ctx.Runs)
+	result.Metrics.ModelCallCount = ctx.Model.CallCount
+	result.Metrics.ModelDurationMS = ctx.Model.DurationMS
+	result.Metrics.ModelFindingCount = ctx.Model.FindingCount
+	result.Metrics.ModelExceptionCount = ctx.Model.ExceptionCount
 	result.Metrics.FindingCount = len(result.Findings)
 	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
 	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
@@ -58,9 +63,7 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	result.GovernanceSummary = governanceSummary(ctx.Decisions, result.Metrics.PermissionBlocks)
 	result.SandboxSummary = sandboxSummary(ctx.Runs)
 	result.Artifacts = reportArtifacts()
-	if result.Summary == "" {
-		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
-	}
+	result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
 	result.Conclusion = conclusion(result)
 	return result
 }

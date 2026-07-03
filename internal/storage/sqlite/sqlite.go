@@ -91,9 +91,13 @@ type MetricsRecord struct {
 	TaskID               string
 	TotalDurationMS      int64
 	SandboxDurationMS    int64
+	ModelDurationMS      int64
 	ToolCallCount        int
+	ModelCallCount       int
 	PermissionBlockCount int
 	FindingCount         int
+	ModelFindingCount    int
+	ModelExceptionCount  int
 	SeverityCountsJSON   string
 	ExceptionCountsJSON  string
 	RedactionCount       int
@@ -105,9 +109,13 @@ type MetricsSummary struct {
 	TaskID               string
 	TotalDurationMS      int64
 	SandboxDurationMS    int64
+	ModelDurationMS      int64
 	ToolCallCount        int
+	ModelCallCount       int
 	PermissionBlockCount int
 	FindingCount         int
+	ModelFindingCount    int
+	ModelExceptionCount  int
 	SeverityCountsJSON   string
 	ExceptionCountsJSON  string
 	RedactionCount       int
@@ -214,9 +222,13 @@ CREATE TABLE IF NOT EXISTS metrics (
   task_id TEXT PRIMARY KEY,
   total_duration_ms INTEGER NOT NULL,
   sandbox_duration_ms INTEGER NOT NULL,
+  model_duration_ms INTEGER NOT NULL DEFAULT 0,
   tool_call_count INTEGER NOT NULL,
+  model_call_count INTEGER NOT NULL DEFAULT 0,
   permission_block_count INTEGER NOT NULL,
   finding_count INTEGER NOT NULL,
+  model_finding_count INTEGER NOT NULL DEFAULT 0,
+  model_exception_count INTEGER NOT NULL DEFAULT 0,
   severity_counts_json TEXT NOT NULL,
   exception_counts_json TEXT NOT NULL,
   redaction_count INTEGER NOT NULL,
@@ -235,6 +247,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE sandbox_runs ADD COLUMN finished_at TEXT`,
 		`ALTER TABLE sandbox_runs ADD COLUMN artifact_count INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE artifacts ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN model_duration_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN model_call_count INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN model_finding_count INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN model_exception_count INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumnError(err) {
 			return err
@@ -499,19 +515,23 @@ ORDER BY id
 // SaveMetrics 保存指标。
 func (s *Store) SaveMetrics(ctx context.Context, rec MetricsRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(task_id) DO UPDATE SET
 total_duration_ms=excluded.total_duration_ms,
 sandbox_duration_ms=excluded.sandbox_duration_ms,
+model_duration_ms=excluded.model_duration_ms,
 tool_call_count=excluded.tool_call_count,
+model_call_count=excluded.model_call_count,
 permission_block_count=excluded.permission_block_count,
 finding_count=excluded.finding_count,
+model_finding_count=excluded.model_finding_count,
+model_exception_count=excluded.model_exception_count,
 severity_counts_json=excluded.severity_counts_json,
 exception_counts_json=excluded.exception_counts_json,
 redaction_count=excluded.redaction_count,
 created_at=excluded.created_at
-`, rec.TaskID, rec.TotalDurationMS, rec.SandboxDurationMS, rec.ToolCallCount, rec.PermissionBlockCount, rec.FindingCount, rec.SeverityCountsJSON, rec.ExceptionCountsJSON, rec.RedactionCount, rec.At.UTC().Format(time.RFC3339Nano))
+`, rec.TaskID, rec.TotalDurationMS, rec.SandboxDurationMS, rec.ModelDurationMS, rec.ToolCallCount, rec.ModelCallCount, rec.PermissionBlockCount, rec.FindingCount, rec.ModelFindingCount, rec.ModelExceptionCount, rec.SeverityCountsJSON, rec.ExceptionCountsJSON, rec.RedactionCount, rec.At.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -520,9 +540,9 @@ func (s *Store) MetricsByTaskID(ctx context.Context, taskID string) (MetricsSumm
 	var out MetricsSummary
 	var createdAt string
 	err := s.db.QueryRowContext(ctx, `
-SELECT task_id, total_duration_ms, sandbox_duration_ms, tool_call_count, permission_block_count, finding_count, severity_counts_json, exception_counts_json, redaction_count, created_at
+SELECT task_id, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at
 FROM metrics WHERE task_id=?
-`, taskID).Scan(&out.TaskID, &out.TotalDurationMS, &out.SandboxDurationMS, &out.ToolCallCount, &out.PermissionBlockCount, &out.FindingCount, &out.SeverityCountsJSON, &out.ExceptionCountsJSON, &out.RedactionCount, &createdAt)
+`, taskID).Scan(&out.TaskID, &out.TotalDurationMS, &out.SandboxDurationMS, &out.ModelDurationMS, &out.ToolCallCount, &out.ModelCallCount, &out.PermissionBlockCount, &out.FindingCount, &out.ModelFindingCount, &out.ModelExceptionCount, &out.SeverityCountsJSON, &out.ExceptionCountsJSON, &out.RedactionCount, &createdAt)
 	if err != nil {
 		return MetricsSummary{}, err
 	}

@@ -1,6 +1,6 @@
 # 沙箱安全边界矩阵
 
-本文档集中说明当前 CR Agent 的沙箱安全边界、审计字段和测试证据。当前实现是基于 `trpc-agent-go` Tool / Skill / CodeExecutor / PermissionPolicy / workspaceexec 的 CLI Agent 原型，不是生产多租户隔离平台；生产部署仍应由宿主环境提供容器运行策略、网络策略和密钥注入策略。
+本文档集中说明当前 CR Agent 的沙箱安全边界、模型输入输出过滤边界、审计字段和测试证据。当前实现是基于 `trpc-agent-go` Tool / Skill / CodeExecutor / PermissionPolicy / workspaceexec 的 CLI Agent 原型，不是生产多租户隔离平台；生产部署仍应由宿主环境提供容器运行策略、网络策略和密钥注入策略。
 
 ## 执行边界
 
@@ -12,6 +12,7 @@
 | Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `defaultPermissionPolicy`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | workspace 执行 | 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
+| 模型审查 | `fake-model` 只调用本地 deterministic provider；prompt 输入先脱敏，不调用真实网络 API | `TestModelProviderRedactsInputOutputReportsAndSQLite` |
 
 ## 审计字段
 
@@ -27,6 +28,8 @@
 | `env_whitelist` | 记录允许进入执行环境的环境变量名 | dry-run / sandbox tests |
 | `stdout_digest` / `stderr_digest` | 用摘要保留失败线索，避免保存完整输出 | failure tests |
 | `output` | 兼容字段，只保存脱敏且受限的失败线索 | Go check failure test |
+
+模型审计不写入 `sandbox_runs`，而是进入 `metrics`、`review_diagnostics.json` 和 telemetry trace：`model_call_count`、`model_duration_ms`、`model_finding_count`、`model_exception_count`。模型 finding 本身复用 `findings` 表，通过 `source=model` 或 `source=fake_model` 区分。
 
 ## 失败处理
 
@@ -53,10 +56,12 @@
 | Skill 输出重复或未脱敏 | Agent 层 `sanitizeFinding` 兜底 | `TestParseSkillFindingsDedupesAndRedacts` |
 | SQLite 泄漏 | 全表文本列扫描 raw secret | secret redaction tests |
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
+| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite` |
 
 ## 未完成边界
 
 - E2B / Cube runtime 尚未接入；当前只证明 container 和显式 local fallback。
+- 真实 LLM provider 尚未接入；当前 fake provider 只验证边界、脱敏、分流、审计和失败降级。
 - 官方 metric exporter / OTLP dashboard 尚未部署；当前使用官方 telemetry trace span 和 SQLite metrics。
 - 当前 env whitelist 是审计边界，容器级强环境隔离仍依赖部署侧 executor 配置。
 - 复杂业务逻辑错误不靠 deterministic 规则保证，需要后续 LLM 审查或领域规则补齐。

@@ -6,6 +6,7 @@
 
 - 读取 unified diff、fixture 或本地 git 工作区变更。
 - 通过 `tool/skill` 加载并运行 `skills/code-review`。
+- 在 `fake-model` 模式下经过 LLM Review Provider 边界，当前只使用 deterministic fake provider。
 - 高风险命令进入沙箱前经过 `tool.PermissionPolicy` 决策。
 - 默认使用 `codeexecutor/container`，`local-fallback` 仅用于开发和测试。
 - 结构化输出 findings、warnings、human review items、治理摘要、沙箱摘要、指标和报告产物。
@@ -15,7 +16,7 @@
 
 本仓库是 **trpc-agent-go 之上的应用示例**，不是框架 fork。本仓库负责 Go CR 业务逻辑、规则、报告、schema、fixture 和验收测试；官方框架负责 Skill、Tool、PermissionPolicy、CodeExecutor 等可复用原语。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，尚未接入 Runner/Event，后续可演进。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，已接入模型审查 provider 边界但未绑定真实 LLM 厂商 SDK，尚未接入 Runner/Event，后续可演进。
 
 当前代码已经接入：
 
@@ -26,6 +27,7 @@
 - `tool/workspaceexec` 的工作区内 Go 检查入口
 - `tool.PermissionPolicy`
 - `codeexecutor/container` 和显式 `codeexecutor/local` fallback
+- `internal/agent.ModelReviewProvider` 边界和无 API Key 的 fake provider
 - 早期 `internal/governance` / `internal/sandbox` 本地包装已删除，避免和官方治理、执行边界混淆。
 
 仍未完成的框架侧增强：
@@ -44,6 +46,7 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
   -> trpc-agent-go/tool/skill skill_load(code-review)
   -> tool.PermissionPolicy 决策 scripts/check.sh
   -> trpc-agent-go/tool/skill skill_run(scripts/check.sh)
+  -> fake-model 模式：redacted input -> ModelReviewProvider -> finding/warning merge
   -> 可选 sandbox 模式：优先 tool/workspaceexec 执行 go test / go vet / staticcheck，失败时退回 tool/codeexec
   -> 合并 Skill 输出，去重，脱敏，分流 warnings / human_review_items
   -> 生成 review_report.json 和 review_report.md
@@ -58,11 +61,12 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | 🔶 尚未接入官方 Runner/Event；后续可演进为事件流和会话生命周期管理 |
 | Tool | `skill_load`、`skill_run`、`execute_code` 都以 `tool.CallableTool` 形式持有 | ✅ 已使用官方工具抽象 |
 | Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
+| Model Review Provider | `internal/agent.ModelReviewProvider` 接收脱敏 diff 摘要、input metadata、existing findings、sandbox/governance summary，输出复用 `review.Finding` | ✅ 当前仅 fake provider，无真实厂商 SDK/API Key |
 | CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 已通过 |
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
-| Observability | 官方 telemetry trace span 记录 mode、runtime、输入类型、耗时、工具调用、权限拦截、severity/exception 分布和结论；SQLite metrics 表保存可查询聚合指标 | 🔶 未启动官方 metric exporter；OTLP dashboard 属于后续部署集成 |
+| Observability | 官方 telemetry trace span 记录 mode、runtime、输入类型、耗时、工具调用、model 调用/耗时/异常/finding 数、权限拦截、severity/exception 分布和结论；SQLite metrics 表保存可查询聚合指标 | 🔶 未启动官方 metric exporter；OTLP dashboard 属于后续部署集成 |
 | Artifact | `review_report.json` / `review_report.md` / `review_diagnostics.json` 保存到本地，且同步写入官方 artifact service | ✅ 默认使用官方 inmemory service，SQLite 继续保留引用记录 |
 
 ## CLI Mode
@@ -72,7 +76,15 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | `rule-only` | 加载 Skill 并运行 deterministic 脚本，不依赖模型 | 默认测试路径 |
 | `dry-run` | 加载 Skill，记录 skipped decision/run，不执行沙箱 | 验证治理与报告链路 |
 | `sandbox` | 执行 Skill，并在有 `--repo-path` 时执行 Go 检查 | 接近生产路径 |
-| `fake-model` | 复用 deterministic Skill 链路，不使用真实模型 key | 无 API Key 的模型路径替身 |
+| `fake-model` | 执行 deterministic Skill 后进入 ModelReviewProvider 边界，默认 fake provider，不使用真实模型 key | 无 API Key 的模型路径替身 |
+
+## LLM Review Provider
+
+当前新增的是模型审查边界，不是真实模型接入。`ModelReviewProvider` 的输入只包含脱敏后的 diff summary、Go input metadata、已有 findings、sandbox summary 和 governance summary；raw diff secret 不允许进入 prompt。Provider 输出继续使用 `review.Finding` 字段：`severity`、`category`、`file`、`line`、`title`、`evidence`、`recommendation`、`confidence`、`source`、`rule_id`、`status`。
+
+合并规则保持确定性：`source` 归一为 `model` 或 `fake_model`；高置信模型项进入 `findings`；低置信模型项降级为 `warnings` / `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型失败不让 review 崩溃，会增加 `model_provider` exception，生成人工复核项，并继续输出报告和 SQLite 审计。
+
+真实 OpenAI / Claude / Gemini provider、API Key 管理、Runner/Event、Session/Memory 和 E2B 都不属于当前阶段。
 
 ## 输入解析
 
@@ -181,10 +193,11 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 
 下一阶段不是重新写本地原型，而是在现有 framework-first 链路上补齐验收缺口：
 
-1. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
-2. E2B runtime 入口或清晰的 unsupported 记录。
-3. 官方 metric exporter、Session/Memory 和 Runner/Event 的接入条件评估。
-4. hidden/eval 评测脚本，验证高危检出率和误报率，契约见 `docs/eval-matrix.md`。
+1. 将真实模型 provider 挂到现有 `ModelReviewProvider` 边界，同时保持无 API Key 默认路径不变。
+2. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
+3. E2B runtime 入口或清晰的 unsupported 记录。
+4. 官方 metric exporter、Session/Memory 和 Runner/Event 的接入条件评估。
+5. hidden/eval 评测脚本，验证高危检出率和误报率，契约见 `docs/eval-matrix.md`。
 
 ## 相关文档
 

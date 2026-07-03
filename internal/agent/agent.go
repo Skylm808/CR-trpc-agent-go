@@ -38,7 +38,7 @@ const (
 	ModeDryRun = "dry-run"
 	// ModeSandbox 执行规则和 Go 检查。
 	ModeSandbox = "sandbox"
-	// ModeFakeModel 复用规则链路，不调用模型。
+	// ModeFakeModel 运行规则链路和 deterministic fake model provider。
 	ModeFakeModel = "fake-model"
 )
 
@@ -80,6 +80,8 @@ type Config struct {
 	EnableStaticcheck bool
 	// ArtifactService 接入官方 artifact service。
 	ArtifactService artifact.Service
+	// ModelProvider 是可选的模型审查边界；fake-model 默认使用 deterministic provider。
+	ModelProvider ModelReviewProvider
 }
 
 // Request 描述一次审查输入。
@@ -114,6 +116,8 @@ type Agent struct {
 	store storage.Store
 	// artifactService 保存官方产物。
 	artifactService artifact.Service
+	// modelProvider 提供语义审查增量。
+	modelProvider ModelReviewProvider
 }
 
 // New 创建基于 trpc-agent-go 的 CR Agent。
@@ -163,6 +167,7 @@ func New(cfg Config) (*Agent, error) {
 		policy:          defaultPermissionPolicy(),
 		store:           store,
 		artifactService: cfg.ArtifactService,
+		modelProvider:   cfg.ModelProvider,
 	}, nil
 }
 
@@ -220,6 +225,19 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 		Decisions:     decisions,
 		Runs:          runs,
 	})
+	if provider := a.configuredModelProvider(mode); provider != nil {
+		var modelSummary modelRunSummary
+		result, modelSummary = a.runModelReview(ctx, taskID, provider, result, diff, inputMeta)
+		result = finalizeReviewResult(result, reviewResultContext{
+			TaskID:        taskID,
+			InputMetadata: inputMeta,
+			StartedAt:     start,
+			ToolCallCount: toolCallCount,
+			Decisions:     decisions,
+			Runs:          runs,
+			Model:         modelSummary,
+		})
+	}
 
 	// 报告文件和 SQLite 使用同一份内容。
 	reports, err := buildReportBundle(result)
@@ -380,11 +398,15 @@ func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
 		attribute.Int("cr_agent.artifact_count", len(result.Artifacts)),
 		attribute.Int("cr_agent.permission_block_count", result.Metrics.PermissionBlocks),
 		attribute.Int("cr_agent.tool_call_count", result.Metrics.ToolCallCount),
+		attribute.Int("cr_agent.model_call_count", result.Metrics.ModelCallCount),
+		attribute.Int("cr_agent.model_finding_count", result.Metrics.ModelFindingCount),
+		attribute.Int("cr_agent.model_exception_count", result.Metrics.ModelExceptionCount),
 		attribute.Int("cr_agent.sandbox_run_count", len(result.SandboxSummary.Runs)),
 		attribute.Int("cr_agent.redaction_count", result.Metrics.RedactionCount),
 		attribute.Int("cr_agent.exception_count", exceptionCount(result.Metrics.ExceptionCounts)),
 		attribute.Int64("cr_agent.total_duration_ms", result.Metrics.TotalDurationMS),
 		attribute.Int64("cr_agent.sandbox_duration_ms", result.Metrics.SandboxDurationMS),
+		attribute.Int64("cr_agent.model_duration_ms", result.Metrics.ModelDurationMS),
 		attribute.String("cr_agent.severity_counts", metricDistribution(result.Metrics.SeverityCounts)),
 		attribute.String("cr_agent.exception_counts", metricDistribution(result.Metrics.ExceptionCounts)),
 		attribute.String("cr_agent.conclusion_status", result.Conclusion.Status),

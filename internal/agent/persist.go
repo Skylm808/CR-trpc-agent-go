@@ -54,9 +54,13 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 	if err := a.store.SaveMetrics(ctx, storage.MetricsRecord{
 		TaskID: taskID, TotalDurationMS: result.Metrics.TotalDurationMS,
 		SandboxDurationMS:    result.Metrics.SandboxDurationMS,
+		ModelDurationMS:      result.Metrics.ModelDurationMS,
 		ToolCallCount:        result.Metrics.ToolCallCount,
+		ModelCallCount:       result.Metrics.ModelCallCount,
 		PermissionBlockCount: result.Metrics.PermissionBlocks,
 		FindingCount:         result.Metrics.FindingCount,
+		ModelFindingCount:    result.Metrics.ModelFindingCount,
+		ModelExceptionCount:  result.Metrics.ModelExceptionCount,
 		SeverityCountsJSON:   string(review.MustJSON(result.Metrics.SeverityCounts)),
 		ExceptionCountsJSON:  string(review.MustJSON(result.Metrics.ExceptionCounts)),
 		RedactionCount:       result.Metrics.RedactionCount,
