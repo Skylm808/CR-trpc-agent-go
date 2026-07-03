@@ -1,137 +1,221 @@
-# 实现计划
+# 当前实现计划
 
-本文档按 Issue #2004 验收优先级排列。当前仓库已经完成第一轮 framework-first 纠偏：官方 `trpc-agent-go` 的 Skill、PermissionPolicy、CodeExecutor 和 SQLite 审计链路已进入主线。下一阶段目标是把它从“可跑通原型”推进到“可验收 MVP”。
+本文档记录当前真实 roadmap。旧的 M0-M5 里程碑状态已收敛到本文，避免把已完成的 Docker/Eval 工作继续显示为缺口。
 
-## 里程碑总览
+## 当前已完成
 
-```text
-M0  本地 rule-only 原型                    ✅ 已作为迁移基础
-M1  trpc-agent-go 最小链路                 ✅ 已打通
-M2  规则补全 + fixture 预期                ✅ 公开 fixture 已覆盖
-M3  存储与报告对齐契约                     🔶 核心完成，仍需收口
-M4  真实沙箱/治理/遥测增强                 🔶 当前最高优先级
-M5  验收交付与评测                         ⬜
+| 能力 | 状态 | 证据 |
+|------|------|------|
+| trpc-agent-go Skill / Tool | ✅ | `tool/skill` load/run `skills/code-review/scripts/check.sh` |
+| PermissionPolicy | ✅ | 所有 Skill 和 Go check 命令先过 allow/ask/deny 决策，非 allow 不进入 executor |
+| CodeExecutor / workspaceexec | ✅ | 默认 `codeexecutor/container`，Go check 优先 `tool/workspaceexec`，`tool/codeexec` 兜底 |
+| artifact | ✅ | 报告和 diagnostics 写本地并同步写入官方 artifact service，SQLite 保存引用 |
+| telemetry | ✅ | 官方 trace span 记录 task、mode、runtime、tool/model 调用、异常、finding 和 conclusion 摘要 |
+| SQLite 审计 | ✅ | task、decision、sandbox run、finding、artifact、metrics、report 均可按 task_id 查询 |
+| deterministic fake provider | ✅ | 默认无 API Key、无网络模型，走 `ModelReviewProvider` 边界 |
+| opt-in HTTP provider | ✅ | `--model-provider http` 显式开启，输入/输出脱敏，失败降级人工复核 |
+| Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
+| 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
+| hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_EXPECTED` / `CR_AGENT_EVAL_REPORT_ROOT` |
+| 默认无 API Key 路径 | ✅ | `rule-only`、`dry-run`、默认 `fake-model` 不要求真实模型凭证 |
+
+## 下一阶段优先级
+
+### 1. 官方 model.Model / Runner / Event 适配
+
+**目标：** 把当前 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`，并让 CLI 审查过程能通过 Runner/Event 暴露阶段性事件，而不是只在 `Agent.Run(ctx, Request)` 内部直接编排。
+
+**影响文件：**
+
+- `internal/agent/model.go`
+- `internal/agent/model_http.go`
+- `internal/agent/agent.go`
+- `internal/agent/telemetry.go`
+- `cmd/review-agent/*.go`
+- `docs/architecture.md`
+- `docs/data-contract.md`
+
+**验收标准：**
+
+- 默认 fake provider 和 opt-in HTTP provider 仍可用，且仍不要求 API Key。
+- 当前 `ModelReviewProvider` 的脱敏、分流、去重、失败降级语义不丢失。
+- 新 adapter 明确实现或包装官方 `model.Model`，并有单元测试覆盖 request/response、redaction、timeout/error。
+- Runner/Event 路线至少能输出 input loaded、skill run、model review、sandbox run、report written、task finished/failed 等事件。
+- 老 CLI 输出和 SQLite 审计 contract 保持兼容。
+
+**测试/验证命令：**
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
+GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
 
-## M1：trpc-agent-go 最小链路 ✅
+**风险和不做事项：**
 
-| 任务 | 状态 | 证据 |
-|------|------|------|
-| 添加官方 `trpc-agent-go` 依赖 | ✅ | `go.mod` |
-| 建立 `internal/agent` 编排层 | ✅ | CLI 调用 Agent |
-| `tool/skill` 加载 `skills/code-review` | ✅ | `agent.New` + `NewLoadTool` |
-| `skill_run` 执行 `scripts/check.sh` | ✅ | `runSkillChecks` |
-| `tool.PermissionPolicy` 执行前决策 | ✅ | `defaultPermissionPolicy` |
-| 默认 `codeexecutor/container` | ✅ | `RuntimeContainer` 默认值 |
-| `local-fallback` 仅显式启用 | ✅ | CLI `--runtime local-fallback` |
-| `tool/workspaceexec` 执行 Go 检查 | ✅ | `runGoSandboxChecks` 优先走 workspace，`tool/codeexec` 兜底 |
-| `dry-run` / `sandbox` / `fake-model` / `rule-only` mode | ✅ | CLI flag + Agent branch |
+- 不在这一步绑定 OpenAI / Claude / Gemini 厂商 SDK。
+- 不删除无 API Key 默认路径。
+- 不为了接 Runner/Event 重写规则引擎、SQLite schema 或报告 contract。
 
-## M2：规则补全 + Fixture 预期 ✅
+### 2. E2B runtime 最小 unsupported/adapter 入口
 
-| rule_id | 类别 | fixture | 状态 |
-|---------|------|---------|------|
-| `secret-leak` | 敏感信息 | `secret.diff` | ✅ |
-| `panic-direct` | 错误处理 | `panic.diff` | ✅ |
-| `todo-marker` | 可维护性 | `todo.diff` | ✅ |
-| `missing-test-hint` | 测试缺失 | `test-missing.diff`、`missing-test.diff` | ✅ warning |
-| `goroutine-leak` | goroutine 泄漏 | `goroutine.diff` | ✅ |
-| `context-leak` | context 生命周期 | `context.diff` | ✅ |
-| `resource-leak` | 资源关闭 | `resource.diff` | ✅ |
-| `db-lifecycle` | DB 生命周期 | `db-lifecycle.diff` | ✅ |
-| 去重 | duplicate panic | `dedupe.diff` | ✅ |
-| 沙箱失败 | command exit != 0 | `sandbox-fail.diff` | ✅ |
-| 沙箱超时 | timed out | `sandbox-timeout.diff` | ✅ |
+**目标：** 给 `--runtime e2b` 或等价 runtime 标识提供清晰入口。若暂不实现真实 E2B 调用，必须返回结构化 unsupported 记录并写入 diagnostics / SQLite / report，避免用户误以为 E2B 已接入。
 
-公开 fixture 已从“报告存在”升级为 rule_id/severity/status 断言。
+**影响文件：**
 
-## M3：存储与报告对齐契约 🔶
+- `internal/agent/execution.go`
+- `internal/agent/config.go`
+- `cmd/review-agent/run.go`
+- `cmd/review-agent/main.go`
+- `docs/sandbox-safety.md`
+- `docs/architecture.md`
+- `docs/ci.md`
 
-| 任务 | 状态 | 下一步 |
-|------|------|--------|
-| SQLite 记录 task | ✅ | — |
-| SQLite 记录 permission_decisions | ✅ | 增加 policy_name 字段可选 |
-| SQLite 记录 filter_decisions | ✅ | 扩展非 secret filter |
-| SQLite 记录 sandbox_runs | ✅ | 已记录 artifact_count / finished_at |
-| SQLite 记录 findings/warnings/human review items | ✅ | 统一写入 `findings` 表，用 `status` 区分 |
-| SQLite 记录 artifacts | ✅ | 报告和诊断产物引用已记录，官方 artifact service 已有最小接入 |
-| SQLite 记录 metrics | ✅ | trace span 同步记录审查摘要属性 |
-| SQLite 记录 reports | ✅ | — |
-| 按 task_id 查询全部核心实体 | ✅ | — |
-| 报告含 governance/sandbox/human review/artifacts | ✅ | 已补 conclusion 字段 |
+**验收标准：**
 
-建议后续小改：
+- CLI 能识别 E2B runtime 标识。
+- 未配置 E2B 时不崩溃，产出 `unsupported` 或 `needs_human_review` 记录。
+- 报告、diagnostics、SQLite sandbox run 明确写出 E2B 未支持/未配置。
+- container 默认 runtime 不变，`local-fallback` 仍只能显式选择。
 
-1. ~~在 `sandbox_runs` 增加 `finished_at` 和 `artifact_count`。~~ 已完成。
-2. ~~增加 report conclusion 字段，便于 CI 汇总。~~ 已完成。
+**测试/验证命令：**
 
-## M4：真实沙箱、治理与遥测增强 🔶
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache go test ./internal/agent ./cmd/review-agent
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
+```
 
-这是当前最高优先级。
+**风险和不做事项：**
 
-| 任务 | 状态 | 验证方式 |
-|------|------|----------|
-| Docker container runtime 真实 E2E | ✅ | env-gated test 已在 Docker Desktop 上通过 |
-| container bind mount repo 到 `/workspace/repo` | ✅ | `ContainerRepoHostPath` + `WithBindMount` |
-| E2B runtime 入口 | ⬜ | CLI/runtime adapter 或明确 unsupported |
-| ask/needs_human_review 不进入 executor | ✅ | Agent E2E 覆盖 ask |
-| deny 不进入 executor | ✅ | Agent E2E 覆盖 deny |
-| env whitelist 强校验 | 🔶 | Agent 审计统一记录 `PATH,HOME,TMPDIR,GOCACHE`，runtime 级强隔离后续增强 |
-| artifact cap | ✅ | 默认单产物 1MiB，Config 可调整 |
-| 官方 telemetry hook | 🔶 | 当前有 trace span + 审查摘要属性 + 本地 metrics 表 |
+- 不新增 E2B SDK 依赖，除非明确进入真实 adapter 实现。
+- 不把 unsupported 伪装成成功执行。
+- 不降低 PermissionPolicy 对命令执行的前置要求。
 
-## M5：验收交付与评测 ⬜
+### 3. base/head ref 输入
 
-| 交付物 | 状态 | 下一步 |
-|--------|------|--------|
-| Go 示例入口 | ✅ | — |
-| Skill + rules + script | ✅ | 增加脚本 schema 文档 |
-| 数据库 schema + SQLite 实现 | ✅ | 补 migration 说明 |
-| 8+ diff 样本 | ✅ | — |
-| 示例输出 | ✅ | `examples/review_report.json/md` |
-| README | ✅ | — |
-| 300–500 字方案说明 | ✅ | `design-summary.md` |
-| hidden/eval 评测脚本 | 🔶 | 公开 fixture eval 已有；隐藏样本可通过外部 root 注入，契约见 `docs/eval-matrix.md` |
-| Docker/E2B 使用说明 | 🔶 | Docker test 命令已写；E2B 入口待补或文档化暂不支持 |
+**目标：** 让 repo 输入支持指定 base/head ref，便于真实 CR 场景复现 PR diff，而不是只能读取工作区 diff。
 
-## 当前验收对照
+**影响文件：**
 
-| # | 标准 | 当前状态 | 缺口 |
-|---|------|----------|------|
-| 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | ⬜ | 缺 hidden/eval 脚本，契约见 `docs/eval-matrix.md` |
-| 3 | DB 完整记录 task/sandbox/finding/report，按 task_id 查询 | ✅ | — |
-| 4 | 沙箱超时控制；失败不崩溃 | ✅ local fallback 已测 | container 真实超时需测 |
-| 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | 🔶 | DB 全表扫描已有；仍需更多 secret 样本 |
-| 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | — |
-| 7 | 高风险命令须先过 Filter/Permission | ✅ | — |
-| 8 | 报告含摘要、统计、人审、治理、监控、沙箱、建议 | ✅ | 已补 conclusion |
+- `cmd/review-agent/main.go`
+- `cmd/review-agent/run.go`
+- `internal/agent/input.go`
+- `internal/agent/repo.go`
+- `internal/review/parser.go`
+- `docs/data-contract.md`
+- `README.md`
 
-## 下一阶段推荐顺序
+**验收标准：**
 
-1. 在有 Docker daemon 的 CI/机器上运行 env-gated container integration test。
-2. 补 E2B runtime 的最小 adapter 或文档化暂不支持。
-3. 将隐藏样本 expected matrix 接入 `scripts/eval.sh` 或 CI 注入。
-4. 扩展更多 secret 样本和隐藏样本 expected matrix。
+- CLI 提供 `--base-ref` 和 `--head-ref` 或等价输入。
+- `--repo-path` + base/head 能生成统一 diff。
+- 未传 base/head 时保持现有 working tree diff 行为。
+- invalid ref 返回可诊断错误，不生成误导性空报告。
+- `review_report.json` 和 diagnostics 记录 base/head ref。
 
-## Definition of Done
+**测试/验证命令：**
 
-- [x] 所有公开 fixture 产出报告且 rule_id/severity/status 符合矩阵。
-- [x] findings 结构化、去重、低置信度分流正确。
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache go test ./internal/agent ./cmd/review-agent
+GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+```
+
+**风险和不做事项：**
+
+- 不自动 fetch 远端 ref；网络和凭证由调用方准备。
+- 不改变 `--diff-file`、`--file-list`、`--fixture` 的语义。
+
+### 4. 真实 hidden fixture matrix 验收
+
+**目标：** 用外部真实 hidden fixture root 和 expected TSV 跑一次验收，证明脚本门禁不只是契约存在。
+
+**影响文件：**
+
+- `scripts/eval.sh`
+- `cmd/review-agent/eval_script_test.go`
+- `docs/eval-matrix.md`
+- `docs/ci.md`
+- `docs/issue-2004-traceability.md`
+
+**验收标准：**
+
+- 使用真实 hidden root、expected TSV 和 report root 完整运行 `scripts/eval.sh`。
+- 记录 recall、precision、false_positive_rate、missing/unexpected 明细。
+- 不提交 hidden fixture 本体。
+- 若未达阈值，记录失败样本和后续规则/模型校准方向。
+
+**测试/验证命令：**
+
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
+CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
+CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
+GOCACHE=/private/tmp/cr-agent-gocache \
+scripts/eval.sh
+```
+
+**风险和不做事项：**
+
+- 不把 private hidden 样本提交到公开仓库。
+- 不把公开 fixture 的 100% 结果等同于 hidden 达标。
+
+### 5. 持续清理文档和状态矩阵
+
+**目标：** 保持 README、docs 索引、traceability、roadmap 与代码事实一致，避免阶段性 prompt 和历史 milestone 重新变成误导源。
+
+**影响文件：**
+
+- `README.md`
+- `docs/README.md`
+- `docs/implementation-plan.md`
+- `docs/issue-2004-traceability.md`
+- `docs/architecture.md`
+- `docs/data-contract.md`
+- `docs/sandbox-safety.md`
+- `docs/ci.md`
+
+**验收标准：**
+
+- docs 索引不引用已删除文件。
+- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；当前 LLM 不是官方 model/Runner 路线；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 与 base/head ref 未接入。
+- 任何新增阶段性 prompt 不作为长期文档入口。
+
+**测试/验证命令：**
+
+```bash
+rg -n "缺 hidden/eval|container E2E 未|真实 provider 尚未" README.md docs
+rg -n "\]\(([^)]*)\.md\)" README.md docs
+git diff --check
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
+```
+
+**风险和不做事项：**
+
+- 不为了减少文档数量删除 Issue 硬性交付物。
+- 不把迁移参考文档当作当前开发优先级。
+
+## 当前 Definition of Done
+
+- [x] 公开 fixture 全部可运行并按 rule_id/severity/status 断言。
+- [x] findings、warnings、human review items 结构化、去重、脱敏。
 - [x] SQLite 记录 task / decisions / sandbox runs / artifacts / metrics / reports。
 - [x] 沙箱失败、超时不崩溃 review，且写入 DB。
 - [x] 报告和 finding evidence 中不出现明文 API Key / token / password。
-- [ ] container runtime 真实 E2E 在 Docker 环境中验证。
-- [x] DB 全表 secret 扫描测试。
-- [x] ask/deny/needs_human_review Agent E2E 测试。
-- [x] 公开 fixture eval 脚本。
-- [x] 官方 artifact/telemetry 能力的最小接入或清晰边界说明；session/sqlite 仍是后续演进。
+- [x] container runtime 真实 E2E 有 env-gated 测试，并已在 Docker daemon 环境验证过。
+- [x] 公开 fixture eval 脚本和外部 hidden matrix 注入契约。
+- [x] 官方 artifact/telemetry 最小接入或清晰边界说明。
+- [ ] LLM provider 适配官方 model.Model / Runner / Event。
+- [ ] E2B runtime unsupported/adapter 入口。
+- [ ] base/head ref 输入。
+- [ ] 真实 hidden fixture matrix 验收记录。
 
 ## 相关文档
 
 - [architecture.md](architecture.md)
-- [framework-first-mvp.md](framework-first-mvp.md)
 - [data-contract.md](data-contract.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
-- [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)
+- [eval-matrix.md](eval-matrix.md)
+- [sandbox-safety.md](sandbox-safety.md)
+- [ci.md](ci.md)

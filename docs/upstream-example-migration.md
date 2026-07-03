@@ -62,10 +62,9 @@ github.com/Skylm808/CR-trpc-agent-go/...
 
 | 官方模块 | 接入时机 |
 |----------|----------|
-| Runner / Event | 需要流式输出、Web/UI 实时观察、多轮恢复时接入 |
+| `model.Model` / Runner / Event | 下一阶段优先接入；用于把当前 LLM provider 边界纳入官方模型调用和事件流路线 |
 | Session / Memory | 需要跨 PR 历史、长期经验复用、会话恢复时接入 |
 | E2B / Cube | 需要远端隔离沙箱或云端 runner 时接入 |
-| LLM provider | deterministic 规则和 Go checks 稳定后，用于审查业务逻辑、跨文件影响和复杂语义风险 |
 | telemetry exporter | 进入服务化部署后，把官方 trace / metric 接到 OTLP dashboard |
 
 ## 迁移前检查清单

@@ -16,7 +16,7 @@
 
 本仓库是 **trpc-agent-go 之上的应用示例**，不是框架 fork。本仓库负责 Go CR 业务逻辑、规则、报告、schema、fixture 和验收测试；官方框架负责 Skill、Tool、PermissionPolicy、CodeExecutor 等可复用原语。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact 的 CLI Agent 原型，已接入模型审查 provider 边界、默认 fake provider 和可选 HTTP provider，但未绑定真实 LLM 厂商 SDK，尚未接入 Runner/Event，后续可演进。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，已接入模型审查 provider 边界、默认 fake provider 和可选 HTTP provider，但未绑定真实 LLM 厂商 SDK，也尚未接入官方 `model.Model` / Runner / Event。下一阶段应把当前 provider 边界适配到官方模型和事件流路线，而不是继续扩展一套只属于本仓库的模型抽象。
 
 当前代码已经接入：
 
@@ -32,7 +32,7 @@
 
 仍未完成的框架侧增强：
 
-- 真实 Docker container 端到端测试已加入 env gate，并已在 Docker Desktop 上通过。
+- 官方 `model.Model` / Runner / Event 适配。
 - E2B/Cube runtime adapter。
 - 官方 artifact service 默认用 inmemory 保存报告和诊断产物；SQLite 继续保留引用记录和查询。
 - 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
@@ -58,10 +58,10 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | 官方模块 | 本仓库对应实现 | 当前状态 |
 |---------|----------------|---------|
 | Agent | `internal/agent.Agent` 是 CLI 编排器，负责输入、工具调用、报告和审计闭环 | ✅ 应用层 Agent 原型，未实现官方 `agent.Agent` 事件流接口 |
-| Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | 🔶 尚未接入官方 Runner/Event；后续可演进为事件流和会话生命周期管理 |
+| Runner / Event | CLI 直接调用 `Agent.Run(ctx, Request)` | ⬜ 尚未接入官方 Runner/Event；下一阶段应暴露 input loaded、skill run、model review、sandbox run、report written、task finished/failed 等事件 |
 | Tool | `skill_load`、`skill_run`、`execute_code` 都以 `tool.CallableTool` 形式持有 | ✅ 已使用官方工具抽象 |
 | Skill | `skill.NewFSRepository` 加载 `skills/code-review`，`skill_run` 执行固定脚本 | ✅ 已接入官方 Skill 仓库和 Tool |
-| Model Review Provider | `internal/agent.ModelReviewProvider` 接收脱敏 diff 摘要、input metadata、existing findings、sandbox/governance summary，输出复用 `review.Finding`；默认 fake provider，显式 opt-in HTTP provider 使用标准库 `net/http` | ✅ 无真实厂商 SDK；无 API Key 默认路径保持可测 |
+| Model Review Provider | `internal/agent.ModelReviewProvider` 接收脱敏 diff 摘要、input metadata、existing findings、sandbox/governance summary，输出复用 `review.Finding`；默认 fake provider，显式 opt-in HTTP provider 使用标准库 `net/http` | 🔶 当前是自定义 provider 边界；下一阶段适配官方 `trpc-agent-go/model.Model` |
 | CodeExecutor | `codeexecutor/container` 默认执行，`codeexecutor/local` 仅显式 fallback | ✅ 使用官方执行器，Docker E2E 已通过 |
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
@@ -85,6 +85,31 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 合并规则保持确定性：`source` 归一为 `model` 或 `fake_model`；高置信模型项进入 `findings`；低置信模型项降级为 `warnings` / `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型失败不让 review 崩溃，会增加 `model_provider` exception，生成人工复核项，并继续输出报告和 SQLite 审计。
 
 HTTP provider 通过 `--model-provider http`、`--model-endpoint`、`--model-api-key-env`、`--model-name` 显式开启；API key 只从 env 读取，不进入报告、diagnostics、SQLite 或 telemetry。HTTP 请求失败、非 2xx、JSON 解析失败或 deadline/timeout 都会降级为人工复核。真实 OpenAI / Claude / Gemini SDK 绑定、Runner/Event、Session/Memory 和 E2B 都不属于当前阶段。
+
+## 官方 model/Runner/Event 适配路径
+
+下一阶段的目标是保留当前脱敏、分流、去重和审计语义，同时把模型调用接到官方路线：
+
+```text
+CLI Request
+  -> Runner
+  -> Event(input_loaded)
+  -> Skill tool events(skill_load / skill_run)
+  -> model.Model adapter(redacted ModelReviewInput)
+  -> Event(model_review_completed / model_review_failed)
+  -> optional sandbox events
+  -> report/artifact events
+  -> Event(task_finished / task_failed)
+```
+
+适配顺序：
+
+1. 在 `internal/agent` 增加薄 adapter，把 fake provider 和 HTTP provider 包装成官方 `model.Model` 所需的输入输出形态。
+2. 保留 `ModelReviewProvider` 或等价 facade 作为过渡层，直到 CLI、tests 和 reports 都切到官方模型事件后再删除。
+3. 给 Agent.Run 增加事件 sink 或 Runner facade，先在 CLI 内消费事件，再考虑 Web/UI 或多轮恢复。
+4. telemetry 和 SQLite metrics 继续记录当前摘要字段，避免事件流接入造成审计 contract 断裂。
+
+非目标：不在这一步绑定真实厂商 SDK，不要求 API Key，不重写规则脚本，不改变报告 JSON contract。
 
 ## 输入解析
 
@@ -193,19 +218,17 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 
 下一阶段不是重新写本地原型，而是在现有 framework-first 链路上补齐验收缺口：
 
-1. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
-2. E2B runtime 入口或清晰的 unsupported 记录。
-3. 官方 metric exporter、Session/Memory 和 Runner/Event 的接入条件评估。
-4. hidden/eval 评测脚本，验证高危检出率和误报率，契约见 `docs/eval-matrix.md`。
-5. 如需厂商特化能力，在现有 HTTP provider 或 `ModelReviewProvider` 边界上扩展，同时保持无 API Key 默认路径不变。
+1. 把 LLM provider 适配到官方 `trpc-agent-go/model.Model` / Runner / Event 路线。
+2. 给 E2B runtime 做最小 unsupported/adapter 入口。
+3. 补 `base/head` ref 输入。
+4. 用真实 hidden fixture matrix 跑一次验收。
+5. 持续清理文档和状态矩阵，避免过期信息。
 
 ## 相关文档
 
-- [framework-first-mvp.md](framework-first-mvp.md)
 - [implementation-plan.md](implementation-plan.md)
 - [data-contract.md](data-contract.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
 - [sandbox-safety.md](sandbox-safety.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
 - [upstream-example-migration.md](upstream-example-migration.md)
-- [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)

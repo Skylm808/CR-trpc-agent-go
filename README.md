@@ -2,7 +2,7 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；也尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 LLM 路线也不是官方 `trpc-agent-go/model.Model` / Runner / Event。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -38,6 +38,10 @@
 
 仍需完善：
 
+- 把当前 LLM provider 适配到官方 `trpc-agent-go/model.Model` / Runner / Event 路线。
+- 给 E2B runtime 做最小 unsupported/adapter 入口。
+- 补 `base/head` ref 输入；当前 repo 输入读取 working tree diff 或目录内容。
+- 用真实 hidden fixture matrix 跑一次验收；当前仓库只提交外部注入契约，不提交 hidden 样本本体。
 - Docker `codeexecutor/container` 真实端到端验证已在 Docker Desktop 上跑通；宿主 CI 中仍建议显式开启 env-gated 测试。
 - 官方 artifact service 默认使用 inmemory 保存报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - 官方 `session/sqlite` 尚未直接接入；当前 SQLite 是审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
@@ -327,16 +331,16 @@ scripts/eval.sh         public fixture recall / precision evaluator
 
 ## Documentation
 
-- [docs/framework-first-mvp.md](docs/framework-first-mvp.md)
+- [docs/README.md](docs/README.md)
 - [docs/architecture.md](docs/architecture.md)
-- [docs/issue-acceptance.md](docs/issue-acceptance.md)
-- [docs/ci.md](docs/ci.md)
 - [docs/implementation-plan.md](docs/implementation-plan.md)
 - [docs/data-contract.md](docs/data-contract.md)
 - [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)
+- [docs/sandbox-safety.md](docs/sandbox-safety.md)
+- [docs/ci.md](docs/ci.md)
+- [docs/eval-matrix.md](docs/eval-matrix.md)
 - [docs/fixtures-matrix.md](docs/fixtures-matrix.md)
 - [docs/design-summary.md](docs/design-summary.md)
-- [docs/eval-matrix.md](docs/eval-matrix.md)
 
 ## License
 
