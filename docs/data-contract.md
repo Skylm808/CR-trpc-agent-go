@@ -130,7 +130,7 @@
 | `size_bytes` | ✅ 产物字节数 |
 | `created_at` | ✅ |
 
-当前 Agent 默认限制单个本地产物最大 1MiB，可通过 Config 调整。SQLite 不保存 artifact 正文；后续可增加更细粒度 artifact filter。
+当前 Agent 默认限制单个本地产物最大 1MiB，可通过 Config 调整。SQLite 不保存 artifact 正文；后续可增加更细粒度 artifact filter。artifact 安全边界见 [sandbox-safety.md](sandbox-safety.md)。
 
 ## MetricsSummary
 
@@ -215,3 +215,4 @@ type Store interface {
 - [architecture.md](architecture.md)
 - [implementation-plan.md](implementation-plan.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
+- [sandbox-safety.md](sandbox-safety.md)

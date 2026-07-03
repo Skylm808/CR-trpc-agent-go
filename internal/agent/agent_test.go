@@ -1177,6 +1177,15 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != "failed" || runs[0].ExitCode == 0 {
 		t.Fatalf("expected failed sandbox run with nonzero exit, got %+v", runs)
 	}
+	if runs[0].TimeoutMS != ag.cfg.Timeout.Milliseconds() || runs[0].OutputLimitBytes != ag.cfg.OutputLimitBytes {
+		t.Fatalf("expected failed sandbox run to record timeout/output limit, got %+v", runs[0])
+	}
+	if runs[0].EnvWhitelist != sandboxEnvWhitelist {
+		t.Fatalf("expected failed sandbox run env whitelist %q, got %+v", sandboxEnvWhitelist, runs[0])
+	}
+	if runs[0].StdoutDigest == "" {
+		t.Fatalf("expected failed sandbox run stdout digest, got %+v", runs[0])
+	}
 	metrics, err := store.MetricsByTaskID(context.Background(), result.TaskID)
 	if err != nil {
 		t.Fatalf("load metrics: %v", err)
@@ -1227,6 +1236,15 @@ func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
 	}
 	if len(runs) != 1 || runs[0].Status != "timed_out" {
 		t.Fatalf("expected timed_out sandbox run, got %+v", runs)
+	}
+	if runs[0].TimeoutMS != ag.cfg.Timeout.Milliseconds() || runs[0].OutputLimitBytes != ag.cfg.OutputLimitBytes {
+		t.Fatalf("expected timed_out sandbox run to record timeout/output limit, got %+v", runs[0])
+	}
+	if runs[0].EnvWhitelist != sandboxEnvWhitelist {
+		t.Fatalf("expected timed_out sandbox run env whitelist %q, got %+v", sandboxEnvWhitelist, runs[0])
+	}
+	if runs[0].StdoutDigest == "" {
+		t.Fatalf("expected timed_out sandbox run stdout digest, got %+v", runs[0])
 	}
 }
 
@@ -1509,6 +1527,15 @@ func TestAgentRunSandboxModeRecordsGoCheckFailure(t *testing.T) {
 		if run.Command == "go test ./..." {
 			if run.Status != "failed" || run.ExitCode == 0 {
 				t.Fatalf("expected failed go test run with exit code, got %+v", run)
+			}
+			if run.OutputLimitBytes != ag.cfg.OutputLimitBytes || run.EnvWhitelist != sandboxEnvWhitelist {
+				t.Fatalf("expected failed go test run to record safety bounds, got %+v", run)
+			}
+			if run.StdoutDigest == "" || run.Output == "" {
+				t.Fatalf("expected failed go test run to keep bounded output and digest, got %+v", run)
+			}
+			if strings.Contains(run.Output, "Error executing code block") && len(run.Output) > ag.cfg.OutputLimitBytes {
+				t.Fatalf("failed go test output exceeded configured limit: %d > %d", len(run.Output), ag.cfg.OutputLimitBytes)
 			}
 			return
 		}

@@ -67,7 +67,7 @@ go run ./cmd/review-agent \
 | 规则 | ✅ 覆盖 8 类公开 fixture | 增加 hidden/eval 评测，契约见 `docs/eval-matrix.md` |
 | 存储 | ✅ SQLite 核心表和查询方法完成 | `internal/storage/store.go` 已抽出独立接口 |
 | 报告 | ✅ 核心摘要字段和 conclusion 完成 | 可增加更稳定 golden report |
-| 安全 | 🔶 timeout/output limit/digest/redaction/artifact cap/env whitelist 有记录 | 增加 runtime 级 env 强隔离 |
+| 安全 | 🔶 timeout/output limit/digest/redaction/artifact cap/env whitelist 有记录，矩阵见 `docs/sandbox-safety.md` | 增加 runtime 级 env 强隔离 |
 | 监控 | 🔶 官方 trace span 记录审查摘要，SQLite metrics 表记录可查询聚合指标 | 后续接官方 metric exporter 和 OTLP dashboard |
 | Runner/Event | ⏳ CLI 直接编排 `internal/agent.Agent.Run` | 后续接官方 Runner 事件流 |
 | Session/Memory | ⏳ 当前 SQLite 是审计库，不是官方 Session/Memory Service | 多轮评审需要时再接入 |
@@ -95,4 +95,6 @@ go run ./cmd/review-agent \
 - [architecture.md](architecture.md)
 - [implementation-plan.md](implementation-plan.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
+- [sandbox-safety.md](sandbox-safety.md)
+- [upstream-example-migration.md](upstream-example-migration.md)
 - [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)

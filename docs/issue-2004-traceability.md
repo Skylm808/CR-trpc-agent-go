@@ -13,7 +13,7 @@
 | 5 | 结构化 findings | `internal/review/types.go` | `engine_test.go`、fixture tests | ✅ | — |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
-| 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离待补 |
+| 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离依赖部署侧 executor 配置 |
 | 9 | 监控审计 | SQLite metrics 表 + 官方 trace span + report metrics | report/agent/sqlite tests | 🔶 | telemetry attributes 已覆盖耗时、工具调用、权限拦截、severity/exception 分布和结论；官方 metric exporter/OTLP dashboard 待部署集成 |
 
 ## 输入输出要求追踪
@@ -60,7 +60,7 @@
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` 覆盖 14 条 fixture | — |
 | 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 支持 external expected TSV、阈值门禁和报告保留 | 真实 hidden 样本本体不提交，仍需外部样本持续校准 |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` | — |
-| 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E | Docker Desktop 下 env-gated container test 已通过 |
+| 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E、`sandbox-safety.md` | Docker Desktop 下 env-gated container test 已通过 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、LLM key、OpenAI key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
 | 6 | dry-run/fake-model 全流程 ≤ 2 分钟 | ✅ | unit/integration tests | — |
 | 7 | 高风险命令须先过 Filter/Permission；非 allow 不进沙箱 | ✅ | `policy_test.go` + Agent ask/deny E2E | — |
@@ -96,4 +96,6 @@
 - [implementation-plan.md](implementation-plan.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
 - [data-contract.md](data-contract.md)
+- [sandbox-safety.md](sandbox-safety.md)
+- [upstream-example-migration.md](upstream-example-migration.md)
 - [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)

@@ -10,8 +10,10 @@
 | [framework-first-mvp.md](framework-first-mvp.md) | 基于 trpc-agent-go 的第一个小版本边界与实现顺序 |
 | [implementation-plan.md](implementation-plan.md) | 分阶段实现计划（M1–M5）、Definition of Done、验收对照 |
 | [data-contract.md](data-contract.md) | 实体字段、SQLite schema、按 task_id 查询契约 |
+| [sandbox-safety.md](sandbox-safety.md) | 沙箱执行、Permission、输出限制、脱敏和 artifact cap 安全边界矩阵 |
 | [issue-acceptance.md](issue-acceptance.md) | 面向验收的命令、sample、SQLite 回放和框架模块证据 |
 | [ci.md](ci.md) | 本地/CI acceptance 脚本、Docker E2E 开关和 hidden sample 接入 |
+| [upstream-example-migration.md](upstream-example-migration.md) | 后续迁移到官方 trpc-agent-go/examples 的目录和边界准备 |
 | [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) | 可直接复制给 Goal 模式的下一阶段执行 prompt |
 
 ## Issue #2004 专项
@@ -30,7 +32,8 @@
 2. [architecture.md](architecture.md) — 组件与流程
 3. [issue-2004-traceability.md](issue-2004-traceability.md) — 当前进度与缺口
 4. [issue-acceptance.md](issue-acceptance.md) — 最终验收命令与证据
-5. [ci.md](ci.md) — CI 与隐藏样本评测闭环
+5. [sandbox-safety.md](sandbox-safety.md) — 沙箱和内容安全边界
+6. [ci.md](ci.md) — CI 与隐藏样本评测闭环
 
 **开始开发：**
 
@@ -38,7 +41,8 @@
 2. [implementation-plan.md](implementation-plan.md) — 当前 Milestone 与任务清单
 3. [fixtures-matrix.md](fixtures-matrix.md) — 规则实现的目标行为
 4. [data-contract.md](data-contract.md) — 字段与持久化约束
-5. [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) — 交给 Goal 模式继续推进
+5. [upstream-example-migration.md](upstream-example-migration.md) — 准备迁移到官方 examples
+6. [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md) — 交给 Goal 模式继续推进
 
 ## 状态图例
 

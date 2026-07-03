@@ -110,6 +110,7 @@ scripts/eval.sh
 隐藏样本的推荐契约见 [docs/eval-matrix.md](docs/eval-matrix.md)。
 
 CI 和 hidden sample 接入见 [docs/ci.md](docs/ci.md)。
+沙箱安全边界矩阵见 [docs/sandbox-safety.md](docs/sandbox-safety.md)；后续迁移到官方 `trpc-agent-go/examples` 的准备说明见 [docs/upstream-example-migration.md](docs/upstream-example-migration.md)。
 
 用 fixture 生成报告：
 

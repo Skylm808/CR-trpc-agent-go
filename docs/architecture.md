@@ -126,7 +126,7 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 - stdout_digest、stderr_digest
 - duration_ms
 
-失败、超时、deny/ask 都不会让整个 review 崩溃；它们进入 sandbox summary、metrics exception_counts 和 SQLite。
+失败、超时、deny/ask 都不会让整个 review 崩溃；它们进入 sandbox summary、metrics exception_counts 和 SQLite。更细的安全边界、审计字段和测试证据见 [sandbox-safety.md](sandbox-safety.md)。
 
 ## Go 规则覆盖
 
@@ -192,5 +192,7 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 - [implementation-plan.md](implementation-plan.md)
 - [data-contract.md](data-contract.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
+- [sandbox-safety.md](sandbox-safety.md)
 - [fixtures-matrix.md](fixtures-matrix.md)
+- [upstream-example-migration.md](upstream-example-migration.md)
 - [goal-prompt-framework-mvp.md](goal-prompt-framework-mvp.md)
