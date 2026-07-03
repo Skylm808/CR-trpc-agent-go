@@ -9,6 +9,8 @@ MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
 FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
+MIN_RECALL="${CR_AGENT_EVAL_MIN_RECALL:-0.800}"
+MAX_FALSE_POSITIVE_RATE="${CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE:-0.150}"
 if [[ -n "$REPORT_ROOT" ]]; then
   OUT_ROOT="$REPORT_ROOT"
   mkdir -p "$OUT_ROOT"
@@ -62,6 +64,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -77,15 +80,25 @@ type report struct {
 }
 
 func main() {
-	if len(os.Args) < 6 {
-		fmt.Fprintln(os.Stderr, "usage: eval <expected.tsv> <out-root> <duration-ms> <matrix-source> <fixtures...>")
+	if len(os.Args) < 8 {
+		fmt.Fprintln(os.Stderr, "usage: eval <expected.tsv> <out-root> <duration-ms> <matrix-source> <min-recall> <max-fpr> <fixtures...>")
 		os.Exit(2)
 	}
 	expectedFile := os.Args[1]
 	outRoot := os.Args[2]
 	durationMS := os.Args[3]
 	matrixSource := os.Args[4]
-	fixtures := os.Args[5:]
+	minRecall, err := parseThreshold(os.Args[5], "min recall")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	maxFalsePositiveRate, err := parseThreshold(os.Args[6], "max false positive rate")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	fixtures := os.Args[7:]
 
 	expected, err := readExpected(expectedFile)
 	if err != nil {
@@ -144,7 +157,16 @@ func main() {
 	if len(unexpected) > 0 {
 		fmt.Printf("unexpected=%s\n", strings.Join(unexpected, ","))
 	}
-	if falsePositive > 0 || falseNegative > 0 {
+	if recall < minRecall {
+		fmt.Printf("threshold_failed=recall actual=%.3f min=%.3f\n", recall, minRecall)
+		os.Exit(1)
+	}
+	if falsePositiveRate > maxFalsePositiveRate {
+		fmt.Printf("threshold_failed=false_positive_rate actual=%.3f max=%.3f\n", falsePositiveRate, maxFalsePositiveRate)
+		os.Exit(1)
+	}
+	if matrixSource == "builtin" && (falsePositive > 0 || falseNegative > 0) {
+		fmt.Printf("threshold_failed=public_matrix_exact_match missing_findings=%d unexpected_findings=%d\n", len(missing), len(unexpected))
 		os.Exit(1)
 	}
 }
@@ -190,6 +212,17 @@ func readExpected(path string) (map[string]map[string]expectedItem, error) {
 	return out, scanner.Err()
 }
 
+func parseThreshold(raw, name string) (float64, error) {
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q", name, raw)
+	}
+	if value < 0 || value > 1 {
+		return 0, fmt.Errorf("invalid %s %.3f: want 0..1", name, value)
+	}
+	return value, nil
+}
+
 func readActual(path string) (map[string]bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -225,4 +258,4 @@ func ratioZero(numerator, denominator int) float64 {
 GO
 
 DURATION_MS="$(( ($(date +%s) - START_SECONDS) * 1000 ))"
-go run "$HELPER" "$EXPECTED_FILE" "$OUT_ROOT" "$DURATION_MS" "$MATRIX_SOURCE" $FIXTURES
+go run "$HELPER" "$EXPECTED_FILE" "$OUT_ROOT" "$DURATION_MS" "$MATRIX_SOURCE" "$MIN_RECALL" "$MAX_FALSE_POSITIVE_RATE" $FIXTURES

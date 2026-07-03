@@ -58,7 +58,7 @@
 | # | 验收标准 | 状态 | 验证方式 | 缺口 |
 |---|---------|------|---------|------|
 | 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` 覆盖 14 条 fixture | — |
-| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 公开样本 eval | 隐藏样本 expected matrix/CI 注入待补，契约见 `docs/eval-matrix.md` |
+| 2 | 隐藏样本高危检出率 ≥ 80%，误报率 ≤ 15% | 🔶 | `scripts/eval.sh` 支持 external expected TSV、阈值门禁和报告保留 | 真实 hidden 样本本体不提交，仍需外部样本持续校准 |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E | Docker Desktop 下 env-gated container test 已通过 |
 | 5 | 脱敏检出率 ≥ 95%；报告/DB 无明文密钥 | ✅ | API key、LLM key、OpenAI key、Bearer、password、GitHub token、JWT-like token、private key、DB URL 报告/DB 全表扫描 | 仍需用隐藏样本持续校准 |
@@ -85,8 +85,8 @@
 
 1. 在宿主 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
 2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有官方 trace span 和审查摘要属性，artifact service 默认用 inmemory 保存报告和诊断产物，SQLite artifacts 表仅作为引用索引。
-3. 为隐藏样本扩展外部 expected matrix 输入。
-4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。
+3. 如需正式交付，用外部 hidden fixture root + expected TSV 持续校准检出率和误报率。
+4. 后续可继续扩大公开 fixture 和 hidden matrix 覆盖，降低规则启发式过拟合风险。
 
 ## 相关文档
 

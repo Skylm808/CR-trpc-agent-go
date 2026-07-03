@@ -71,6 +71,89 @@ func TestEvalScriptAcceptsExternalExpectedMatrix(t *testing.T) {
 	}
 }
 
+// TestEvalScriptFailsWhenRecallThresholdIsMissed 固定召回率门禁。
+func TestEvalScriptFailsWhenRecallThresholdIsMissed(t *testing.T) {
+	t.Parallel()
+
+	root := repoRootForEval(t)
+	expected := filepath.Join(t.TempDir(), "expected.tsv")
+	if err := os.WriteFile(expected, []byte("secret.diff\tmissing-rule\tcritical\tfinding\ttrue\n"), 0o644); err != nil {
+		t.Fatalf("write expected matrix: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_EVAL_FIXTURES=secret.diff",
+		"CR_AGENT_EVAL_EXPECTED="+expected,
+		"CR_AGENT_EVAL_MIN_RECALL=0.800",
+		"CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=1.000",
+		"GOCACHE="+filepath.Join(t.TempDir(), "gocache"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected eval script to fail threshold, output:\n%s", out)
+	}
+	output := string(out)
+	for _, want := range []string{"recall=0.000", "threshold_failed=recall"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected eval output to contain %q, got %s", want, output)
+		}
+	}
+}
+
+// TestEvalScriptFailsWhenFalsePositiveThresholdIsMissed 固定误报率门禁。
+func TestEvalScriptFailsWhenFalsePositiveThresholdIsMissed(t *testing.T) {
+	t.Parallel()
+
+	root := repoRootForEval(t)
+	expected := filepath.Join(t.TempDir(), "expected.tsv")
+	if err := os.WriteFile(expected, []byte("secret.diff\tmissing-test-hint\tlow\twarning\tfalse\n"), 0o644); err != nil {
+		t.Fatalf("write expected matrix: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_EVAL_FIXTURES=secret.diff",
+		"CR_AGENT_EVAL_EXPECTED="+expected,
+		"CR_AGENT_EVAL_MIN_RECALL=0.000",
+		"CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=0.150",
+		"GOCACHE="+filepath.Join(t.TempDir(), "gocache"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected eval script to fail false positive threshold, output:\n%s", out)
+	}
+	output := string(out)
+	for _, want := range []string{"false_positive_rate=1.000", "threshold_failed=false_positive_rate"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected eval output to contain %q, got %s", want, output)
+		}
+	}
+}
+
+// TestEvalScriptKeepsReportRoot 固定失败回放报告目录。
+func TestEvalScriptKeepsReportRoot(t *testing.T) {
+	t.Parallel()
+
+	root := repoRootForEval(t)
+	reportRoot := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_EVAL_FIXTURES=secret.diff",
+		"CR_AGENT_EVAL_REPORT_ROOT="+reportRoot,
+		"GOCACHE="+filepath.Join(t.TempDir(), "gocache"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("eval script failed: %v\n%s", err, out)
+	}
+	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+		if _, err := os.Stat(filepath.Join(reportRoot, "secret.diff", name)); err != nil {
+			t.Fatalf("expected retained report %s: %v\noutput:\n%s", name, err, out)
+		}
+	}
+}
+
 // repoRootForEval 查找仓库根目录。
 func repoRootForEval(t *testing.T) string {
 	t.Helper()

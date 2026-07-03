@@ -21,6 +21,23 @@
 | `sandbox-fail.diff` | Skill 脚本退出非 0 | — | — | needs_human_review warning | ✅ 不崩溃 |
 | `sandbox-timeout.diff` | Skill 脚本超时 | — | — | needs_human_review warning | ✅ 不崩溃 |
 
+## Issue 8 类公开样本映射
+
+Issue 要求至少 8 条公开 diff 样本必须全部可运行并生成报告。当前 14 条 fixture 覆盖如下：
+
+| Issue 样本类别 | 对应 fixture | 证明点 |
+|----------------|--------------|--------|
+| 无问题 diff | `safe.diff` | 零 finding / warning |
+| 安全问题 | `secret.diff` | `secret-leak` critical finding |
+| goroutine / context 泄漏 | `goroutine.diff`、`context.diff` | 生命周期风险 high finding |
+| 资源未关闭 | `resource.diff` | `resource-leak` high finding |
+| 数据库连接生命周期问题 | `db-lifecycle.diff` | `db-lifecycle` high finding |
+| 测试缺失 | `test-missing.diff`、`missing-test.diff` | `missing-test-hint` low warning |
+| 重复 finding | `dedupe.diff` | 同类重复只保留 1 条 |
+| 沙箱执行失败 | `sandbox-fail.diff`、`sandbox-timeout.diff` | failed / timed_out 不导致任务崩溃 |
+| 敏感信息脱敏 | `secret-shapes.diff` | 多形态 secret 脱敏，placeholder 不误报 |
+| 额外错误处理样本 | `panic.diff` | `panic-direct` high finding |
+
 ## 断言模式
 
 测试入口：`cmd/review-agent/fixtures_test.go`。
@@ -97,14 +114,17 @@
 
 ## 隐藏样本与评测
 
-Issue 要求隐藏样本检出率 ≥ 80%、误报 ≤ 15%。当前还缺：
+Issue 要求隐藏样本检出率 ≥ 80%、误报 ≤ 15%。当前不提交隐藏样本本体，但 `scripts/eval.sh` 已支持外部 fixture root、external expected TSV、阈值门禁和报告保留目录：
 
-| 目录/脚本 | 用途 | 状态 |
-|----------|------|------|
-| `testdata/hidden/` | 隐藏样本，评测/CI 注入 | ⬜ |
-| `scripts/eval.sh` | 输出公开样本 recall / precision / 耗时；可通过环境变量切换 fixtures root | 🔶 |
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
+CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
+CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
+scripts/eval.sh
+```
 
-建议隐藏样本不要提交到公开仓库，或通过 CI secret/artifact 注入。脚本当前内置公开样本 expected matrix；隐藏样本如需同样计算 recall/precision，应在 CI 中提供对应 expected matrix 或扩展脚本读取外部 expected TSV。
+默认门禁是 `CR_AGENT_EVAL_MIN_RECALL=0.800`、`CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=0.150`。公开内置矩阵额外要求 `missing_findings=0` 和 `unexpected_findings=0`。
 
 ## 示例报告输出
 

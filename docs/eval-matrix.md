@@ -25,6 +25,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 - `CR_AGENT_EVAL_FIXTURES`：样本子集，空格分隔。
 - `CR_AGENT_EVAL_EXPECTED`：外部 expected matrix TSV 路径。
 - `CR_AGENT_EVAL_REPORT_ROOT`：保留每个 fixture 的输出报告目录；默认使用临时目录。
+- `CR_AGENT_EVAL_MIN_RECALL`：召回率下限，默认 `0.800`。
+- `CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE`：误报率上限，默认 `0.150`。
 
 输出字段包括：
 
@@ -96,6 +98,19 @@ Issue 验收阈值：
 - 公开样本：必须 `false_positive=0`、`false_negative=0`。
 - 隐藏样本：允许用第五列 optional 标记低置信或可人工判断项；optional 命中不算误报，未命中不算漏报。
 
+脚本会先检查阈值，再对内置公开矩阵执行 exact match。阈值失败会非 0 退出，并输出：
+
+```text
+threshold_failed=recall actual=0.750 min=0.800
+threshold_failed=false_positive_rate actual=0.250 max=0.150
+```
+
+公开样本使用内置矩阵时，即使 recall / false positive rate 达标，只要存在漏检或未声明 finding，也会失败：
+
+```text
+threshold_failed=public_matrix_exact_match missing_findings=1 unexpected_findings=0
+```
+
 ## CI 注入示例
 
 ```bash
@@ -103,6 +118,8 @@ CR_AGENT_EVAL_FIXTURES_ROOT="$RUNNER_TEMP/hidden-fixtures" \
 CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff hidden-003.diff" \
 CR_AGENT_EVAL_EXPECTED="$RUNNER_TEMP/expected.tsv" \
 CR_AGENT_EVAL_REPORT_ROOT="$RUNNER_TEMP/cr-agent-reports" \
+CR_AGENT_EVAL_MIN_RECALL=0.800 \
+CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=0.150 \
 GOCACHE="$RUNNER_TEMP/cr-agent-gocache" \
 scripts/eval.sh
 ```
@@ -121,4 +138,4 @@ CR_AGENT_ACCEPTANCE_DOCKER=always scripts/acceptance.sh
 
 ## 建议
 
-hidden sample 不建议提交到公开仓库。CI 可以通过私有 artifact 或 secret volume 提供 fixture root 和 expected matrix，并设置 `CR_AGENT_EVAL_REPORT_ROOT` 保留失败报告用于回放。
+hidden sample 不建议提交到公开仓库。CI 可以通过私有 artifact 或 secret volume 提供 fixture root 和 expected matrix，并设置 `CR_AGENT_EVAL_REPORT_ROOT` 保留每个样本的 `review_report.json`、`review_report.md` 和 `review_diagnostics.json` 用于回放。

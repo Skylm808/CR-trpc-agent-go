@@ -96,6 +96,17 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 
 评测输出包含 `recall`、`precision`、`false_positive_rate`、`missing_findings` 和 `unexpected_findings`。可用 `CR_AGENT_EVAL_FIXTURES_ROOT` 指向外部/隐藏样本目录，用 `CR_AGENT_EVAL_FIXTURES` 选择样本子集，用 `CR_AGENT_EVAL_EXPECTED` 指向外部 expected matrix。
 
+默认验收阈值贴合 Issue：`CR_AGENT_EVAL_MIN_RECALL=0.800`、`CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=0.150`。公开内置矩阵额外要求零漏检、零未声明 finding。
+
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
+CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
+CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
+GOCACHE=/private/tmp/cr-agent-gocache \
+scripts/eval.sh
+```
+
 隐藏样本的推荐契约见 [docs/eval-matrix.md](docs/eval-matrix.md)。
 
 CI 和 hidden sample 接入见 [docs/ci.md](docs/ci.md)。
