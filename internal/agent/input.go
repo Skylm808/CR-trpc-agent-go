@@ -26,7 +26,7 @@ func readInput(cfg Config, req Request) ([]byte, string, error) {
 		return readFixtureInput(cfg.FixturesRoot, req.Fixture)
 	}
 	if req.RepoPath != "" {
-		b, err := diffFromRepo(req.RepoPath)
+		b, err := diffFromRepo(req.RepoPath, req.BaseRef, req.HeadRef)
 		return b, req.RepoPath, err
 	}
 	return nil, "", errors.New("diff file, file list, repo path, or fixture is required")
@@ -47,13 +47,17 @@ func readFixtureInput(root string, name string) ([]byte, string, error) {
 }
 
 // diffFromRepo 从工作区生成 diff。
-func diffFromRepo(repoPath string) ([]byte, error) {
+func diffFromRepo(repoPath string, baseRef string, headRef string) ([]byte, error) {
 	if repoPath == "" {
 		return nil, errors.New("repo path is required")
 	}
 	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
 		// Git 工作区直接使用 unified diff。
-		cmd := exec.Command("git", "-C", repoPath, "diff", "--unified=3")
+		args := []string{"-C", repoPath, "diff", "--unified=3"}
+		if strings.TrimSpace(baseRef) != "" && strings.TrimSpace(headRef) != "" {
+			args = append(args, strings.TrimSpace(baseRef)+"..."+strings.TrimSpace(headRef))
+		}
+		cmd := exec.Command("git", args...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("git diff: %w: %s", err, string(out))
@@ -194,6 +198,13 @@ func inputMetadata(diff []byte, repoPath string) review.InputMetadata {
 		HasTests:         len(testFiles) > 0,
 		TouchedTestFiles: sortedKeys(testFiles),
 	}
+}
+
+func inputMetadataForRequest(diff []byte, req Request) review.InputMetadata {
+	meta := inputMetadata(diff, req.RepoPath)
+	meta.BaseRef = strings.TrimSpace(req.BaseRef)
+	meta.HeadRef = strings.TrimSpace(req.HeadRef)
+	return meta
 }
 
 func packageNameFromLine(line string) string {

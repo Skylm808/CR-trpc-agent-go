@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	agentmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -23,8 +24,21 @@ func (a *Agent) emitReviewEvent(ctx context.Context, taskID, object, content str
 	if a == nil || a.cfg.EventSink == nil {
 		return
 	}
+	a.cfg.EventSink(ctx, reviewEvent(taskID, object, content))
+}
+
+func (a *Agent) emitReviewResultEvent(ctx context.Context, result review.Result) {
+	if a == nil || a.cfg.EventSink == nil {
+		return
+	}
+	ev := reviewEvent(result.TaskID, reviewEventTaskFinished, result.Conclusion.Status)
+	ev.StructuredOutput = result
+	a.cfg.EventSink(ctx, ev)
+}
+
+func reviewEvent(taskID, object, content string) *agentevent.Event {
 	now := time.Now()
-	a.cfg.EventSink(ctx, &agentevent.Event{
+	return &agentevent.Event{
 		Response: &agentmodel.Response{
 			Object:  object,
 			Created: now.Unix(),
@@ -42,5 +56,5 @@ func (a *Agent) emitReviewEvent(ctx context.Context, taskID, object, content str
 		Author:       "cr-agent",
 		ID:           fmt.Sprintf("%s:%s:%d", taskID, object, now.UnixNano()),
 		Timestamp:    now,
-	})
+	}
 }

@@ -32,6 +32,8 @@ const (
 	RuntimeContainer = "container"
 	// RuntimeLocalFallback 仅用于本地开发和测试。
 	RuntimeLocalFallback = "local-fallback"
+	// RuntimeE2B 是预留的 E2B 沙箱入口；当前显式返回 unsupported。
+	RuntimeE2B = "e2b"
 
 	// ModeRuleOnly 只执行确定性规则。
 	ModeRuleOnly = "rule-only"
@@ -99,6 +101,10 @@ type Request struct {
 	RepoPath string
 	// Fixture 是内置样本名。
 	Fixture string
+	// BaseRef 是审查上下文中的基础引用。
+	BaseRef string
+	// HeadRef 是审查上下文中的目标引用。
+	HeadRef string
 	// Mode 是执行模式。
 	Mode string
 }
@@ -176,8 +182,34 @@ func New(cfg Config) (*Agent, error) {
 	}, nil
 }
 
-// Run 执行一次完整审查。
-func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err error) {
+// Run executes one review through the official Runner/Event route and returns the final result.
+func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
+	events, err := a.RunWithEvents(ctx, req)
+	if err != nil {
+		return review.Result{}, err
+	}
+	var result review.Result
+	for ev := range events {
+		if ev == nil {
+			continue
+		}
+		if ev.Response != nil && ev.Response.Error != nil {
+			return review.Result{}, errors.New(ev.Response.Error.Message)
+		}
+		if ev.Object == reviewEventTaskFinished {
+			if structured, ok := ev.StructuredOutput.(review.Result); ok {
+				result = structured
+			}
+		}
+	}
+	if result.TaskID == "" {
+		return review.Result{}, errors.New("review runner did not produce a result")
+	}
+	return result, nil
+}
+
+// runDirect 执行一次完整审查。官方 Runner adapter 调用该兼容执行体。
+func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Result, err error) {
 	ctx, span := telemetrytrace.Tracer.Start(ctx, "cr-agent.review")
 	taskID := ""
 	defer func() {
@@ -202,7 +234,7 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	if err != nil {
 		return review.Result{}, err
 	}
-	inputMeta := inputMetadata(diff, req.RepoPath)
+	inputMeta := inputMetadataForRequest(diff, req)
 	// taskID 便于报告和数据库关联。
 	taskID = newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
@@ -274,12 +306,17 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 		}
 	}
 	recordReviewResultTelemetry(span, result)
-	a.emitReviewEvent(ctx, taskID, reviewEventTaskFinished, result.Conclusion.Status)
+	a.emitReviewResultEvent(ctx, result)
 	return result, nil
 }
 
 // runReviewChecks 执行规则链路并收集治理/沙箱记录。
 func (a *Agent) runReviewChecks(ctx context.Context, taskID, mode, repoPath string, diff []byte) (review.Result, []storage.DecisionRecord, []storage.SandboxRunRecord, int, error) {
+	if a.cfg.Runtime == RuntimeE2B {
+		result, run, decision := a.runUnsupportedRuntime(taskID, RuntimeE2B)
+		return result, []storage.DecisionRecord{decision}, []storage.SandboxRunRecord{run}, 0, nil
+	}
+
 	toolCallCount := 2
 	var result review.Result
 	var runRecord storage.SandboxRunRecord
@@ -303,6 +340,43 @@ func (a *Agent) runReviewChecks(ctx context.Context, taskID, mode, repoPath stri
 		toolCallCount += len(checkRuns)
 	}
 	return result, decisions, runs, toolCallCount, err
+}
+
+func (a *Agent) runUnsupportedRuntime(taskID string, runtime string) (review.Result, storage.SandboxRunRecord, storage.DecisionRecord) {
+	now := time.Now()
+	reason := fmt.Sprintf("runtime %s is configured but no adapter is available yet", runtime)
+	decision := storage.DecisionRecord{
+		TaskID:  taskID,
+		Command: defaultSkillCommand,
+		Action:  "unsupported",
+		Reason:  reason,
+		At:      now,
+	}
+	run := storage.SandboxRunRecord{
+		TaskID:           taskID,
+		Command:          defaultSkillCommand,
+		Runtime:          runtime,
+		Status:           "unsupported",
+		TimeoutMS:        a.cfg.Timeout.Milliseconds(),
+		OutputLimitBytes: a.cfg.OutputLimitBytes,
+		EnvWhitelist:     sandboxEnvWhitelist,
+		Output:           reason,
+		At:               now,
+		FinishedAt:       now,
+	}
+	return review.Result{
+		Warnings: []review.Finding{{
+			Severity:       "low",
+			Category:       "sandbox",
+			Title:          "E2B runtime adapter is unsupported",
+			Evidence:       reason,
+			Recommendation: "Run again with container or local-fallback until the E2B adapter is implemented.",
+			Confidence:     "high",
+			Source:         "runtime",
+			RuleID:         "e2b-runtime-unsupported",
+			Status:         "needs_human_review",
+		}},
+	}, run, decision
 }
 
 // Close 释放 Agent 持有的存储连接。
@@ -402,6 +476,8 @@ func recordReviewStartTelemetry(span oteltrace.Span, cfg Config, req Request, mo
 		attribute.String("cr_agent.runtime", cfg.Runtime),
 		attribute.String("cr_agent.mode", mode),
 		attribute.String("cr_agent.input_type", requestInputKind(req)),
+		attribute.String("cr_agent.base_ref", req.BaseRef),
+		attribute.String("cr_agent.head_ref", req.HeadRef),
 		attribute.Bool("cr_agent.staticcheck_enabled", cfg.EnableStaticcheck),
 	)
 }

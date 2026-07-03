@@ -70,7 +70,7 @@ GitHub Actions 可按需使用下面的宿主仓库片段：
 ```bash
 CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
 CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
-CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv \
 CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
 GOCACHE=/private/tmp/cr-agent-gocache \
 scripts/eval.sh

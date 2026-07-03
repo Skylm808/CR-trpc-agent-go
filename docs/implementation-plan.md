@@ -14,24 +14,28 @@
 | SQLite 审计 | ✅ | task、decision、sandbox run、finding、artifact、metrics、report 均可按 task_id 查询 |
 | deterministic fake provider | ✅ | 默认无 API Key、无网络模型，经官方 `model.Model` adapter 调用 `ModelReviewProvider` 边界 |
 | opt-in HTTP provider | ✅ | `--model-provider http` 显式开启，经官方 `model.Model` adapter 调用，输入/输出脱敏，失败降级人工复核 |
-| event.Event facade | ✅ | `EventSink` 输出 input_loaded、skill_run、sandbox_run、model_review、report_written、task_finished/task_failed |
+| Runner/Event 主入口 | ✅ | `Agent.Run` 通过 `RunWithEvents` 调用官方 `runner.NewRunner(...).Run(...)`，并消费官方 `event.Event` 流 |
+| event.Event sink | ✅ | `EventSink` 仍可观察 input_loaded、skill_run、sandbox_run、model_review、report_written、task_finished/task_failed |
+| E2B unsupported 入口 | ✅ | `--runtime e2b` 生成 `runtime=e2b status=unsupported` 审计记录，不静默 fallback |
+| base/head ref 输入 | ✅ | `--base-ref` / `--head-ref` 进入 metadata/report/diagnostics/SQLite report/telemetry；git repo 可生成 `base...head` diff |
 | Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
 | 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
-| hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_EXPECTED` / `CR_AGENT_EVAL_REPORT_ROOT` |
+| hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT`；`CR_AGENT_EVAL_EXPECTED` 保留为兼容别名 |
 | 默认无 API Key 路径 | ✅ | `rule-only`、`dry-run`、默认 `fake-model` 不要求真实模型凭证 |
 
 ## 下一阶段优先级
 
 ### 1. 官方 model.Model / Runner / Event 适配
 
-**目标：** 当前已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`，并让 CLI 审查过程通过官方 `event.Event` facade 暴露阶段性事件。剩余目标是把 facade 继续收敛到完整 `runner.Run` 托管的官方 Agent 路线。
+**当前状态：** 已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`。`Agent.Run` 现在是兼容 shim，内部通过 `RunWithEvents` 调用 `runner.NewRunner(...).Run(...)`，由 `reviewRunnerAgent` 这个官方 `agent.Agent` adapter 发出 `event.Event` 流。adapter 内部仍调用本项目 `runDirect` 执行体，目的是保持 CLI、报告、SQLite 和 fixture contract 不被 Runner 接入打断。
 
 **影响文件：**
 
 - `internal/agent/model.go`
 - `internal/agent/model_http.go`
 - `internal/agent/agent.go`
-- `internal/agent/telemetry.go`
+- `internal/agent/events.go`
+- `internal/agent/runner_official.go`
 - `cmd/review-agent/*.go`
 - `docs/architecture.md`
 - `docs/data-contract.md`
@@ -41,7 +45,7 @@
 - 默认 fake provider 和 opt-in HTTP provider 仍可用，且仍不要求 API Key。
 - 当前 `ModelReviewProvider` 的脱敏、分流、去重、失败降级语义不丢失。
 - adapter 明确实现并包装官方 `model.Model`，单元测试覆盖 request/response 和 redaction；HTTP timeout/error 继续由既有 provider 测试覆盖。
-- Event facade 输出 input_loaded、skill_run、model_review、sandbox_run、report_written、task_finished/task_failed 等事件。
+- 官方 Runner route 输出 input_loaded、skill_run、model_review、sandbox_run、report_written、task_finished/task_failed 等事件。
 - 老 CLI 输出和 SQLite 审计 contract 保持兼容。
 
 **测试/验证命令：**
@@ -52,15 +56,16 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
 
-**风险和不做事项：**
+**剩余边界：**
 
 - 不在这一步绑定 OpenAI / Claude / Gemini 厂商 SDK。
 - 不删除无 API Key 默认路径。
 - 不为了接完整 Runner 重写规则引擎、SQLite schema 或报告 contract。
+- 尚未把规则执行体改造成官方 llmagent/graphagent；当前是官方 Runner + 应用 adapter。
 
 ### 2. E2B runtime 最小 unsupported/adapter 入口
 
-**目标：** 给 `--runtime e2b` 或等价 runtime 标识提供清晰入口。若暂不实现真实 E2B 调用，必须返回结构化 unsupported 记录并写入 diagnostics / SQLite / report，避免用户误以为 E2B 已接入。
+**当前状态：** `--runtime e2b` 已提供最小入口。当前不接 E2B SDK，不执行本地 fallback；审查会生成结构化 `unsupported` run、人工复核项、diagnostics 和 SQLite sandbox run，避免用户误以为 E2B 已真实执行。
 
 **影响文件：**
 
@@ -75,7 +80,7 @@ CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/ac
 **验收标准：**
 
 - CLI 能识别 E2B runtime 标识。
-- 未配置 E2B 时不崩溃，产出 `unsupported` 或 `needs_human_review` 记录。
+- 未配置 E2B 时不崩溃，产出 `unsupported` 和 `needs_human_review` 记录。
 - 报告、diagnostics、SQLite sandbox run 明确写出 E2B 未支持/未配置。
 - container 默认 runtime 不变，`local-fallback` 仍只能显式选择。
 
@@ -94,14 +99,13 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 
 ### 3. base/head ref 输入
 
-**目标：** 让 repo 输入支持指定 base/head ref，便于真实 CR 场景复现 PR diff，而不是只能读取工作区 diff。
+**当前状态：** CLI 和 `Request` 已支持 `--base-ref` / `--head-ref`。它们进入 `InputMetadata`、report、diagnostics、SQLite report blob 和 telemetry。`--repo-path` 指向 git repo 且二者都提供时，输入读取使用 `git diff --unified=3 base...head`；不会自动 fetch。
 
 **影响文件：**
 
 - `cmd/review-agent/main.go`
 - `cmd/review-agent/run.go`
 - `internal/agent/input.go`
-- `internal/agent/repo.go`
 - `internal/review/parser.go`
 - `docs/data-contract.md`
 - `README.md`
@@ -128,7 +132,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 
 ### 4. 真实 hidden fixture matrix 验收
 
-**目标：** 用外部真实 hidden fixture root 和 expected TSV 跑一次验收，证明脚本门禁不只是契约存在。
+**当前状态：** `scripts/eval.sh` 已支持 `CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv`，缺失文件会清晰失败；公开 builtin matrix 保持默认。真实 hidden fixture 本体不提交，因此仓库内只能证明入口和公开 matrix，不能证明真实 hidden 数据达标。
 
 **影响文件：**
 
@@ -150,7 +154,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 ```bash
 CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
 CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
-CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv \
 CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
 GOCACHE=/private/tmp/cr-agent-gocache \
 scripts/eval.sh
@@ -179,7 +183,7 @@ scripts/eval.sh
 **验收标准：**
 
 - docs 索引不引用已删除文件。
-- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；当前 LLM 已经有官方 model.Model adapter 但 Runner 仍是事件 facade；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 与 base/head ref 未接入。
+- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；LLM 已有官方 model.Model adapter；CLI 兼容入口已走官方 Runner/Event adapter；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 目前是 unsupported 入口；base/head ref 已作为输入和审计上下文接入。
 - 任何新增阶段性 prompt 不作为长期文档入口。
 
 **测试/验证命令：**
@@ -206,10 +210,10 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 - [x] container runtime 真实 E2E 有 env-gated 测试，并已在 Docker daemon 环境验证过。
 - [x] 公开 fixture eval 脚本和外部 hidden matrix 注入契约。
 - [x] 官方 artifact/telemetry 最小接入或清晰边界说明。
-- [x] LLM provider 适配官方 model.Model，并通过 event.Event facade 暴露阶段事件。
-- [ ] 完整官方 Runner 托管。
-- [ ] E2B runtime unsupported/adapter 入口。
-- [ ] base/head ref 输入。
+- [x] LLM provider 适配官方 model.Model，并通过官方 Runner/Event adapter 暴露阶段事件。
+- [x] 官方 Runner/Event 主入口，保留 `Agent.Run` 兼容 shim。
+- [x] E2B runtime unsupported/adapter 入口。
+- [x] base/head ref 输入。
 - [ ] 真实 hidden fixture matrix 验收记录。
 
 ## 相关文档

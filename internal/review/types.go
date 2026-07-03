@@ -33,6 +33,8 @@ type InputMetadata struct {
 	ChangedGoFiles   []string `json:"changed_go_files,omitempty"`
 	PackageNames     []string `json:"package_names,omitempty"`
 	ModulePath       string   `json:"module_path,omitempty"`
+	BaseRef          string   `json:"base_ref,omitempty"`
+	HeadRef          string   `json:"head_ref,omitempty"`
 	HasTests         bool     `json:"has_tests,omitempty"`
 	TouchedTestFiles []string `json:"touched_test_files,omitempty"`
 }

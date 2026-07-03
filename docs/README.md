@@ -19,18 +19,16 @@
 |------|------|
 | [issue-2004-traceability.md](issue-2004-traceability.md) | 9 项能力、验收命令、SQLite 回放、剩余缺口和状态追踪矩阵 |
 | [fixtures-matrix.md](fixtures-matrix.md) | 每个 diff fixture 的预期 rule_id、severity、测试断言模式 |
-| [design-summary.md](design-summary.md) | 300–500 字方案设计说明（Issue 交付物） |
 | [upstream-example-migration.md](upstream-example-migration.md) | 后续迁移到官方 trpc-agent-go/examples 的目录和边界准备 |
 
 ## 阅读顺序建议
 
 **首次了解项目：**
 
-1. [design-summary.md](design-summary.md) — 快速把握整体设计
-2. [architecture.md](architecture.md) — 组件与流程
-3. [issue-2004-traceability.md](issue-2004-traceability.md) — 当前进度与缺口
-4. [sandbox-safety.md](sandbox-safety.md) — 沙箱和内容安全边界
-5. [ci.md](ci.md) — CI 与隐藏样本评测闭环
+1. [architecture.md](architecture.md) — 组件与流程
+2. [issue-2004-traceability.md](issue-2004-traceability.md) — 当前进度与缺口
+3. [sandbox-safety.md](sandbox-safety.md) — 沙箱和内容安全边界
+4. [ci.md](ci.md) — CI 与隐藏样本评测闭环
 
 **开始开发：**
 

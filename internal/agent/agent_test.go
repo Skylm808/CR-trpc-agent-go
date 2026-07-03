@@ -1474,7 +1474,7 @@ func TestModelReviewProviderModelImplementsOfficialModel(t *testing.T) {
 	}
 }
 
-// TestAgentRunEmitsOfficialEvents 固定 CLI 编排阶段通过官方 event.Event facade 暴露。
+// TestAgentRunEmitsOfficialEvents 固定 CLI 编排阶段通过官方 event.Event 暴露。
 func TestAgentRunEmitsOfficialEvents(t *testing.T) {
 	t.Parallel()
 
@@ -1527,6 +1527,168 @@ func TestAgentRunEmitsOfficialEvents(t *testing.T) {
 		if ev.Author != "cr-agent" {
 			t.Fatalf("expected cr-agent author, got %+v", ev)
 		}
+	}
+}
+
+// TestAgentRunWithEventsUsesOfficialRunnerRoute 固定一次 review 可以通过官方 Runner/Event 路线消费事件流。
+func TestAgentRunWithEventsUsesOfficialRunnerRoute(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	events, err := ag.RunWithEvents(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("RunWithEvents returned error: %v", err)
+	}
+	var got []*agentevent.Event
+	for ev := range events {
+		if ev == nil {
+			t.Fatalf("official runner emitted nil event")
+		}
+		got = append(got, ev)
+	}
+	objects := eventObjects(got)
+	for _, want := range []string{
+		reviewEventInputLoaded,
+		reviewEventSkillRun,
+		reviewEventSandboxRun,
+		reviewEventModelReview,
+		reviewEventReportWritten,
+		reviewEventTaskFinished,
+	} {
+		if !containsString(objects, want) {
+			t.Fatalf("expected official runner event %q in %+v", want, objects)
+		}
+	}
+	for _, ev := range got {
+		if ev.Author != "cr-agent" || ev.InvocationID == "" || ev.RequestID == "" {
+			t.Fatalf("expected official event metadata from runner route, got %+v", ev)
+		}
+	}
+}
+
+// TestAgentRunE2BRuntimeRecordsUnsupportedAudit 固定 E2B 入口是显式 unsupported，而不是静默 fallback。
+func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot:   filepath.Join(root, "skills"),
+		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
+		Runtime:      RuntimeE2B,
+		SQLitePath:   dbPath,
+		OutputDir:    outDir,
+		Timeout:      5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		Fixture: "safe.diff",
+		Mode:    ModeSandbox,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.SandboxSummary.Runs) == 0 {
+		t.Fatalf("expected unsupported sandbox run audit, got %+v", result.SandboxSummary)
+	}
+	if run := result.SandboxSummary.Runs[0]; run.Runtime != RuntimeE2B || run.Status != "unsupported" {
+		t.Fatalf("expected e2b unsupported run, got %+v", run)
+	}
+	if len(result.HumanReviewItems) == 0 || !hasRuleID(result.HumanReviewItems, "e2b-runtime-unsupported") {
+		t.Fatalf("expected e2b human review item, got %+v", result.HumanReviewItems)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	runs, err := store.SandboxRunsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sandbox runs: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Runtime != RuntimeE2B || runs[0].Status != "unsupported" {
+		t.Fatalf("expected persisted e2b unsupported run, got %+v", runs)
+	}
+	diagnostics, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics: %v", err)
+	}
+	if !strings.Contains(string(diagnostics), `"runtime": "e2b"`) || !strings.Contains(string(diagnostics), `"status": "unsupported"`) {
+		t.Fatalf("expected diagnostics to record e2b unsupported runtime: %s", diagnostics)
+	}
+}
+
+// TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite 固定 base/head 作为审计上下文贯穿报告和落库。
+func TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	outDir := t.TempDir()
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  outDir,
+		Timeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+		Mode:     ModeRuleOnly,
+		BaseRef:  "main",
+		HeadRef:  "feature/review-agent",
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.InputMetadata.BaseRef != "main" || result.InputMetadata.HeadRef != "feature/review-agent" {
+		t.Fatalf("expected base/head metadata, got %+v", result.InputMetadata)
+	}
+	for _, name := range []string{"review_report.json", "review_diagnostics.json"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if !strings.Contains(string(data), `"base_ref": "main"`) || !strings.Contains(string(data), `"head_ref": "feature/review-agent"`) {
+			t.Fatalf("expected %s to include base/head refs: %s", name, data)
+		}
+	}
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	report, err := store.ReportByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load report: %v", err)
+	}
+	if !strings.Contains(string(report.JSON), `"base_ref": "main"`) || !strings.Contains(string(report.JSON), `"head_ref": "feature/review-agent"`) {
+		t.Fatalf("expected persisted report to include base/head refs: %s", report.JSON)
 	}
 }
 

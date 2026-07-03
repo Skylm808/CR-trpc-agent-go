@@ -15,6 +15,8 @@ type Options struct {
 	FileList       string
 	RepoPath       string
 	Fixture        string
+	BaseRef        string
+	HeadRef        string
 	OutputDir      string
 	Mode           string
 	SQLitePath     string
@@ -75,6 +77,8 @@ func Run(opts Options) error {
 		FileList: opts.FileList,
 		RepoPath: opts.RepoPath,
 		Fixture:  opts.Fixture,
+		BaseRef:  opts.BaseRef,
+		HeadRef:  opts.HeadRef,
 		Mode:     opts.Mode,
 	})
 	return err

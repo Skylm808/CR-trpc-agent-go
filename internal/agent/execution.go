@@ -58,9 +58,23 @@ func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 			return nil, fmt.Errorf("create container executor: %w", err)
 		}
 		return exec, nil
+	case RuntimeE2B:
+		return unsupportedExecutor{runtime: RuntimeE2B}, nil
 	default:
 		return nil, fmt.Errorf("unsupported runtime %q", cfg.Runtime)
 	}
+}
+
+type unsupportedExecutor struct {
+	runtime string
+}
+
+func (e unsupportedExecutor) ExecuteCode(context.Context, codeexecutor.CodeExecutionInput) (codeexecutor.CodeExecutionResult, error) {
+	return codeexecutor.CodeExecutionResult{}, fmt.Errorf("runtime %q is not supported by this adapter yet", e.runtime)
+}
+
+func (e unsupportedExecutor) CodeBlockDelimiter() codeexecutor.CodeBlockDelimiter {
+	return codeexecutor.CodeBlockDelimiter{Start: "```", End: "```"}
 }
 
 // defaultPermissionPolicy 返回固定命令白名单。

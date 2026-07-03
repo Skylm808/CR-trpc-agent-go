@@ -93,3 +93,37 @@ func TestRunCanUseFileListForDiffGeneration(t *testing.T) {
 		t.Fatalf("expected json report: %v", err)
 	}
 }
+
+func TestRunCarriesBaseHeadRefsToReport(t *testing.T) {
+	dir := t.TempDir()
+	diffPath := filepath.Join(dir, "sample.diff")
+	if err := os.WriteFile(diffPath, []byte(""+
+		"diff --git a/foo.go b/foo.go\n"+
+		"--- a/foo.go\n"+
+		"+++ b/foo.go\n"+
+		"@@ -1,1 +1,2 @@\n"+
+		" package foo\n"+
+		"+func Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := Options{
+		DiffFile:   diffPath,
+		BaseRef:    "main",
+		HeadRef:    "feature/review-agent",
+		OutputDir:  dir,
+		Mode:       cragent.ModeRuleOnly,
+		Runtime:    cragent.RuntimeLocalFallback,
+		SkillsRoot: filepath.Join("..", "..", "skills"),
+	}
+	if err := Run(opts); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "review_report.json"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	if !strings.Contains(string(data), `"base_ref": "main"`) || !strings.Contains(string(data), `"head_ref": "feature/review-agent"`) {
+		t.Fatalf("expected base/head refs in report: %s", data)
+	}
+}

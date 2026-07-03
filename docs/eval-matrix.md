@@ -23,7 +23,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 - `CR_AGENT_EVAL_RUNTIME`：`container` 或 `local-fallback`。
 - `CR_AGENT_EVAL_MODE`：默认 `rule-only`。
 - `CR_AGENT_EVAL_FIXTURES`：样本子集，空格分隔。
-- `CR_AGENT_EVAL_EXPECTED`：外部 expected matrix TSV 路径。
+- `CR_AGENT_EVAL_MATRIX`：外部 expected matrix TSV 路径；缺失文件会清晰失败。
+- `CR_AGENT_EVAL_EXPECTED`：旧兼容别名，仅在未设置 `CR_AGENT_EVAL_MATRIX` 时生效。
 - `CR_AGENT_EVAL_REPORT_ROOT`：保留每个 fixture 的输出报告目录；默认使用临时目录。
 - `CR_AGENT_EVAL_MIN_RECALL`：召回率下限，默认 `0.800`。
 - `CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE`：误报率上限，默认 `0.150`。
@@ -73,7 +74,7 @@ hidden-002.diff	missing-test-hint	low	warning	false
 ```bash
 CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
 CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
-CR_AGENT_EVAL_EXPECTED=/path/to/expected.tsv \
+CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv \
 GOCACHE=/private/tmp/cr-agent-gocache \
 scripts/eval.sh
 ```
@@ -116,7 +117,7 @@ threshold_failed=public_matrix_exact_match missing_findings=1 unexpected_finding
 ```bash
 CR_AGENT_EVAL_FIXTURES_ROOT="$RUNNER_TEMP/hidden-fixtures" \
 CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff hidden-003.diff" \
-CR_AGENT_EVAL_EXPECTED="$RUNNER_TEMP/expected.tsv" \
+CR_AGENT_EVAL_MATRIX="$RUNNER_TEMP/expected.tsv" \
 CR_AGENT_EVAL_REPORT_ROOT="$RUNNER_TEMP/cr-agent-reports" \
 CR_AGENT_EVAL_MIN_RECALL=0.800 \
 CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE=0.150 \

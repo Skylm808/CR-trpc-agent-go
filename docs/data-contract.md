@@ -1,6 +1,6 @@
 # 数据契约
 
-本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认审计后端，并在 `internal/storage/store.go` 保留 `Store` interface；它不是官方 Session Service。后续接 Runner/Event 或多轮评审时，可以迁移到独立 SQL 后端，或把审计任务映射到官方 `session/sqlite`。
+本文档定义 CR Agent 的核心实体。当前实现以 SQLite 为默认审计后端，并在 `internal/storage/store.go` 保留 `Store` interface；它不是官方 Session Service。CLI 兼容入口已经通过官方 Runner/Event adapter 运行，后续如需多轮评审，可以把审计任务映射到官方 `session/sqlite`。
 
 ## ReviewTask
 
@@ -29,7 +29,7 @@
 | `fixture` | ✅ |
 | `workspace_path` | ✅ `--repo-path` |
 | `file_paths` | ✅ `--file-list` 输入会转换为新增文件 diff |
-| `base_ref` / `head_ref` | ⬜ |
+| `base_ref` / `head_ref` | ✅ CLI `--base-ref` / `--head-ref`，进入 metadata/report/diagnostics/SQLite report/telemetry |
 | `parsed_files` / `parsed_hunks` | ✅ 由 parser 和 Skill 脚本处理 |
 
 ## ModelReviewInput
@@ -44,7 +44,7 @@
 | `sandbox_summary` | ✅ 复用 `SandboxSummary` |
 | `governance_summary` | ✅ 复用 `GovernanceSummary` |
 
-当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。API key 只能通过 `--model-api-key-env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认测试路径。真实 OpenAI / Claude / Gemini SDK 绑定和完整 Runner 托管留到后续阶段。
+当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。API key 只能通过 `--model-api-key-env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认测试路径。真实 OpenAI / Claude / Gemini SDK 绑定留到后续阶段。
 
 ## InputMetadata
 
@@ -55,6 +55,8 @@
 | `changed_go_files` | ✅ 本次输入触达的 `.go` 文件 |
 | `package_names` | ✅ 从 diff 中的 `package` 行提取 |
 | `module_path` | ✅ `--repo-path` 有 `go.mod` 时提取 |
+| `base_ref` | ✅ 审查 base ref；未传为空 |
+| `head_ref` | ✅ 审查 head ref；未传为空 |
 | `has_tests` | ✅ 本次输入是否触达测试文件 |
 | `touched_test_files` | ✅ 本次输入触达的 `_test.go` 文件 |
 

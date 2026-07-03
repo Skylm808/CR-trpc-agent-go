@@ -42,6 +42,59 @@ func TestEvalScriptAcceptsExternalExpectedMatrix(t *testing.T) {
 	}
 }
 
+func TestEvalScriptAcceptsHiddenMatrixPath(t *testing.T) {
+	root := repoRoot(t)
+	matrix := filepath.Join(t.TempDir(), "hidden.tsv")
+	if err := os.WriteFile(matrix, []byte("secret.diff\tsecret-leak\tcritical\tfinding\ttrue\n"), 0o644); err != nil {
+		t.Fatalf("write hidden matrix: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_EVAL_FIXTURES=safe.diff secret.diff",
+		"CR_AGENT_EVAL_MATRIX="+matrix,
+		"CR_AGENT_EVAL_FIXTURES_ROOT="+filepath.Join(root, "testdata", "fixtures"),
+		"CR_AGENT_EVAL_SKILLS_ROOT="+filepath.Join(root, "skills"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("eval.sh failed: %v\n%s", err, out)
+	}
+	text := string(out)
+	for _, want := range []string{
+		"matrix_source=external",
+		"true_positive=1",
+		"false_positive=0",
+		"false_negative=0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("eval output missing %q: %s", want, text)
+		}
+	}
+}
+
+func TestEvalScriptFailsClearlyForMissingHiddenMatrixPath(t *testing.T) {
+	root := repoRoot(t)
+	missing := filepath.Join(t.TempDir(), "missing-hidden.tsv")
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_EVAL_FIXTURES=safe.diff",
+		"CR_AGENT_EVAL_MATRIX="+missing,
+		"CR_AGENT_EVAL_FIXTURES_ROOT="+filepath.Join(root, "testdata", "fixtures"),
+		"CR_AGENT_EVAL_SKILLS_ROOT="+filepath.Join(root, "skills"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected eval.sh to fail for missing matrix, output: %s", out)
+	}
+	if !strings.Contains(string(out), "CR_AGENT_EVAL_MATRIX does not exist") {
+		t.Fatalf("expected clear missing matrix error, got: %s", out)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

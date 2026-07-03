@@ -7,6 +7,7 @@ SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
 FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
+MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
 MIN_RECALL="${CR_AGENT_EVAL_MIN_RECALL:-0.800}"
@@ -24,7 +25,18 @@ fi
 
 EXPECTED_FILE="$OUT_ROOT/expected.tsv"
 MATRIX_SOURCE="builtin"
-if [[ -n "$EXPECTED_OVERRIDE" ]]; then
+if [[ -n "$MATRIX_OVERRIDE" ]]; then
+  if [[ ! -f "$MATRIX_OVERRIDE" ]]; then
+    echo "CR_AGENT_EVAL_MATRIX does not exist: $MATRIX_OVERRIDE" >&2
+    exit 2
+  fi
+  EXPECTED_FILE="$MATRIX_OVERRIDE"
+  MATRIX_SOURCE="external"
+elif [[ -n "$EXPECTED_OVERRIDE" ]]; then
+  if [[ ! -f "$EXPECTED_OVERRIDE" ]]; then
+    echo "CR_AGENT_EVAL_EXPECTED does not exist: $EXPECTED_OVERRIDE" >&2
+    exit 2
+  fi
   EXPECTED_FILE="$EXPECTED_OVERRIDE"
   MATRIX_SOURCE="external"
 else

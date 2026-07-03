@@ -60,7 +60,7 @@
 
 ## 未完成边界
 
-- E2B / Cube runtime 尚未接入；当前只证明 container 和显式 local fallback。
+- E2B / Cube 真实 runtime 尚未接入；当前 `--runtime e2b` 只生成显式 unsupported 审计记录，不静默 fallback。
 - 厂商 SDK provider 尚未接入；当前 fake provider 和 opt-in HTTP provider 验证边界、脱敏、分流、审计和失败降级。
 - 官方 metric exporter / OTLP dashboard 尚未部署；当前使用官方 telemetry trace span 和 SQLite metrics。
 - 当前 env whitelist 是审计边界，容器级强环境隔离仍依赖部署侧 executor 配置。
