@@ -34,7 +34,7 @@
 
 ## ModelReviewInput
 
-`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库，也不发送到真实模型 API。
+`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库。默认 fake provider 不发送网络请求；只有显式启用 `--model-provider http` 时才把该结构作为 HTTP request 的 `input` 字段发送到配置的 endpoint。
 
 | 字段 | 当前状态 |
 |------|----------|
@@ -44,7 +44,7 @@
 | `sandbox_summary` | ✅ 复用 `SandboxSummary` |
 | `governance_summary` | ✅ 复用 `GovernanceSummary` |
 
-当前 fake provider 是 deterministic provider；真实 OpenAI / Claude / Gemini provider、API Key 和 SDK 绑定留到后续阶段。
+当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。API key 只能通过 `--model-api-key-env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认测试路径。真实 OpenAI / Claude / Gemini SDK 绑定留到后续阶段。
 
 ## InputMetadata
 
@@ -130,7 +130,7 @@
 
 当前 SQLite 会把 `result.Findings`、`result.Warnings` 和 `result.HumanReviewItems` 都写入 `findings` 表，并通过 `status` 区分 `finding`、`warning`、`needs_human_review`。这样报告和数据库回放使用同一份结构化 review item 数据。
 
-模型输出也复用同一结构。高置信模型项进入 `findings`；低置信模型项进入 `warnings` 并标记 `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型 evidence 在进入报告和 SQLite 前必须走同一套脱敏逻辑。
+模型输出也复用同一结构。高置信模型项进入 `findings`；低置信模型项进入 `warnings` 并标记 `needs_human_review`；模型项和规则项按 `file + line + category + rule_id` 去重。模型 evidence 在进入报告和 SQLite 前必须走同一套脱敏逻辑。HTTP provider 的 non-2xx response body 和 transport error 文本也会脱敏后才进入 `model-provider-failed` 人工复核项。
 
 ## Artifact
 

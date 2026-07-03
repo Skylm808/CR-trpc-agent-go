@@ -3,7 +3,11 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1611,6 +1615,278 @@ func TestModelProviderFailureDoesNotAbortReview(t *testing.T) {
 	}
 }
 
+// TestHTTPModelProviderCallsServerAndMergesFindings 固定显式开启的 HTTP provider 链路。
+func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
+	recorder := useAgentTelemetrySpanRecorder(t)
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	apiKey := "sk-http-provider-1234567890"
+	t.Setenv("CR_AGENT_TEST_MODEL_KEY", apiKey)
+
+	var seenCalls int
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		seenCalls++
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.String() != "https://model.test/review" {
+			t.Fatalf("unexpected provider URL: %s", r.URL.String())
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer "+apiKey {
+			t.Fatalf("expected bearer authorization header, got %q", got)
+		}
+		rawBody, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read provider request body: %v", err)
+		}
+		if !strings.Contains(string(rawBody), `"diff_summary"`) || strings.Contains(string(rawBody), `"DiffSummary"`) {
+			t.Fatalf("provider request should use snake_case ModelReviewInput JSON keys: %s", rawBody)
+		}
+		var req httpModelReviewRequest
+		if err := json.Unmarshal(rawBody, &req); err != nil {
+			t.Fatalf("decode provider request: %v", err)
+		}
+		if req.Model != "review-test-model" {
+			t.Fatalf("expected model name in request, got %+v", req)
+		}
+		body := string(rawBody)
+		for _, raw := range []string{apiKey, "sk-modelsecret-1234567890"} {
+			if strings.Contains(body, raw) {
+				t.Fatalf("provider request leaked raw secret %q: %s", raw, body)
+			}
+		}
+		if !strings.Contains(req.Input.DiffSummary, "[REDACTED]") {
+			t.Fatalf("expected redacted diff summary, got %s", req.Input.DiffSummary)
+		}
+		return jsonHTTPResponse(t, http.StatusOK, ModelReviewOutput{Findings: []review.Finding{
+			{
+				Severity:       "high",
+				Category:       "error_handling",
+				File:           "panic.go",
+				Line:           2,
+				Title:          "Duplicate HTTP model panic finding",
+				Evidence:       "duplicate from http provider",
+				Recommendation: "Use errors.",
+				Confidence:     "high",
+				Source:         "model",
+				RuleID:         "panic-direct",
+			},
+			{
+				Severity:       "medium",
+				Category:       "logic",
+				File:           "secret.go",
+				Line:           4,
+				Title:          "HTTP model semantic risk",
+				Evidence:       "provider saw sk-modelsecret-1234567890",
+				Recommendation: "Add validation for the semantic branch.",
+				Confidence:     "high",
+				Source:         "model",
+				RuleID:         "http-model-semantic-risk",
+			},
+			{
+				Severity:       "low",
+				Category:       "maintainability",
+				File:           "secret.go",
+				Line:           5,
+				Title:          "HTTP model low confidence hint",
+				Evidence:       "low confidence signal",
+				Recommendation: "Ask a reviewer to confirm.",
+				Confidence:     "low",
+				Source:         "model",
+				RuleID:         "http-model-low-confidence",
+			},
+		}}), nil
+	})
+
+	diffPath := filepath.Join(t.TempDir(), "http-model.diff")
+	diff := `diff --git a/panic.go b/panic.go
+--- a/panic.go
++++ b/panic.go
+@@ -1,2 +1,5 @@
+ package foo
++
++func Crash() { panic("boom") }
++const apiKey = "sk-modelsecret-1234567890"
+`
+	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
+		t.Fatalf("write diff: %v", err)
+	}
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		SQLitePath: dbPath,
+		OutputDir:  outDir,
+		Timeout:    5 * time.Second,
+		ModelHTTP: HTTPModelProviderConfig{
+			Enabled:   true,
+			Endpoint:  "https://model.test/review",
+			APIKeyEnv: "CR_AGENT_TEST_MODEL_KEY",
+			Model:     "review-test-model",
+			Timeout:   2 * time.Second,
+			Client:    &http.Client{Transport: transport},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: diffPath,
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if seenCalls != 1 {
+		t.Fatalf("expected one HTTP provider call, got %d", seenCalls)
+	}
+	if got := countRuleID(result.Findings, "panic-direct"); got != 1 {
+		t.Fatalf("expected HTTP duplicate to dedupe with rule finding, got %d in %+v", got, result.Findings)
+	}
+	if !hasRuleID(result.Findings, "http-model-semantic-risk") {
+		t.Fatalf("expected high confidence HTTP model finding in findings, got %+v", result.Findings)
+	}
+	if !hasRuleID(result.Warnings, "http-model-low-confidence") || !hasRuleID(result.HumanReviewItems, "http-model-low-confidence") {
+		t.Fatalf("expected low confidence HTTP model finding in warnings/human review, warnings=%+v human=%+v", result.Warnings, result.HumanReviewItems)
+	}
+	if result.Metrics.ModelCallCount != 1 || result.Metrics.ModelFindingCount != 2 {
+		t.Fatalf("expected HTTP model metrics, got %+v", result.Metrics)
+	}
+	assertNoSecretInResult(t, result, apiKey, "sk-modelsecret-1234567890")
+	assertNoRawSecretsInSpanAttributes(t, findAgentReviewSpan(t, recorder), apiKey, "sk-modelsecret-1234567890")
+	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+		data, err := os.ReadFile(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		assertNoRawSecrets(t, name, string(data), apiKey, "sk-modelsecret-1234567890")
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite directly: %v", err)
+	}
+	defer db.Close()
+	leaks, err := scanSQLiteForRawSecrets(context.Background(), db, []string{apiKey, "sk-modelsecret-1234567890"})
+	if err != nil {
+		t.Fatalf("scan sqlite: %v", err)
+	}
+	if len(leaks) > 0 {
+		t.Fatalf("sqlite persisted raw HTTP model secrets: %s", strings.Join(leaks, ", "))
+	}
+}
+
+// TestHTTPModelProviderFailureDoesNotAbortReview 固定 HTTP provider 失败降级。
+func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	cases := []struct {
+		name      string
+		secret    string
+		configure func() HTTPModelProviderConfig
+	}{
+		{
+			name:   "transport-error",
+			secret: "sk-providertransport-1234567890",
+			configure: func() HTTPModelProviderConfig {
+				return HTTPModelProviderConfig{
+					Enabled:  true,
+					Endpoint: "https://model.test/review",
+					Model:    "review-test-model",
+					Timeout:  2 * time.Second,
+					Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						_ = r
+						return nil, errors.New("transport failed token=sk-providertransport-1234567890")
+					})},
+				}
+			},
+		},
+		{
+			name:   "non-2xx",
+			secret: "sk-providerboom-1234567890",
+			configure: func() HTTPModelProviderConfig {
+				return HTTPModelProviderConfig{
+					Enabled:  true,
+					Endpoint: "https://model.test/review",
+					Model:    "review-test-model",
+					Timeout:  2 * time.Second,
+					Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						_ = r
+						return textHTTPResponse(http.StatusBadGateway, "provider failed token=sk-providerboom-1234567890"), nil
+					})},
+				}
+			},
+		},
+		{
+			name:   "invalid-json",
+			secret: "sk-providerjson-1234567890",
+			configure: func() HTTPModelProviderConfig {
+				return HTTPModelProviderConfig{
+					Enabled:  true,
+					Endpoint: "https://model.test/review",
+					Model:    "review-test-model",
+					Timeout:  2 * time.Second,
+					Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						_ = r
+						return textHTTPResponse(http.StatusOK, `{"findings":[ token="sk-providerjson-1234567890"`), nil
+					})},
+				}
+			},
+		},
+		{
+			name:   "deadline",
+			secret: "sk-providerdeadline-1234567890",
+			configure: func() HTTPModelProviderConfig {
+				return HTTPModelProviderConfig{
+					Enabled:  true,
+					Endpoint: "https://model.test/review",
+					Model:    "review-test-model",
+					Timeout:  2 * time.Second,
+					Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						_ = r
+						return nil, fmt.Errorf("deadline token=sk-providerdeadline-1234567890: %w", context.DeadlineExceeded)
+					})},
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ag, err := New(Config{
+				SkillsRoot: filepath.Join(root, "skills"),
+				Runtime:    RuntimeLocalFallback,
+				OutputDir:  t.TempDir(),
+				Timeout:    5 * time.Second,
+				ModelHTTP:  tc.configure(),
+			})
+			if err != nil {
+				t.Fatalf("New returned error: %v", err)
+			}
+			defer ag.Close()
+
+			result, err := ag.Run(context.Background(), Request{
+				DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+				Mode:     ModeFakeModel,
+			})
+			if err != nil {
+				t.Fatalf("HTTP provider failure should not abort review: %v", err)
+			}
+			if result.Metrics.ModelExceptionCount != 1 || result.Metrics.ExceptionCounts["model_provider"] != 1 {
+				t.Fatalf("expected HTTP model exception metrics, got %+v", result.Metrics)
+			}
+			if result.Conclusion.Status != "needs_human_review" || !hasRuleID(result.HumanReviewItems, "model-provider-failed") {
+				t.Fatalf("expected HTTP model failure human review, conclusion=%+v human=%+v", result.Conclusion, result.HumanReviewItems)
+			}
+			assertNoSecretInResult(t, result, tc.secret)
+		})
+	}
+}
+
 // TestRuleOnlyAndDryRunSkipModelProvider 固定兼容模式不调用模型边界。
 func TestRuleOnlyAndDryRunSkipModelProvider(t *testing.T) {
 	t.Parallel()
@@ -2089,6 +2365,19 @@ func agentSpanAttributes(attrs []attribute.KeyValue) map[string]attribute.Value 
 	return out
 }
 
+func assertNoRawSecretsInSpanAttributes(t *testing.T, span tracesdk.ReadOnlySpan, secrets ...string) {
+	t.Helper()
+
+	for _, attr := range span.Attributes() {
+		value := attr.Value.Emit()
+		for _, secret := range secrets {
+			if strings.Contains(value, secret) {
+				t.Fatalf("telemetry attribute %s leaked raw secret %q: %s", attr.Key, secret, value)
+			}
+		}
+	}
+}
+
 func stringSliceContains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
@@ -2111,12 +2400,6 @@ func (t *recordingTool) Declaration() *tool.Declaration {
 func (t *recordingTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	t.calls++
 	return t.call(ctx, jsonArgs)
-}
-
-type modelProviderFunc func(context.Context, ModelReviewInput) (ModelReviewOutput, error)
-
-func (f modelProviderFunc) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
-	return f(ctx, input)
 }
 
 type countingModelProvider struct {
@@ -2156,6 +2439,61 @@ func countRuleID(findings []review.Finding, ruleID string) int {
 		}
 	}
 	return count
+}
+
+func mustJSONText(t *testing.T, v any) string {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	return string(data)
+}
+
+func assertNoSecretInResult(t *testing.T, result review.Result, secrets ...string) {
+	t.Helper()
+	data := string(review.MustJSON(result))
+	for _, secret := range secrets {
+		if strings.Contains(data, secret) {
+			t.Fatalf("review result leaked raw secret %q: %s", secret, data)
+		}
+	}
+}
+
+func assertNoRawSecrets(t *testing.T, label string, text string, secrets ...string) {
+	t.Helper()
+	for _, secret := range secrets {
+		if strings.Contains(text, secret) {
+			t.Fatalf("%s leaked raw secret %q: %s", label, secret, text)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func jsonHTTPResponse(t *testing.T, status int, v any) *http.Response {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(string(data))),
+	}
+}
+
+func textHTTPResponse(status int, text string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(text)),
+	}
 }
 
 // assertDecisionForCommand 检查 allow 决策。

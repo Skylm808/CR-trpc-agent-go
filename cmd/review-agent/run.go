@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
@@ -10,18 +11,22 @@ import (
 
 // Options 保存 CLI 参数。
 type Options struct {
-	DiffFile     string
-	FileList     string
-	RepoPath     string
-	Fixture      string
-	OutputDir    string
-	Mode         string
-	SQLitePath   string
-	RunChecks    bool
-	Runtime      string
-	SkillsRoot   string
-	FixturesRoot string
-	Staticcheck  bool
+	DiffFile       string
+	FileList       string
+	RepoPath       string
+	Fixture        string
+	OutputDir      string
+	Mode           string
+	SQLitePath     string
+	RunChecks      bool
+	Runtime        string
+	SkillsRoot     string
+	FixturesRoot   string
+	Staticcheck    bool
+	ModelProvider  string
+	ModelEndpoint  string
+	ModelAPIKeyEnv string
+	ModelName      string
 }
 
 // Run 将 CLI 参数交给 Agent。
@@ -37,6 +42,18 @@ func Run(opts Options) error {
 		FixturesRoot:          opts.FixturesRoot,
 		ContainerRepoHostPath: opts.RepoPath,
 		EnableStaticcheck:     opts.Staticcheck,
+	}
+	switch opts.ModelProvider {
+	case "":
+	case "http":
+		cfg.ModelHTTP = cragent.HTTPModelProviderConfig{
+			Enabled:   true,
+			Endpoint:  opts.ModelEndpoint,
+			APIKeyEnv: opts.ModelAPIKeyEnv,
+			Model:     opts.ModelName,
+		}
+	default:
+		return fmt.Errorf("unsupported model provider %q", opts.ModelProvider)
 	}
 	if cfg.SkillsRoot == "" {
 		// 默认使用仓库内置 Skill。

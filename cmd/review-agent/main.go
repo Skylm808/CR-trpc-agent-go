@@ -18,6 +18,10 @@ func main() {
 	flag.StringVar(&opts.Runtime, "runtime", "container", "executor runtime: container or local-fallback")
 	flag.StringVar(&opts.SkillsRoot, "skills-root", "skills", "path to skills root")
 	flag.StringVar(&opts.FixturesRoot, "fixtures-root", "testdata/fixtures", "path to fixture diffs")
+	flag.StringVar(&opts.ModelProvider, "model-provider", "", "optional model provider: http")
+	flag.StringVar(&opts.ModelEndpoint, "model-endpoint", "", "HTTP model provider endpoint")
+	flag.StringVar(&opts.ModelAPIKeyEnv, "model-api-key-env", "", "environment variable containing the HTTP model provider API key")
+	flag.StringVar(&opts.ModelName, "model-name", "", "model name sent to the HTTP model provider")
 	flag.BoolVar(&opts.Staticcheck, "staticcheck", false, "run optional staticcheck in sandbox mode")
 	flag.Parse()
 

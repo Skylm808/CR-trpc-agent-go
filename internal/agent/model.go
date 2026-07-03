@@ -21,16 +21,22 @@ type ModelReviewProvider interface {
 
 // ModelReviewInput is the sanitized prompt payload for a model review.
 type ModelReviewInput struct {
-	DiffSummary       string
-	InputMetadata     review.InputMetadata
-	ExistingFindings  []review.Finding
-	SandboxSummary    review.SandboxSummary
-	GovernanceSummary review.GovernanceSummary
+	DiffSummary       string                   `json:"diff_summary"`
+	InputMetadata     review.InputMetadata     `json:"input_metadata"`
+	ExistingFindings  []review.Finding         `json:"existing_findings"`
+	SandboxSummary    review.SandboxSummary    `json:"sandbox_summary"`
+	GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
 }
 
 // ModelReviewOutput is the provider's incremental review result.
 type ModelReviewOutput struct {
-	Findings []review.Finding
+	Findings []review.Finding `json:"findings"`
+}
+
+type modelProviderFunc func(context.Context, ModelReviewInput) (ModelReviewOutput, error)
+
+func (f modelProviderFunc) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	return f(ctx, input)
 }
 
 type modelRunSummary struct {
@@ -89,6 +95,17 @@ func (fakeModelProvider) Review(ctx context.Context, input ModelReviewInput) (Mo
 func (a *Agent) configuredModelProvider(mode string) ModelReviewProvider {
 	if mode != ModeFakeModel {
 		return nil
+	}
+	if a.cfg.ModelHTTP.Enabled {
+		provider, err := newHTTPModelProvider(a.cfg.ModelHTTP)
+		if err != nil {
+			return modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+				_ = ctx
+				_ = input
+				return ModelReviewOutput{}, err
+			})
+		}
+		return provider
 	}
 	if a.modelProvider != nil {
 		return a.modelProvider

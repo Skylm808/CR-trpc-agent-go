@@ -82,6 +82,8 @@ type Config struct {
 	ArtifactService artifact.Service
 	// ModelProvider 是可选的模型审查边界；fake-model 默认使用 deterministic provider。
 	ModelProvider ModelReviewProvider
+	// ModelHTTP 是显式开启的 HTTP 模型 provider 配置。
+	ModelHTTP HTTPModelProviderConfig
 }
 
 // Request 描述一次审查输入。

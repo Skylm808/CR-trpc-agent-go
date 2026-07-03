@@ -10,7 +10,7 @@
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec` | workspaceexec 主路径/fallback tests + env-gated Docker test | ✅ | Docker Desktop 下 container E2E 已通过；E2B 入口当前未做最小 adapter |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更） | `internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `parser_test.go`、`repo_test.go`、`agent_test.go` | 🔶 | diff / file-list / repo 和 Go metadata 已支持；base/head ref 未支持 |
-| 5 | 结构化 findings | `internal/review/types.go`、`internal/agent/model.go` | `engine_test.go`、fixture tests、model provider tests | ✅ | 真实 provider 尚未接入 |
+| 5 | 结构化 findings | `internal/review/types.go`、`internal/agent/model.go`、`internal/agent/model_http.go` | `engine_test.go`、fixture tests、model provider tests | ✅ | 厂商特化 SDK provider 尚未接入 |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离依赖部署侧 executor 配置 |
@@ -34,7 +34,7 @@
 | SQLite 查询 metrics | `MetricsByTaskID` | ✅ |
 | SQLite 查询 findings | `FindingsByTaskID` | ✅ |
 | SQLite 查询 artifact 引用 | `ArtifactsByTaskID` | ✅ |
-| dry-run / fake-model / rule-only | Agent mode；fake-model 经过 `ModelReviewProvider` fake provider 边界 | ✅ |
+| dry-run / fake-model / rule-only | Agent mode；fake-model 经过 `ModelReviewProvider` 边界，默认 fake provider，可显式 opt-in HTTP provider | ✅ |
 | 示例输出 | `examples/review_report.json/md` | ✅ |
 
 ## 交付物追踪
@@ -71,13 +71,13 @@
 | 要求 | 当前实现 | 状态 |
 |------|----------|------|
 | Provider 输入脱敏 | `ModelReviewInput.DiffSummary` 使用 `review.RedactSecrets`，existing findings 复用 `sanitizeFinding` | ✅ |
-| 不绑定真实厂商 | 仅 `fakeModelProvider`，无 OpenAI/Claude/Gemini SDK，无 API Key | ✅ |
+| 不绑定真实厂商 | 默认 `fakeModelProvider`；可选 `httpModelProvider` 使用标准库 `net/http`，无 OpenAI/Claude/Gemini SDK，无 API Key 默认路径保持可测 | ✅ |
 | 复用 Finding 字段 | provider 输出是 `[]review.Finding` | ✅ |
 | 高低置信分流 | high -> `findings`，其他 -> `warnings` + `needs_human_review` | ✅ |
 | 与规则去重 | `file + line + category + rule_id` dedupe | ✅ |
 | 失败不崩溃 | provider error -> `model-provider-failed` human review item + metrics exception | ✅ |
 | 审计指标 | report/diagnostics/SQLite/telemetry 记录 model call、duration、exception、finding count | ✅ |
-| 真实模型语义能力 | 尚未接真实 provider | ⏳ |
+| 真实模型语义能力 | 已有 opt-in generic HTTP provider；真实效果取决于外部 endpoint，默认验收仍使用 fake provider | 🔶 |
 
 ## 规则覆盖追踪
 
@@ -96,7 +96,7 @@
 
 ## 下一步
 
-1. 接入真实 LLM provider 前，继续保持 fake provider 和 rule-only 无 API Key 验收路径。
+1. 使用 opt-in HTTP provider 接真实端点前，继续保持 fake provider 和 rule-only 无 API Key 验收路径。
 2. 在宿主 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
 3. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有官方 trace span 和审查摘要属性，artifact service 默认用 inmemory 保存报告和诊断产物，SQLite artifacts 表仅作为引用索引。
 4. 如需正式交付，用外部 hidden fixture root + expected TSV 持续校准检出率和误报率。

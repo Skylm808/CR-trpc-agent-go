@@ -2,7 +2,7 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界和 deterministic fake provider。尚未绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；也尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；也尚未接入 Runner/Event、Session/Memory 和 E2B。Runner/Event 更适合流式输出、多轮恢复和 Web/UI 实时观察；Session/Memory 更适合跨 PR 经验复用；E2B 可作为后续远端 runtime 扩展。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
 
@@ -21,7 +21,7 @@
 - `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
 - `skill_load` 加载 `skills/code-review/SKILL.md`。
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
-- `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider。
+- `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider；只有显式传 `--model-provider http` 时才调用 HTTP provider。
 - `--file-list` 路径列表输入会转换为新增文件 diff，复用同一审查链路。
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
@@ -51,7 +51,7 @@ CLI
   -> trpc-agent-go/tool/skill skill_load
   -> tool.PermissionPolicy
   -> trpc-agent-go/tool/skill skill_run
-  -> optional ModelReviewProvider fake-model boundary
+  -> optional ModelReviewProvider fake-model/http boundary
   -> optional trpc-agent-go/tool/workspaceexec go checks
   -> fallback trpc-agent-go/tool/codeexec go checks
   -> report JSON/Markdown
@@ -188,6 +188,10 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `--staticcheck` | `false` | Run optional `staticcheck ./...` in sandbox mode. |
 | `--sqlite` | empty | SQLite DB path. |
 | `--output-dir` | `.` | Report output directory. |
+| `--model-provider` | empty | Optional model provider. Currently only `http`; default empty keeps fake provider/no network behavior. |
+| `--model-endpoint` | empty | HTTP model provider endpoint, required when `--model-provider http` is enabled. |
+| `--model-api-key-env` | empty | Environment variable name containing the optional HTTP provider API key. The key value is never written to reports, diagnostics, SQLite or telemetry. |
+| `--model-name` | empty | Optional model name included in the HTTP provider request. |
 
 ## Modes
 
@@ -196,13 +200,67 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `rule-only` | Loads the skill and runs deterministic `scripts/check.sh`. |
 | `dry-run` | Loads the skill, records a `dry_run` permission decision and a skipped sandbox run, but does not execute. |
 | `sandbox` | Runs `skill_run`, then permission-gated `go test ./...`, `go vet ./...`, and optional `staticcheck ./...`. |
-| `fake-model` | Runs deterministic Skill, then the LLM Review Provider boundary with the built-in fake provider; no model API Key required and no real vendor SDK is called. |
+| `fake-model` | Runs deterministic Skill, then the LLM Review Provider boundary. Default uses the built-in fake provider; `--model-provider http` explicitly switches to the generic HTTP provider. No model API Key is required unless the selected endpoint requires one. |
 
 ## LLM Review Provider Boundary
 
 `internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
 
-The current built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, or any network API. Deterministic rules and sandbox checks remain the base safety path; future real providers can plug into the same boundary without changing default CLI behavior.
+The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. No real vendor SDK is linked.
+
+HTTP provider request and response shape:
+
+```json
+{
+  "model": "optional-model-name",
+  "input": {
+    "diff_summary": "redacted unified diff",
+    "input_metadata": {},
+    "existing_findings": [],
+    "sandbox_summary": {},
+    "governance_summary": {}
+  }
+}
+```
+
+The endpoint must return:
+
+```json
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "category": "logic",
+      "file": "example.go",
+      "line": 42,
+      "title": "Semantic risk",
+      "evidence": "redacted evidence",
+      "recommendation": "Review the branch condition.",
+      "confidence": "high",
+      "source": "model",
+      "rule_id": "model-review"
+    }
+  ]
+}
+```
+
+Example explicit HTTP provider invocation:
+
+```bash
+CR_AGENT_MODEL_API_KEY=replace-me \
+go run ./cmd/review-agent \
+  --diff-file testdata/fixtures/panic.diff \
+  --skills-root skills \
+  --runtime local-fallback \
+  --mode fake-model \
+  --model-provider http \
+  --model-endpoint https://model.example/review \
+  --model-api-key-env CR_AGENT_MODEL_API_KEY \
+  --model-name review-model \
+  --output-dir /tmp/review-out
+```
+
+Provider input is redacted before the HTTP request; provider output evidence is redacted again before reports, diagnostics and SQLite writes. HTTP transport errors, non-2xx responses, invalid JSON and deadline failures do not abort the review. They increment model exception metrics, add a `model-provider-failed` human review item and keep report generation going. Deterministic rules and sandbox checks remain the base safety path.
 
 ## SQLite Audit Data
 

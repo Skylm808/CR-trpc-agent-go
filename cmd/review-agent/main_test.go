@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
@@ -37,6 +38,32 @@ func TestRunWritesReportFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "review_report.md")); err != nil {
 		t.Fatalf("expected md report: %v", err)
+	}
+}
+
+func TestRunRejectsUnknownModelProvider(t *testing.T) {
+	dir := t.TempDir()
+	diffPath := filepath.Join(dir, "sample.diff")
+	if err := os.WriteFile(diffPath, []byte(""+
+		"diff --git a/foo.go b/foo.go\n"+
+		"--- a/foo.go\n"+
+		"+++ b/foo.go\n"+
+		"@@ -1,1 +1,2 @@\n"+
+		" package foo\n"+
+		"+func Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Run(Options{
+		DiffFile:      diffPath,
+		OutputDir:     dir,
+		Mode:          cragent.ModeFakeModel,
+		Runtime:       cragent.RuntimeLocalFallback,
+		SkillsRoot:    filepath.Join("..", "..", "skills"),
+		ModelProvider: "unknown",
+	})
+	if err == nil || !strings.Contains(err.Error(), `unsupported model provider "unknown"`) {
+		t.Fatalf("expected unsupported provider error, got %v", err)
 	}
 }
 

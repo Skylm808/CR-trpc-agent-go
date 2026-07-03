@@ -12,7 +12,7 @@
 | Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `defaultPermissionPolicy`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | workspace 执行 | 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
-| 模型审查 | `fake-model` 只调用本地 deterministic provider；prompt 输入先脱敏，不调用真实网络 API | `TestModelProviderRedactsInputOutputReportsAndSQLite` |
+| 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http` 才调用 HTTP provider。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings` |
 
 ## 审计字段
 
@@ -56,12 +56,12 @@
 | Skill 输出重复或未脱敏 | Agent 层 `sanitizeFinding` 兜底 | `TestParseSkillFindingsDedupesAndRedacts` |
 | SQLite 泄漏 | 全表文本列扫描 raw secret | secret redaction tests |
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
-| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite` |
+| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；HTTP provider API key 只来自 env，报告/diagnostics/SQLite 不保存 key | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings` |
 
 ## 未完成边界
 
 - E2B / Cube runtime 尚未接入；当前只证明 container 和显式 local fallback。
-- 真实 LLM provider 尚未接入；当前 fake provider 只验证边界、脱敏、分流、审计和失败降级。
+- 厂商 SDK provider 尚未接入；当前 fake provider 和 opt-in HTTP provider 验证边界、脱敏、分流、审计和失败降级。
 - 官方 metric exporter / OTLP dashboard 尚未部署；当前使用官方 telemetry trace span 和 SQLite metrics。
 - 当前 env whitelist 是审计边界，容器级强环境隔离仍依赖部署侧 executor 配置。
-- 复杂业务逻辑错误不靠 deterministic 规则保证，需要后续 LLM 审查或领域规则补齐。
+- 复杂业务逻辑错误不靠 deterministic 规则保证，真实检出率取决于外部 HTTP 模型端点或后续领域规则补齐。
