@@ -34,7 +34,7 @@
 - E2B/Cube runtime adapter。
 - 官方 artifact service 默认用 inmemory 保存报告和诊断产物；SQLite 继续保留引用记录和查询。
 - 官方 `session/sqlite` 尚未直接接入；当前使用本项目 SQLite 审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
-- 已接入最小 telemetry trace 边界和审查摘要属性；当前 metrics 表继续记录耗时、异常、severity 分布等。
+- 已接入官方 telemetry trace 边界和审查摘要属性；当前 SQLite metrics 表继续记录耗时、异常、severity 分布等可查询聚合指标。官方 metric exporter/OTLP dashboard 留作部署集成项。
 
 ## 系统流程
 
@@ -62,7 +62,7 @@ CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
 | PermissionPolicy | `internal/agent.defaultPermissionPolicy` 返回 `tool.PermissionPolicy` | ✅ 固定 allowlist，非 allow 不进入 executor |
 | Session | SQLite 审计 store 记录 task、decision、run、finding、artifact、metrics、report | 🔶 尚未直接接官方 `session/sqlite`；当前不是官方 Session Service |
 | Memory | 无长期用户记忆 | ⏳ 当前 CR MVP 不需要，后续如接多轮评审再评估 |
-| Observability | metrics 表记录耗时、异常、权限拦截、severity 分布，Run 已挂 trace span | 🔶 仍缺更完整的 OTLP 导出和统一 dashboard |
+| Observability | 官方 telemetry trace span 记录 mode、runtime、输入类型、耗时、工具调用、权限拦截、severity/exception 分布和结论；SQLite metrics 表保存可查询聚合指标 | 🔶 未启动官方 metric exporter；OTLP dashboard 属于后续部署集成 |
 | Artifact | `review_report.json` / `review_report.md` / `review_diagnostics.json` 保存到本地，且同步写入官方 artifact service | ✅ 默认使用官方 inmemory service，SQLite 继续保留引用记录 |
 
 ## CLI Mode
@@ -183,7 +183,7 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过官方
 
 1. 在有 Docker daemon 的 CI/机器上执行 env-gated container E2E。
 2. E2B runtime 入口或清晰的 unsupported 记录。
-3. 官方 artifact/session/telemetry 能力的最小接入或明确 adapter 边界。
+3. 官方 metric exporter、Session/Memory 和 Runner/Event 的接入条件评估。
 4. hidden/eval 评测脚本，验证高危检出率和误报率，契约见 `docs/eval-matrix.md`。
 
 ## 相关文档

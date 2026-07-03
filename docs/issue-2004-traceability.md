@@ -14,7 +14,7 @@
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | — |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离待补 |
-| 9 | 监控审计 | metrics 表 + trace span + report metrics | report/agent/sqlite tests | 🔶 | telemetry attributes 已含 severity/exception 分布；OTLP dashboard 待补 |
+| 9 | 监控审计 | SQLite metrics 表 + 官方 trace span + report metrics | report/agent/sqlite tests | 🔶 | telemetry attributes 已覆盖耗时、工具调用、权限拦截、severity/exception 分布和结论；官方 metric exporter/OTLP dashboard 待部署集成 |
 
 ## 输入输出要求追踪
 
@@ -84,7 +84,7 @@
 ## 下一步
 
 1. 在宿主 CI 中开启 Docker daemon 后运行 container runtime E2E，保持本机 Docker Desktop 验证结果可复现。
-2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有 trace span 和审查摘要属性，artifact service 默认用 inmemory 保存报告和诊断产物，SQLite artifacts 表仅作为引用索引。
+2. Runner/Event、Session/Memory 和 E2B 暂不接入的边界见 `issue-acceptance.md`；telemetry 已有官方 trace span 和审查摘要属性，artifact service 默认用 inmemory 保存报告和诊断产物，SQLite artifacts 表仅作为引用索引。
 3. 为隐藏样本扩展外部 expected matrix 输入。
 4. 如需正式交付，可继续用隐藏样本 expected matrix 校准检出率和误报率。
 

@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 )
@@ -14,6 +17,89 @@ import (
 type artifactPayload struct {
 	Name string
 	Data []byte
+}
+
+type reportBundle struct {
+	JSON        []byte
+	Markdown    []byte
+	Diagnostics []byte
+}
+
+type reviewResultContext struct {
+	TaskID        string
+	InputMetadata review.InputMetadata
+	StartedAt     time.Time
+	ToolCallCount int
+	Decisions     []storage.DecisionRecord
+	Runs          []storage.SandboxRunRecord
+}
+
+// finalizeReviewResult 补齐报告、落库和 telemetry 共用字段。
+func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.Result {
+	result.TaskID = ctx.TaskID
+	result.Created = time.Now()
+	result.InputMetadata = ctx.InputMetadata
+	result.Metrics.TotalDurationMS = time.Since(ctx.StartedAt).Milliseconds()
+	result.Metrics.ToolCallCount = ctx.ToolCallCount
+	result.Metrics.SandboxDurationMS = totalSandboxDuration(ctx.Runs)
+	result.Metrics.FindingCount = len(result.Findings)
+	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
+	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
+	if result.Metrics.ExceptionCounts == nil {
+		result.Metrics.ExceptionCounts = map[string]int{}
+	}
+	for _, run := range ctx.Runs {
+		if run.Status == "failed" || run.Status == "error" || run.Status == "timed_out" {
+			incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
+		}
+	}
+	result.Metrics.PermissionBlocks = permissionBlockCount(ctx.Decisions)
+	result.HumanReviewItems = humanReviewItems(result.Warnings)
+	result.GovernanceSummary = governanceSummary(ctx.Decisions, result.Metrics.PermissionBlocks)
+	result.SandboxSummary = sandboxSummary(ctx.Runs)
+	result.Artifacts = reportArtifacts()
+	if result.Summary == "" {
+		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
+	}
+	result.Conclusion = conclusion(result)
+	return result
+}
+
+// buildReportBundle 生成三份对外产物。
+func buildReportBundle(result review.Result) (reportBundle, error) {
+	jsonReport, err := report.BuildJSON(result)
+	if err != nil {
+		return reportBundle{}, err
+	}
+	md := report.BuildMarkdown(result)
+	diagnosticsReport, err := buildDiagnostics(result)
+	if err != nil {
+		return reportBundle{}, err
+	}
+	return reportBundle{
+		JSON:        jsonReport,
+		Markdown:    []byte(md),
+		Diagnostics: diagnosticsReport,
+	}, nil
+}
+
+// writeReviewArtifacts 同步写本地文件和官方 artifact service。
+func (a *Agent) writeReviewArtifacts(ctx context.Context, taskID string, result review.Result, bundle reportBundle) error {
+	payloads := bundle.payloads()
+	if err := enforceArtifactLimits(a.cfg, payloads); err != nil {
+		return err
+	}
+	if err := writeReports(a.cfg.OutputDir, bundle.JSON, bundle.Markdown, bundle.Diagnostics); err != nil {
+		return err
+	}
+	if a.artifactService == nil {
+		return nil
+	}
+	return a.saveArtifacts(ctx, taskID, result, payloads)
+}
+
+func (b reportBundle) payloads() []artifactPayload {
+	return reportPayloads(b.JSON, b.Markdown, b.Diagnostics)
 }
 
 // writeReports 写入报告文件。

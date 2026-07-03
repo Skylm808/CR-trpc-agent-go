@@ -39,7 +39,7 @@
 - Docker `codeexecutor/container` 真实端到端验证已在 Docker Desktop 上跑通；宿主 CI 中仍建议显式开启 env-gated 测试。
 - 官方 artifact service 默认使用 inmemory 保存报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - 官方 `session/sqlite` 尚未直接接入；当前 SQLite 是审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
-- 更完整的 telemetry hook 和外部观测集成；当前官方 trace span 已记录审查摘要属性。
+- 官方 telemetry trace span 已记录审查摘要属性；SQLite metrics 表保留可查询聚合指标。官方 metric exporter/OTLP dashboard 属于后续部署集成项。
 
 ## Architecture
 

@@ -35,7 +35,7 @@ CI 集成由宿主仓库负责；本 example 保留 repo-neutral 脚本，接入
 | CodeExecutor 沙箱 | 默认 `codeexecutor/container`，`local-fallback` 仅开发测试；`tool/codeexec` 是 Go checks fallback | `internal/agent/execution.go`、README runtime 说明 |
 | Permission 治理 | 所有 `skill_run` / Go check 命令先过 `tool.PermissionPolicy`，非 allow 不执行 | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | artifact | `review_report.json`、`review_report.md`、`review_diagnostics.json` 写入官方 artifact service，本地文件和 SQLite 引用继续保留 | `TestArtifactServiceReportsCanBeSavedAsArtifacts`、`TestAgentDefaultArtifactService` |
-| telemetry | trace span 记录 task、mode、tool 调用数、permission block、severity/exception 分布 | `TestAgentRunRecordsTelemetryAttributes` |
+| telemetry | 官方 trace span 记录 task、mode、runtime、输入类型、耗时、tool 调用数、permission block、finding/artifact 数、severity/exception 分布和结论；SQLite metrics 表保存聚合指标 | `TestAgentRunRecordsTelemetryAttributes`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` |
 | SQLite 审计 | task、finding、permission/filter decision、sandbox run、artifact、metrics、report 按 task id 查询 | `TestAcceptanceEvidenceReportsAndSQLiteReplay` |
 
 ## 输入输出验收

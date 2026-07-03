@@ -995,8 +995,32 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 
 	span := findAgentReviewSpan(t, recorder)
 	attrs := agentSpanAttributes(span.Attributes())
+	for _, key := range []string{
+		"cr_agent.task_id",
+		"cr_agent.runtime",
+		"cr_agent.mode",
+		"cr_agent.input_type",
+		"cr_agent.finding_count",
+		"cr_agent.artifact_count",
+		"cr_agent.permission_block_count",
+		"cr_agent.tool_call_count",
+		"cr_agent.sandbox_run_count",
+		"cr_agent.total_duration_ms",
+		"cr_agent.sandbox_duration_ms",
+		"cr_agent.severity_counts",
+		"cr_agent.exception_counts",
+		"cr_agent.conclusion_status",
+		"cr_agent.conclusion_reason",
+	} {
+		if _, ok := attrs[key]; !ok {
+			t.Fatalf("expected telemetry attribute %q, attrs=%+v", key, attrs)
+		}
+	}
 	if attrs["cr_agent.task_id"].AsString() != result.TaskID {
 		t.Fatalf("task id attribute mismatch: got %q want %q", attrs["cr_agent.task_id"].AsString(), result.TaskID)
+	}
+	if attrs["cr_agent.runtime"].AsString() != RuntimeLocalFallback {
+		t.Fatalf("runtime attribute mismatch: %+v", attrs["cr_agent.runtime"])
 	}
 	if attrs["cr_agent.mode"].AsString() != ModeRuleOnly {
 		t.Fatalf("mode attribute mismatch: %+v", attrs["cr_agent.mode"])
@@ -1010,14 +1034,29 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	if attrs["cr_agent.artifact_count"].AsInt64() != 3 {
 		t.Fatalf("expected 3 artifact telemetry records, got %+v", attrs["cr_agent.artifact_count"])
 	}
+	if attrs["cr_agent.permission_block_count"].AsInt64() != int64(result.Metrics.PermissionBlocks) {
+		t.Fatalf("permission block count attribute mismatch: %+v", attrs["cr_agent.permission_block_count"])
+	}
 	if attrs["cr_agent.tool_call_count"].AsInt64() != int64(result.Metrics.ToolCallCount) {
 		t.Fatalf("tool call count attribute mismatch: %+v", attrs["cr_agent.tool_call_count"])
+	}
+	if attrs["cr_agent.sandbox_run_count"].AsInt64() != int64(len(result.SandboxSummary.Runs)) {
+		t.Fatalf("sandbox run count attribute mismatch: %+v", attrs["cr_agent.sandbox_run_count"])
+	}
+	if attrs["cr_agent.total_duration_ms"].AsInt64() != result.Metrics.TotalDurationMS {
+		t.Fatalf("total duration attribute mismatch: %+v", attrs["cr_agent.total_duration_ms"])
+	}
+	if attrs["cr_agent.sandbox_duration_ms"].AsInt64() != result.Metrics.SandboxDurationMS {
+		t.Fatalf("sandbox duration attribute mismatch: %+v", attrs["cr_agent.sandbox_duration_ms"])
 	}
 	if !strings.Contains(attrs["cr_agent.severity_counts"].AsString(), `"critical":1`) {
 		t.Fatalf("severity distribution attribute mismatch: %+v", attrs["cr_agent.severity_counts"])
 	}
 	if attrs["cr_agent.exception_counts"].AsString() == "" {
 		t.Fatalf("expected exception distribution attribute, got %+v", attrs["cr_agent.exception_counts"])
+	}
+	if attrs["cr_agent.exception_count"].AsInt64() != int64(exceptionCount(result.Metrics.ExceptionCounts)) {
+		t.Fatalf("exception count attribute mismatch: %+v", attrs["cr_agent.exception_count"])
 	}
 	if attrs["cr_agent.conclusion_status"].AsString() != result.Conclusion.Status {
 		t.Fatalf("conclusion status attribute mismatch: got %q want %q", attrs["cr_agent.conclusion_status"].AsString(), result.Conclusion.Status)

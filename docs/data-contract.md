@@ -149,7 +149,7 @@
 | `redaction_count` | ✅ |
 | `created_at` | ✅ |
 
-当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、输入类型、task、finding、artifact、权限拦截、工具调用、沙箱耗时、severity 分布、exception 类型分布和结论。后续可把外部 telemetry hook 输出映射到同一 schema。
+当前 metrics 是本地聚合，官方 telemetry trace span 同步记录 mode、runtime、输入类型、task、finding、artifact、权限拦截、工具调用、总耗时、沙箱耗时、severity 分布、exception 类型分布和结论。trpc-agent-go 的公开 metric 包主要初始化框架内置 LLM/tool/workflow 指标；本 CLI 原型不硬接官方 internal 指标，后续部署时可启动官方 metric exporter 和 OTLP dashboard。
 
 ## ReviewReport
 

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
@@ -208,9 +207,49 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 		taskStarted = true
 	}
 
+	result, decisions, runs, toolCallCount, runErr := a.runReviewChecks(ctx, taskID, mode, req.RepoPath, diff)
+	if runErr != nil {
+		// 执行失败降级为人工复核项。
+		result = resultWithRunError(result, runErr)
+	}
+	result = finalizeReviewResult(result, reviewResultContext{
+		TaskID:        taskID,
+		InputMetadata: inputMeta,
+		StartedAt:     start,
+		ToolCallCount: toolCallCount,
+		Decisions:     decisions,
+		Runs:          runs,
+	})
+
+	// 报告文件和 SQLite 使用同一份内容。
+	reports, err := buildReportBundle(result)
+	if err != nil {
+		return review.Result{}, err
+	}
+	if err := a.writeReviewArtifacts(ctx, taskID, result, reports); err != nil {
+		return review.Result{}, err
+	}
+	if a.store != nil {
+		// 写入完整审计数据。
+		if err := a.persist(ctx, taskID, result, decisions, runs, reports.JSON, reports.Markdown, reports.Diagnostics); err != nil {
+			return review.Result{}, err
+		}
+		// 最后标记任务完成。
+		if err := a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "done", start, time.Now()); err != nil {
+			return review.Result{}, err
+		}
+	}
+	recordReviewResultTelemetry(span, result)
+	return result, nil
+}
+
+// runReviewChecks 执行规则链路并收集治理/沙箱记录。
+func (a *Agent) runReviewChecks(ctx context.Context, taskID, mode, repoPath string, diff []byte) (review.Result, []storage.DecisionRecord, []storage.SandboxRunRecord, int, error) {
 	toolCallCount := 2
+	var result review.Result
 	var runRecord storage.SandboxRunRecord
 	var decision storage.DecisionRecord
+	var err error
 	if mode == ModeDryRun {
 		// dry-run 不进入执行器。
 		toolCallCount = 1
@@ -221,79 +260,14 @@ func (a *Agent) Run(ctx context.Context, req Request) (result review.Result, err
 	}
 	decisions := []storage.DecisionRecord{decision}
 	runs := []storage.SandboxRunRecord{runRecord}
-	if mode == ModeSandbox && strings.TrimSpace(req.RepoPath) != "" {
+	if mode == ModeSandbox && strings.TrimSpace(repoPath) != "" {
 		// sandbox 模式追加 Go 检查。
-		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, req.RepoPath)
+		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, repoPath)
 		decisions = append(decisions, checkDecisions...)
 		runs = append(runs, checkRuns...)
 		toolCallCount += len(checkRuns)
 	}
-	if err != nil {
-		// 执行失败降级为人工复核项。
-		result = resultWithRunError(result, err)
-	}
-	// 汇总报告和数据库共用的指标。
-	result.TaskID = taskID
-	result.Created = time.Now()
-	result.InputMetadata = inputMeta
-	result.Metrics.TotalDurationMS = time.Since(start).Milliseconds()
-	result.Metrics.ToolCallCount = toolCallCount
-	result.Metrics.SandboxDurationMS = totalSandboxDuration(runs)
-	result.Metrics.FindingCount = len(result.Findings)
-	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
-	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
-	if result.Metrics.ExceptionCounts == nil {
-		result.Metrics.ExceptionCounts = map[string]int{}
-	}
-	for _, run := range runs {
-		if run.Status == "failed" || run.Status == "error" || run.Status == "timed_out" {
-			incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
-		}
-	}
-	result.Metrics.PermissionBlocks = permissionBlockCount(decisions)
-	// 补齐报告摘要字段。
-	result.HumanReviewItems = humanReviewItems(result.Warnings)
-	result.GovernanceSummary = governanceSummary(decisions, result.Metrics.PermissionBlocks)
-	result.SandboxSummary = sandboxSummary(runs)
-	result.Artifacts = reportArtifacts()
-	if result.Summary == "" {
-		result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
-	}
-	result.Conclusion = conclusion(result)
-
-	// 报告文件和 SQLite 使用同一份内容。
-	jsonReport, jsonErr := report.BuildJSON(result)
-	if jsonErr != nil {
-		return review.Result{}, jsonErr
-	}
-	md := report.BuildMarkdown(result)
-	diagnosticsReport, err := buildDiagnostics(result)
-	if err != nil {
-		return review.Result{}, err
-	}
-	if err := enforceArtifactLimits(a.cfg, reportPayloads(jsonReport, []byte(md), diagnosticsReport)); err != nil {
-		return review.Result{}, err
-	}
-	if err := writeReports(a.cfg.OutputDir, jsonReport, []byte(md), diagnosticsReport); err != nil {
-		return review.Result{}, err
-	}
-	if a.artifactService != nil {
-		if err := a.saveArtifacts(ctx, taskID, result, reportPayloads(jsonReport, []byte(md), diagnosticsReport)); err != nil {
-			return review.Result{}, err
-		}
-	}
-	if a.store != nil {
-		// 写入完整审计数据。
-		if err := a.persist(ctx, taskID, result, decisions, runs, jsonReport, []byte(md), diagnosticsReport); err != nil {
-			return review.Result{}, err
-		}
-		// 最后标记任务完成。
-		if err := a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "done", start, time.Now()); err != nil {
-			return review.Result{}, err
-		}
-	}
-	recordReviewResultTelemetry(span, result)
-	return result, nil
+	return result, decisions, runs, toolCallCount, err
 }
 
 // Close 释放 Agent 持有的存储连接。
