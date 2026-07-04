@@ -12,7 +12,7 @@
 | Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `defaultPermissionPolicy`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | workspace 执行 | 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
-| 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http` 才调用 HTTP provider。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings` |
+| 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http|openai|deepseek` 才调用外部 provider。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestOpenAIModelProviderBuildsOfficialDeepSeekModel` |
 
 ## 审计字段
 
@@ -21,8 +21,8 @@
 | 字段 | 作用 | 测试证据 |
 |------|------|----------|
 | `command` | 保留审计命令，不暴露容器内实现细节 | sandbox / permission tests |
-| `runtime` | 标记 `container` 或 `local-fallback` | container E2E |
-| `status` | `ok` / `failed` / `error` / `timed_out` / `skipped` / permission action | failure / timeout / dry-run tests |
+| `runtime` | 标记 `container`、`local-fallback` 或 `e2b` | container E2E、E2B unsupported test |
+| `status` | `ok` / `failed` / `error` / `timed_out` / `skipped` / `unsupported` / permission action | failure / timeout / dry-run / E2B tests |
 | `timeout_ms` | 固定每次执行超时边界 | failure / timeout tests |
 | `output_limit_bytes` | 固定输出上限 | failure / timeout tests |
 | `env_whitelist` | 记录允许进入执行环境的环境变量名 | dry-run / sandbox tests |
@@ -56,12 +56,12 @@
 | Skill 输出重复或未脱敏 | Agent 层 `sanitizeFinding` 兜底 | `TestParseSkillFindingsDedupesAndRedacts` |
 | SQLite 泄漏 | 全表文本列扫描 raw secret | secret redaction tests |
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
-| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；HTTP provider API key 只来自 env，报告/diagnostics/SQLite 不保存 key | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings` |
+| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 只来自 env，报告/diagnostics/SQLite 不保存 key | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
 
 ## 未完成边界
 
 - E2B / Cube 真实 runtime 尚未接入；当前 `--runtime e2b` 只生成显式 unsupported 审计记录，不静默 fallback。
-- 厂商 SDK provider 尚未接入；当前 fake provider 和 opt-in HTTP provider 验证边界、脱敏、分流、审计和失败降级。
+- Claude / Gemini 厂商 SDK provider 尚未接入；当前 fake provider、opt-in HTTP provider 和官方 `model/openai` OpenAI-compatible / DeepSeek provider 验证边界、脱敏、分流、审计和失败降级。
 - 官方 metric exporter / OTLP dashboard 尚未部署；当前使用官方 telemetry trace span 和 SQLite metrics。
 - 当前 env whitelist 是审计边界，容器级强环境隔离仍依赖部署侧 executor 配置。
-- 复杂业务逻辑错误不靠 deterministic 规则保证，真实检出率取决于外部 HTTP 模型端点或后续领域规则补齐。
+- 复杂业务逻辑错误不靠 deterministic 规则保证，真实检出率取决于外部模型端点或后续领域规则补齐。

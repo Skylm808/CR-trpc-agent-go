@@ -2,7 +2,7 @@
 
 基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) 的 Go 自动代码评审 Agent 原型。仓库不是框架 fork，而是框架之上的应用层示例：用 `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`，用 `tool.PermissionPolicy` 做执行前治理，用 `tool/workspaceexec` 执行工作区级 Go 检查，用 `tool/codeexec` 做兜底，用 `codeexecutor/container` 做默认沙箱，用 `artifact` 保存报告和诊断产物，用 telemetry 记录审查摘要，用 SQLite 保存任务、权限决策、沙箱运行、发现项、产物引用、指标和最终报告。
 
-当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry/Runner 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 provider 已通过薄 adapter 走官方 `trpc-agent-go/model.Model` 接口，CLI 兼容入口通过官方 `runner.NewRunner(...).Run(...)` 消费 `event.Event` 流。Session/Memory 更适合跨 PR 经验复用；E2B 当前是显式 unsupported 入口，后续可替换为真实远端 runtime adapter。
+当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry/Runner 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider、显式 opt-in 的 generic HTTP provider，以及基于官方 `trpc-agent-go/model/openai` 的 OpenAI-compatible / DeepSeek provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 provider 已通过官方 `trpc-agent-go/model.Model` 接口，CLI 兼容入口通过官方 `runner.NewRunner(...).Run(...)` 消费 `event.Event` 流。Session/Memory 更适合跨 PR 经验复用；E2B 当前是显式 unsupported 入口，后续可替换为真实远端 runtime adapter。
 
 本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。CLI 在没有传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，会把当前工作目录推断为 `--repo-path .`，方便在待审仓库内少参数运行 review。
 
@@ -20,9 +20,10 @@
 
 - `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
 - 无输入参数时 CLI 默认审查当前目录，完整输入 flags 仍保留用于验收和调试。
+- 自动读取当前目录 `cr-agent.yaml`，也可用 `--config` 指定配置文件；CLI flags 覆盖 YAML。
 - `skill_load` 加载 `skills/code-review/SKILL.md`。
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
-- `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider；只有显式传 `--model-provider http` 时才调用 HTTP provider。
+- `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider；显式传 `--model-provider http|openai|deepseek` 时才调用外部 provider。
 - `--file-list` 路径列表输入会转换为新增文件 diff，复用同一审查链路。
 - `tool.PermissionPolicy` 决策，`deny` / `ask` / `needs_human_review` 不进入 executor。
 - `codeexecutor/container` 为默认 runtime；`local-fallback` 只能显式用于开发和测试。
@@ -34,6 +35,7 @@
 - `review_diagnostics.json` 包含 Go input metadata：changed_go_files、package_names、module_path、has_tests、touched_test_files。
 - `--base-ref` / `--head-ref` 会进入 input metadata、报告、diagnostics、SQLite report blob 和 telemetry；`--repo-path` 同时传 refs 时使用 `git diff base...head`，不自动 fetch。
 - `--runtime e2b` 是最小 unsupported/adapter 入口：不会静默 fallback 到 local/container，会在报告、diagnostics 和 SQLite sandbox run 中记录 `runtime=e2b status=unsupported`。
+- `--model-provider deepseek` 走官方 `trpc-agent-go/model/openai` 的 `VariantDeepSeek` 路线；API key 只从 env 读取，缺 key 时降级为人工复核，不中断 review。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
 - 公开 fixture 覆盖安全、secret 多形态脱敏、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
@@ -98,6 +100,36 @@ go run ./cmd/review-agent
 
 ```bash
 go run ./cmd/review-agent --runtime local-fallback --output-dir /tmp/review-out
+```
+
+推荐本地配置：
+
+```yaml
+# cr-agent.yaml
+mode: fake-model
+runtime: container
+output_dir: .cr-agent/reports
+sqlite: .cr-agent/review.db
+skills_root: skills
+staticcheck: false
+
+model:
+  provider: deepseek
+  name: deepseek-chat
+  api_key_env: DEEPSEEK_API_KEY
+```
+
+然后在仓库内运行：
+
+```bash
+export DEEPSEEK_API_KEY=replace-me
+go run ./cmd/review-agent
+```
+
+没有 `cr-agent.yaml` 时保持内置默认行为；有配置文件时，显式 CLI flags 仍可覆盖 YAML，例如：
+
+```bash
+go run ./cmd/review-agent --config ./cr-agent.yaml --runtime local-fallback --output-dir /tmp/review-out
 ```
 
 运行真实 Docker container 集成测试：
@@ -197,6 +229,7 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--config` | `cr-agent.yaml` if present | YAML config file. Missing default config is ignored; explicit missing path returns an error. |
 | `--diff-file` | empty | Unified diff input. |
 | `--file-list` | empty | Newline-delimited changed file list; relative paths resolve from `--repo-path` or the list file directory. |
 | `--repo-path` | inferred `.` when no input flag is set | Git repo or plain directory input. |
@@ -210,10 +243,12 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `--staticcheck` | `false` | Run optional `staticcheck ./...` in sandbox mode. |
 | `--sqlite` | empty | SQLite DB path. |
 | `--output-dir` | `.` | Report output directory. |
-| `--model-provider` | empty | Optional model provider. Currently only `http`; default empty keeps fake provider/no network behavior. |
+| `--model-provider` | empty | Optional model provider: `http`, `openai`, `openai-compatible`, or `deepseek`; default empty keeps fake provider/no network behavior. |
 | `--model-endpoint` | empty | HTTP model provider endpoint, required when `--model-provider http` is enabled. |
-| `--model-api-key-env` | empty | Environment variable name containing the optional HTTP provider API key. The key value is never written to reports, diagnostics, SQLite or telemetry. |
-| `--model-name` | empty | Optional model name included in the HTTP provider request. |
+| `--model-api-key-env` | provider default | Environment variable name containing the optional provider API key. The key value is never written to reports, diagnostics, SQLite or telemetry. |
+| `--model-name` | provider default where available | Optional model name included in the model provider request. DeepSeek defaults to `deepseek-chat`. |
+| `--model-base-url` | provider default | OpenAI-compatible base URL override. |
+| `--model-variant` | inferred from provider | OpenAI-compatible variant, currently `openai` or `deepseek`. |
 
 ## Modes
 
@@ -222,13 +257,39 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `rule-only` | Loads the skill and runs deterministic `scripts/check.sh`. |
 | `dry-run` | Loads the skill, records a `dry_run` permission decision and a skipped sandbox run, but does not execute. |
 | `sandbox` | Runs `skill_run`, then permission-gated `go test ./...`, `go vet ./...`, and optional `staticcheck ./...`. |
-| `fake-model` | Runs deterministic Skill, then the LLM Review Provider boundary. Default uses the built-in fake provider; `--model-provider http` explicitly switches to the generic HTTP provider. No model API Key is required unless the selected endpoint requires one. |
+| `fake-model` | Runs deterministic Skill, then the LLM Review Provider boundary. Default uses the built-in fake provider; `--model-provider http|openai|deepseek` explicitly switches to an external provider. No model API Key is required unless an external provider is selected. |
 
 ## LLM Review Provider Boundary
 
 `internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. The provider is wrapped through a thin official `trpc-agent-go/model.Model` adapter before review results are merged back into the CR report. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
 
-The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. No real vendor SDK is linked.
+The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, DeepSeek, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. The `openai` / `openai-compatible` / `deepseek` providers use official `trpc-agent-go/model/openai` and remain opt-in.
+
+DeepSeek example:
+
+```bash
+DEEPSEEK_API_KEY=replace-me \
+go run ./cmd/review-agent \
+  --mode fake-model \
+  --model-provider deepseek \
+  --model-name deepseek-chat \
+  --runtime local-fallback \
+  --output-dir /tmp/review-out
+```
+
+OpenAI-compatible endpoint example:
+
+```bash
+MODEL_API_KEY=replace-me \
+go run ./cmd/review-agent \
+  --mode fake-model \
+  --model-provider openai-compatible \
+  --model-name your-model \
+  --model-base-url https://model.example/v1 \
+  --model-api-key-env MODEL_API_KEY \
+  --runtime local-fallback \
+  --output-dir /tmp/review-out
+```
 
 HTTP provider request and response shape:
 

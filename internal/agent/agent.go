@@ -87,6 +87,8 @@ type Config struct {
 	ModelProvider ModelReviewProvider
 	// ModelHTTP 是显式开启的 HTTP 模型 provider 配置。
 	ModelHTTP HTTPModelProviderConfig
+	// ModelOpenAI 是显式开启的官方 OpenAI-compatible 模型 provider 配置。
+	ModelOpenAI OpenAIModelProviderConfig
 	// EventSink 接收本项目通过官方 event.Event 暴露的阶段事件。
 	EventSink func(context.Context, *agentevent.Event)
 }

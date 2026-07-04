@@ -96,6 +96,17 @@ func (a *Agent) configuredModelProvider(mode string) ModelReviewProvider {
 	if mode != ModeFakeModel {
 		return nil
 	}
+	if a.cfg.ModelOpenAI.Enabled {
+		provider, err := newOpenAIReviewProvider(a.cfg.ModelOpenAI)
+		if err != nil {
+			return modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+				_ = ctx
+				_ = input
+				return ModelReviewOutput{}, err
+			})
+		}
+		return provider
+	}
 	if a.cfg.ModelHTTP.Enabled {
 		provider, err := newHTTPModelProvider(a.cfg.ModelHTTP)
 		if err != nil {

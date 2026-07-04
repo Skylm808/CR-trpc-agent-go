@@ -34,7 +34,7 @@
 
 ## ModelReviewInput
 
-`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库。该输入会先封装成官方 `trpc-agent-go/model.Request`，由薄 adapter 通过官方 `model.Model.GenerateContent` 路线调用当前 provider，再解析回 `ModelReviewOutput`。默认 fake provider 不发送网络请求；只有显式启用 `--model-provider http` 时才把该结构作为 HTTP request 的 `input` 字段发送到配置的 endpoint。
+`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库。该输入会先封装成官方 `trpc-agent-go/model.Request`，通过官方 `model.Model.GenerateContent` 路线调用当前 provider，再解析回 `ModelReviewOutput`。默认 fake provider 不发送网络请求；显式启用 `--model-provider http` 时会把该结构作为 HTTP request 的 `input` 字段发送到配置的 endpoint；显式启用 `openai` / `openai-compatible` / `deepseek` 时会走官方 `trpc-agent-go/model/openai`。
 
 | 字段 | 当前状态 |
 |------|----------|
@@ -44,7 +44,7 @@
 | `sandbox_summary` | ✅ 复用 `SandboxSummary` |
 | `governance_summary` | ✅ 复用 `GovernanceSummary` |
 
-当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。API key 只能通过 `--model-api-key-env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认测试路径。真实 OpenAI / Claude / Gemini SDK 绑定留到后续阶段。
+当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。OpenAI-compatible / DeepSeek provider 使用官方 `trpc-agent-go/model/openai`；DeepSeek 默认 `model=deepseek-chat`、`variant=deepseek`、`api_key_env=DEEPSEEK_API_KEY`。API key 只能通过 `--model-api-key-env` 或 YAML `model.api_key_env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认 fake/rule-only 测试路径。Claude / Gemini SDK 绑定留到后续阶段。
 
 ## InputMetadata
 

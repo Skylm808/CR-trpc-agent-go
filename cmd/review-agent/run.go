@@ -11,6 +11,7 @@ import (
 
 // Options 保存 CLI 参数。
 type Options struct {
+	ConfigFile     string
 	DiffFile       string
 	FileList       string
 	RepoPath       string
@@ -29,10 +30,18 @@ type Options struct {
 	ModelEndpoint  string
 	ModelAPIKeyEnv string
 	ModelName      string
+	ModelBaseURL   string
+	ModelVariant   string
+	ExplicitFlags  map[string]bool
 }
 
 // Run 将 CLI 参数交给 Agent。
 func Run(opts Options) error {
+	var err error
+	opts, err = resolveOptions(opts)
+	if err != nil {
+		return err
+	}
 	opts = withInferredInput(opts)
 	cfg := cragent.Config{
 		SkillsRoot:            opts.SkillsRoot,
@@ -51,6 +60,15 @@ func Run(opts Options) error {
 			Endpoint:  opts.ModelEndpoint,
 			APIKeyEnv: opts.ModelAPIKeyEnv,
 			Model:     opts.ModelName,
+		}
+	case "openai", "openai-compatible", "deepseek":
+		cfg.ModelOpenAI = cragent.OpenAIModelProviderConfig{
+			Enabled:   true,
+			Provider:  opts.ModelProvider,
+			Model:     opts.ModelName,
+			APIKeyEnv: opts.ModelAPIKeyEnv,
+			BaseURL:   opts.ModelBaseURL,
+			Variant:   opts.ModelVariant,
 		}
 	default:
 		return fmt.Errorf("unsupported model provider %q", opts.ModelProvider)

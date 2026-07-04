@@ -14,11 +14,13 @@
 | SQLite 审计 | ✅ | task、decision、sandbox run、finding、artifact、metrics、report 均可按 task_id 查询 |
 | deterministic fake provider | ✅ | 默认无 API Key、无网络模型，经官方 `model.Model` adapter 调用 `ModelReviewProvider` 边界 |
 | opt-in HTTP provider | ✅ | `--model-provider http` 显式开启，经官方 `model.Model` adapter 调用，输入/输出脱敏，失败降级人工复核 |
+| opt-in OpenAI-compatible / DeepSeek provider | ✅ | `--model-provider openai|openai-compatible|deepseek` 显式开启，走官方 `trpc-agent-go/model/openai`，缺 key 降级人工复核 |
 | Runner/Event 主入口 | ✅ | `Agent.Run` 通过 `RunWithEvents` 调用官方 `runner.NewRunner(...).Run(...)`，并消费官方 `event.Event` 流 |
 | event.Event sink | ✅ | `EventSink` 仍可观察 input_loaded、skill_run、sandbox_run、model_review、report_written、task_finished/task_failed |
 | E2B unsupported 入口 | ✅ | `--runtime e2b` 生成 `runtime=e2b status=unsupported` 审计记录，不静默 fallback |
 | base/head ref 输入 | ✅ | `--base-ref` / `--head-ref` 进入 metadata/report/diagnostics/SQLite report/telemetry；git repo 可生成 `base...head` diff |
 | CLI 少参数入口 | ✅ | 未传 `--diff-file` / `--file-list` / `--repo-path` / `--fixture` 时推断为 `--repo-path .`，完整 flags 继续保留 |
+| YAML 配置入口 | ✅ | 默认读取当前目录 `cr-agent.yaml`，`--config` 可指定路径；CLI flags 覆盖 YAML，缺省配置不存在时保持内置默认 |
 | Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
 | 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT`；`CR_AGENT_EVAL_EXPECTED` 保留为兼容别名 |
@@ -26,14 +28,15 @@
 
 ## 下一阶段优先级
 
-### 1. 官方 model.Model / Runner / Event 适配
+### 1. 官方 model.Model / Runner / Event / OpenAI-compatible provider 适配
 
-**当前状态：** 已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`。`Agent.Run` 现在是兼容 shim，内部通过 `RunWithEvents` 调用 `runner.NewRunner(...).Run(...)`，由 `reviewRunnerAgent` 这个官方 `agent.Agent` adapter 发出 `event.Event` 流。adapter 内部仍调用本项目 `runDirect` 执行体，目的是保持 CLI、报告、SQLite 和 fixture contract 不被 Runner 接入打断。
+**当前状态：** 已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`。`Agent.Run` 现在是兼容 shim，内部通过 `RunWithEvents` 调用 `runner.NewRunner(...).Run(...)`，由 `reviewRunnerAgent` 这个官方 `agent.Agent` adapter 发出 `event.Event` 流。adapter 内部仍调用本项目 `runDirect` 执行体，目的是保持 CLI、报告、SQLite 和 fixture contract 不被 Runner 接入打断。真实模型配置路径也已接入：`--model-provider openai|openai-compatible|deepseek` 走官方 `trpc-agent-go/model/openai`，DeepSeek 默认使用 `VariantDeepSeek` 和 `DEEPSEEK_API_KEY`。
 
 **影响文件：**
 
 - `internal/agent/model.go`
 - `internal/agent/model_http.go`
+- `internal/agent/model_openai.go`
 - `internal/agent/agent.go`
 - `internal/agent/events.go`
 - `internal/agent/runner_official.go`
@@ -43,9 +46,9 @@
 
 **验收标准：**
 
-- 默认 fake provider 和 opt-in HTTP provider 仍可用，且仍不要求 API Key。
+- 默认 fake provider、opt-in HTTP provider 和 opt-in OpenAI-compatible / DeepSeek provider 仍可用；默认路径仍不要求 API Key。
 - 当前 `ModelReviewProvider` 的脱敏、分流、去重、失败降级语义不丢失。
-- adapter 明确实现并包装官方 `model.Model`，单元测试覆盖 request/response 和 redaction；HTTP timeout/error 继续由既有 provider 测试覆盖。
+- adapter 明确实现并包装官方 `model.Model`，单元测试覆盖 request/response 和 redaction；HTTP timeout/error 继续由既有 provider 测试覆盖；DeepSeek 缺 key 降级人工复核。
 - 官方 Runner route 输出 input_loaded、skill_run、model_review、sandbox_run、report_written、task_finished/task_failed 等事件。
 - 老 CLI 输出和 SQLite 审计 contract 保持兼容。
 
@@ -59,7 +62,7 @@ CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/ac
 
 **剩余边界：**
 
-- 不在这一步绑定 OpenAI / Claude / Gemini 厂商 SDK。
+- 不在这一步绑定 Claude / Gemini 厂商 SDK，也不直接引入 DeepSeek SDK。
 - 不删除无 API Key 默认路径。
 - 不为了接完整 Runner 重写规则引擎、SQLite schema 或报告 contract。
 - 尚未把规则执行体改造成官方 llmagent/graphagent；当前是官方 Runner + 应用 adapter。
@@ -133,18 +136,21 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 
 ### 3.5. CLI 少参数当前目录入口
 
-**当前状态：** `cmd/review-agent.Run` 会在未传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，将输入推断为 `--repo-path .`。这让用户在待审 repo 内可以直接运行默认 review，同时仍保留所有完整 flags 给验收、fixture、hidden matrix 和调试路径使用。
+**当前状态：** `cmd/review-agent.Run` 会在未传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，将输入推断为 `--repo-path .`。CLI 还会默认读取当前目录 `cr-agent.yaml`，也可用 `--config` 指定路径；CLI flags 覆盖 YAML。这让用户在待审 repo 内可以直接运行默认 review，同时仍保留所有完整 flags 给验收、fixture、hidden matrix 和调试路径使用。
 
 **影响文件：**
 
 - `cmd/review-agent/run.go`
+- `cmd/review-agent/config.go`
 - `cmd/review-agent/repo_test.go`
+- `cmd/review-agent/config_test.go`
 - `README.md`
 - `docs/issue-2004-traceability.md`
 
 **验收标准：**
 
 - 空输入 flags 时生成报告，且报告 metadata 能反映当前 repo 的 Go module / changed Go files。
+- 默认 `cr-agent.yaml` 和显式 `--config` 能配置 mode/runtime/output/sqlite/model provider。
 - 任意显式输入 flag 仍按原语义优先，不被当前目录推断覆盖。
 - 不改变默认 mode、runtime、skills-root、fixtures-root、output-dir 和 model provider 行为。
 
@@ -152,6 +158,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./cmd/review-agent -run TestRunInfersCurrentDirectoryRepoPathWhenInputIsOmitted -count=1
+GOCACHE=/private/tmp/cr-agent-gocache go test ./cmd/review-agent -run 'TestRunAutoLoadsCurrentDirectoryConfig|TestRunLoadsExplicitConfigFile|TestRunCLIOptionsOverrideConfig' -count=1
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 ```
 
@@ -208,7 +215,7 @@ scripts/eval.sh
 **验收标准：**
 
 - docs 索引不引用已删除文件。
-- 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；LLM 已有官方 model.Model adapter；CLI 兼容入口已走官方 Runner/Event adapter；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 目前是 unsupported 入口；base/head ref 已作为输入和审计上下文接入。
+- 当前事实保持一致：HTTP provider 已有但 opt-in；OpenAI-compatible / DeepSeek 走官方 `model/openai` 但仍 opt-in；默认 fake provider 不需要 API Key；LLM 已有官方 model.Model adapter；CLI 兼容入口已走官方 Runner/Event adapter；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 目前是 unsupported 入口；base/head ref 已作为输入和审计上下文接入。
 - Codex / Claude Code skill 只能作为后续包装方向记录，不作为当前 Issue #2004 的主线交付物。
 - 任何新增阶段性 prompt 不作为长期文档入口。
 
@@ -237,10 +244,12 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 - [x] 公开 fixture eval 脚本和外部 hidden matrix 注入契约。
 - [x] 官方 artifact/telemetry 最小接入或清晰边界说明。
 - [x] LLM provider 适配官方 model.Model，并通过官方 Runner/Event adapter 暴露阶段事件。
+- [x] OpenAI-compatible / DeepSeek provider 走官方 `trpc-agent-go/model/openai`。
 - [x] 官方 Runner/Event 主入口，保留 `Agent.Run` 兼容 shim。
 - [x] E2B runtime unsupported/adapter 入口。
 - [x] base/head ref 输入。
 - [x] CLI 少参数当前目录入口。
+- [x] `cr-agent.yaml` 配置入口。
 - [ ] 真实 hidden fixture matrix 验收记录。
 
 ## 相关文档
