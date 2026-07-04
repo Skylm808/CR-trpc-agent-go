@@ -97,8 +97,8 @@
 |------|----------|
 | `task_id` | ✅ |
 | `command` | ✅ |
-| `runtime` | ✅ `container` / `local-fallback` |
-| `status` | ✅ `ok` / `failed` / `error` / `timed_out` / `skipped` / permission action |
+| `runtime` | ✅ `container` / `local-fallback` / `e2b` |
+| `status` | ✅ `ok` / `failed` / `error` / `timed_out` / `skipped` / `unsupported` / permission action |
 | `timeout_ms` | ✅ |
 | `output_limit_bytes` | ✅ |
 | `env_whitelist` | ✅ 当前统一记录 `PATH,HOME,TMPDIR,GOCACHE` |

@@ -41,7 +41,7 @@
 ## 系统流程
 
 ```text
-CLI 输入（--diff-file / --file-list / --repo-path / --fixture）
+CLI 输入（--diff-file / --file-list / --repo-path / --fixture；未传输入时推断 --repo-path .）
   -> internal/agent.Agent
   -> official runner.NewRunner(...).Run(...)
   -> trpc-agent-go/tool/skill skill_load(code-review)
@@ -121,6 +121,7 @@ CLI Request
 - `--file-list`：读取文件路径列表，转换为新增文件 diff；相对路径优先按 `--repo-path` 解析。
 - `--fixture` + `--fixtures-root`：读取公开测试样本。
 - `--repo-path`：git 仓库使用 `git diff --unified=3`；普通目录转换为新增文件 diff。
+- 无输入参数：CLI 推断为 `--repo-path .`，方便在待审 repo 内少参数运行。
 - `--base-ref` / `--head-ref`：作为审计上下文进入 input metadata、report、diagnostics 和 telemetry；在 git repo 且二者都提供时使用 `git diff --unified=3 base...head`，不会自动 fetch 远端 ref。
 
 待补强：

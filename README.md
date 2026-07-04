@@ -4,7 +4,7 @@
 
 当前是基于 trpc-agent-go Tool/Skill/CodeExecutor/workspaceexec/artifact/telemetry/Runner 的 CLI Agent 原型，并已接入 LLM Review Provider 边界、deterministic fake provider 和显式 opt-in 的 generic HTTP provider。默认不启用真实网络模型，不绑定 OpenAI、Claude、Gemini 等真实厂商 SDK，不需要 API Key；当前 provider 已通过薄 adapter 走官方 `trpc-agent-go/model.Model` 接口，CLI 兼容入口通过官方 `runner.NewRunner(...).Run(...)` 消费 `event.Event` 流。Session/Memory 更适合跨 PR 经验复用；E2B 当前是显式 unsupported 入口，后续可替换为真实远端 runtime adapter。
 
-本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。
+本项目的第一版目标是可验证链路，不依赖真实模型 API Key：fixture / diff / repo 输入可以在 `rule-only`、`dry-run`、`sandbox`、`fake-model` 模式下生成 `review_report.json`、`review_report.md`，并可按 task id 查询审计记录。CLI 在没有传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，会把当前工作目录推断为 `--repo-path .`，方便在待审仓库内少参数运行 review。
 
 ## 第一版 MVP 范围
 
@@ -19,6 +19,7 @@
 已实现：
 
 - `internal/agent` 编排层，CLI 只调用 Agent，不直接绕过框架。
+- 无输入参数时 CLI 默认审查当前目录，完整输入 flags 仍保留用于验收和调试。
 - `skill_load` 加载 `skills/code-review/SKILL.md`。
 - `skill_run` 执行 `skills/code-review/scripts/check.sh`，脚本输出 JSON findings。
 - `fake-model` 模式会在 deterministic Skill 后进入 `ModelReviewProvider` 边界，默认使用无网络、无 API Key 的 fake provider；只有显式传 `--model-provider http` 时才调用 HTTP provider。
@@ -46,6 +47,7 @@
 - 官方 artifact service 默认使用 inmemory 保存报告和诊断产物；SQLite 继续保留 artifact 引用记录。
 - 官方 `session/sqlite` 尚未直接接入；当前 SQLite 是审计 store，后续接 Runner/Event 或多轮评审时再映射 session/history。
 - 官方 telemetry trace span 已记录审查摘要属性；SQLite metrics 表保留可查询聚合指标。官方 metric exporter/OTLP dashboard 属于后续部署集成项。
+- Codex / Claude Code skill 可以作为后续包装入口，但不是 Issue #2004 的主线交付物。
 
 ## Architecture
 
@@ -85,6 +87,18 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
 
 `scripts/acceptance.sh` 会运行 `go test ./...`、`scripts/eval.sh`、`git diff --check`，并在 Docker daemon 可用时自动追加 container E2E。可通过 `CR_AGENT_ACCEPTANCE_DOCKER=skip|auto|always` 控制 Docker 步骤。
+
+在本仓库内少参数运行一次 review：
+
+```bash
+go run ./cmd/review-agent
+```
+
+该命令等价于把当前目录当作 `--repo-path .`，使用默认 `--mode rule-only`、`--runtime container` 和 `--output-dir .`。没有 Docker daemon 或只想本地开发验证时，可显式切到 local fallback：
+
+```bash
+go run ./cmd/review-agent --runtime local-fallback --output-dir /tmp/review-out
+```
 
 运行真实 Docker container 集成测试：
 
@@ -185,11 +199,13 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 |------|---------|-------------|
 | `--diff-file` | empty | Unified diff input. |
 | `--file-list` | empty | Newline-delimited changed file list; relative paths resolve from `--repo-path` or the list file directory. |
-| `--repo-path` | empty | Git repo or plain directory input. |
+| `--repo-path` | inferred `.` when no input flag is set | Git repo or plain directory input. |
 | `--fixture` | empty | Fixture file name under `--fixtures-root`. |
+| `--base-ref` | empty | Base git ref for `--repo-path` diff and review metadata. |
+| `--head-ref` | empty | Head git ref for `--repo-path` diff and review metadata. |
 | `--fixtures-root` | `testdata/fixtures` | Fixture directory. |
 | `--skills-root` | `skills` | Skill repository root. |
-| `--runtime` | `container` | `container` or `local-fallback`. |
+| `--runtime` | `container` | `container`, `local-fallback`, or `e2b`; `e2b` currently records an explicit unsupported audit entry. |
 | `--mode` | `rule-only` | `rule-only`, `dry-run`, `sandbox`, `fake-model`. |
 | `--staticcheck` | `false` | Run optional `staticcheck ./...` in sandbox mode. |
 | `--sqlite` | empty | SQLite DB path. |

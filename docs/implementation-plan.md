@@ -18,6 +18,7 @@
 | event.Event sink | ✅ | `EventSink` 仍可观察 input_loaded、skill_run、sandbox_run、model_review、report_written、task_finished/task_failed |
 | E2B unsupported 入口 | ✅ | `--runtime e2b` 生成 `runtime=e2b status=unsupported` 审计记录，不静默 fallback |
 | base/head ref 输入 | ✅ | `--base-ref` / `--head-ref` 进入 metadata/report/diagnostics/SQLite report/telemetry；git repo 可生成 `base...head` diff |
+| CLI 少参数入口 | ✅ | 未传 `--diff-file` / `--file-list` / `--repo-path` / `--fixture` 时推断为 `--repo-path .`，完整 flags 继续保留 |
 | Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
 | 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT`；`CR_AGENT_EVAL_EXPECTED` 保留为兼容别名 |
@@ -130,6 +131,30 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 - 不自动 fetch 远端 ref；网络和凭证由调用方准备。
 - 不改变 `--diff-file`、`--file-list`、`--fixture` 的语义。
 
+### 3.5. CLI 少参数当前目录入口
+
+**当前状态：** `cmd/review-agent.Run` 会在未传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，将输入推断为 `--repo-path .`。这让用户在待审 repo 内可以直接运行默认 review，同时仍保留所有完整 flags 给验收、fixture、hidden matrix 和调试路径使用。
+
+**影响文件：**
+
+- `cmd/review-agent/run.go`
+- `cmd/review-agent/repo_test.go`
+- `README.md`
+- `docs/issue-2004-traceability.md`
+
+**验收标准：**
+
+- 空输入 flags 时生成报告，且报告 metadata 能反映当前 repo 的 Go module / changed Go files。
+- 任意显式输入 flag 仍按原语义优先，不被当前目录推断覆盖。
+- 不改变默认 mode、runtime、skills-root、fixtures-root、output-dir 和 model provider 行为。
+
+**测试/验证命令：**
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache go test ./cmd/review-agent -run TestRunInfersCurrentDirectoryRepoPathWhenInputIsOmitted -count=1
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
+```
+
 ### 4. 真实 hidden fixture matrix 验收
 
 **当前状态：** `scripts/eval.sh` 已支持 `CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv`，缺失文件会清晰失败；公开 builtin matrix 保持默认。真实 hidden fixture 本体不提交，因此仓库内只能证明入口和公开 matrix，不能证明真实 hidden 数据达标。
@@ -184,6 +209,7 @@ scripts/eval.sh
 
 - docs 索引不引用已删除文件。
 - 当前事实保持一致：HTTP provider 已有但 opt-in；默认 fake provider 不需要 API Key；LLM 已有官方 model.Model adapter；CLI 兼容入口已走官方 Runner/Event adapter；hidden matrix 支持外部注入但真实 hidden 数据未随仓库提交；E2B 目前是 unsupported 入口；base/head ref 已作为输入和审计上下文接入。
+- Codex / Claude Code skill 只能作为后续包装方向记录，不作为当前 Issue #2004 的主线交付物。
 - 任何新增阶段性 prompt 不作为长期文档入口。
 
 **测试/验证命令：**
@@ -214,6 +240,7 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 - [x] 官方 Runner/Event 主入口，保留 `Agent.Run` 兼容 shim。
 - [x] E2B runtime unsupported/adapter 入口。
 - [x] base/head ref 输入。
+- [x] CLI 少参数当前目录入口。
 - [ ] 真实 hidden fixture matrix 验收记录。
 
 ## 相关文档

@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
 )
@@ -33,9 +33,7 @@ type Options struct {
 
 // Run 将 CLI 参数交给 Agent。
 func Run(opts Options) error {
-	if opts.DiffFile == "" && opts.FileList == "" && opts.RepoPath == "" && opts.Fixture == "" {
-		return errors.New("diff file, file list, repo path, or fixture is required")
-	}
+	opts = withInferredInput(opts)
 	cfg := cragent.Config{
 		SkillsRoot:            opts.SkillsRoot,
 		Runtime:               opts.Runtime,
@@ -82,4 +80,14 @@ func Run(opts Options) error {
 		Mode:     opts.Mode,
 	})
 	return err
+}
+
+func withInferredInput(opts Options) Options {
+	if strings.TrimSpace(opts.DiffFile) == "" &&
+		strings.TrimSpace(opts.FileList) == "" &&
+		strings.TrimSpace(opts.RepoPath) == "" &&
+		strings.TrimSpace(opts.Fixture) == "" {
+		opts.RepoPath = "."
+	}
+	return opts
 }
