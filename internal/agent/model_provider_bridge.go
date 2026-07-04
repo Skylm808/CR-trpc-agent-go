@@ -12,15 +12,19 @@ import (
 	agentmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-const defaultOfficialModelName = "cr-agent-review-provider"
+// 本文件只负责桥接：把本项目的 ModelReviewProvider 适配到官方 model.Model，
+// 再把官方 model.Model 的结构化响应解析回 ModelReviewOutput。
 
-// modelReviewProviderModel adapts the local review provider boundary to the official model.Model interface.
-type modelReviewProviderModel struct {
+const defaultModelAdapterName = "cr-agent-review-provider"
+
+// reviewProviderModelAdapter 把本项目的 ModelReviewProvider 包成官方 model.Model。
+// 这样 fake provider、HTTP provider 和真实 OpenAI-compatible provider 都走同一条 Runner/Model 边界。
+type reviewProviderModelAdapter struct {
 	name     string
 	provider ModelReviewProvider
 }
 
-func (m modelReviewProviderModel) GenerateContent(ctx context.Context, req *agentmodel.Request) (<-chan *agentmodel.Response, error) {
+func (m reviewProviderModelAdapter) GenerateContent(ctx context.Context, req *agentmodel.Request) (<-chan *agentmodel.Response, error) {
 	if m.provider == nil {
 		return nil, errors.New("model review provider is required")
 	}
@@ -57,20 +61,20 @@ func (m modelReviewProviderModel) GenerateContent(ctx context.Context, req *agen
 	return ch, nil
 }
 
-func (m modelReviewProviderModel) Info() agentmodel.Info {
+func (m reviewProviderModelAdapter) Info() agentmodel.Info {
 	name := strings.TrimSpace(m.name)
 	if name == "" {
-		name = defaultOfficialModelName
+		name = defaultModelAdapterName
 	}
 	return agentmodel.Info{Name: name}
 }
 
-// modelBackedReviewProvider calls the official model.Model route and maps its structured JSON response back.
-type modelBackedReviewProvider struct {
+// officialModelReviewProvider 调用官方 model.Model，再把结构化 JSON 响应还原成审查增量。
+type officialModelReviewProvider struct {
 	model agentmodel.Model
 }
 
-func (p modelBackedReviewProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+func (p officialModelReviewProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
 	if p.model == nil {
 		return ModelReviewOutput{}, errors.New("official model is required")
 	}
@@ -108,9 +112,9 @@ func (p modelBackedReviewProvider) Review(ctx context.Context, input ModelReview
 	return output, nil
 }
 
-func officialModelBackedProvider(name string, provider ModelReviewProvider) ModelReviewProvider {
-	return modelBackedReviewProvider{
-		model: modelReviewProviderModel{
+func providerThroughOfficialModel(name string, provider ModelReviewProvider) ModelReviewProvider {
+	return officialModelReviewProvider{
+		model: reviewProviderModelAdapter{
 			name:     name,
 			provider: provider,
 		},

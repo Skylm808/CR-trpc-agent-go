@@ -10,6 +10,9 @@ import (
 	officialopenai "trpc.group/trpc-go/trpc-agent-go/model/openai"
 )
 
+// 本文件只放官方 trpc-agent-go/model/openai provider 配置。
+// OpenAI、OpenAI-compatible 中转站和 DeepSeek 都从这里进入，不再新增单独厂商 SDK。
+
 const (
 	modelProviderOpenAI           = "openai"
 	modelProviderOpenAICompatible = "openai-compatible"
@@ -19,7 +22,8 @@ const (
 	defaultDeepSeekModel          = "deepseek-chat"
 )
 
-// OpenAIModelProviderConfig controls the opt-in official OpenAI-compatible model provider.
+// OpenAIModelProviderConfig 控制显式开启的官方 OpenAI-compatible provider。
+// DeepSeek 也走 trpc-agent-go/model/openai 的 VariantDeepSeek，不引入单独 DeepSeek SDK。
 type OpenAIModelProviderConfig struct {
 	Enabled   bool
 	Provider  string
@@ -34,7 +38,7 @@ func newOpenAIReviewProvider(cfg OpenAIModelProviderConfig) (ModelReviewProvider
 	if err != nil {
 		return nil, err
 	}
-	return modelBackedReviewProvider{model: model}, nil
+	return officialModelReviewProvider{model: model}, nil
 }
 
 func newOpenAIModel(cfg OpenAIModelProviderConfig) (agentmodel.Model, error) {
@@ -56,7 +60,7 @@ func newOpenAIModel(cfg OpenAIModelProviderConfig) (agentmodel.Model, error) {
 	}
 	var opts []officialopenai.Option
 	opts = append(opts, officialopenai.WithAPIKey(apiKey))
-	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
+	if baseURL := openAIModelBaseURL(cfg); baseURL != "" {
 		opts = append(opts, officialopenai.WithBaseURL(baseURL))
 	}
 	variant, err := openAIModelVariant(cfg)
@@ -67,6 +71,18 @@ func newOpenAIModel(cfg OpenAIModelProviderConfig) (agentmodel.Model, error) {
 		opts = append(opts, officialopenai.WithVariant(variant))
 	}
 	return officialopenai.New(modelName, opts...), nil
+}
+
+func openAIModelBaseURL(cfg OpenAIModelProviderConfig) string {
+	// base_url 可由 YAML/CLI 固定；为空时兼容官方 examples 常用的 OPENAI_BASE_URL。
+	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
+		return baseURL
+	}
+	switch strings.TrimSpace(cfg.Provider) {
+	case modelProviderDeepSeek:
+		return ""
+	}
+	return strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
 }
 
 func modelAPIKeyEnv(cfg OpenAIModelProviderConfig) string {

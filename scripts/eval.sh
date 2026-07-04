@@ -6,6 +6,7 @@ FIXTURES_ROOT="${CR_AGENT_EVAL_FIXTURES_ROOT:-"$ROOT/testdata/fixtures"}"
 SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
+CONFIG="${CR_AGENT_EVAL_CONFIG:-/dev/null}"
 FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
 MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
@@ -58,6 +59,7 @@ fi
 for fixture in $FIXTURES; do
   mkdir -p "$OUT_ROOT/$fixture"
   go run "$ROOT/cmd/review-agent" \
+    --config "$CONFIG" \
     --fixture "$fixture" \
     --fixtures-root "$FIXTURES_ROOT" \
     --skills-root "$SKILLS_ROOT" \

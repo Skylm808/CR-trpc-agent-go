@@ -14,9 +14,12 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
+// 本文件只放 generic HTTP provider。它用于接临时网关或测试服务；
+// 官方 OpenAI-compatible / DeepSeek 路线见 model_provider_openai.go。
+
 const defaultModelHTTPTimeout = 30 * time.Second
 
-// HTTPModelProviderConfig controls the opt-in HTTP model provider.
+// HTTPModelProviderConfig 控制显式开启的 generic HTTP model provider。
 type HTTPModelProviderConfig struct {
 	Enabled   bool
 	Endpoint  string

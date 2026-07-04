@@ -32,6 +32,7 @@ type Options struct {
 	ModelName      string
 	ModelBaseURL   string
 	ModelVariant   string
+	Streaming      bool
 	ExplicitFlags  map[string]bool
 }
 
@@ -88,6 +89,8 @@ func Run(opts Options) error {
 
 	// RunChecks 仅保留兼容性。
 	_ = opts.RunChecks
+	// Streaming 兼容官方 examples/runner 的 -streaming 参数；当前报告仍一次性生成。
+	_ = opts.Streaming
 	_, err = ag.Run(context.Background(), cragent.Request{
 		DiffFile: opts.DiffFile,
 		FileList: opts.FileList,

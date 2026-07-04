@@ -1,0 +1,20 @@
+mode: rule-only
+runtime: local-fallback
+output_dir: .cr-agent/reports
+skills_root: skills
+fixtures_root: testdata/fixtures
+staticcheck: false
+
+# 真实 LLM 只在 mode=fake-model 且 provider 显式开启时调用。
+# API key 使用环境变量，不要写入 YAML。
+#
+# mode: fake-model
+# model:
+#   provider: openai-compatible
+#   name: gpt-4o-mini
+#
+# DeepSeek:
+#
+# model:
+#   provider: deepseek
+#   name: deepseek-chat

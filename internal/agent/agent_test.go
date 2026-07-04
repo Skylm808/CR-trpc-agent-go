@@ -1402,8 +1402,8 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 	}
 }
 
-// TestModelReviewProviderModelImplementsOfficialModel 固定模型 provider 可走官方 model.Model 接口。
-func TestModelReviewProviderModelImplementsOfficialModel(t *testing.T) {
+// TestReviewProviderModelAdapterImplementsOfficialModel 固定模型 provider 可走官方 model.Model 接口。
+func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
 	t.Parallel()
 
 	rawSecret := "sk-officialmodel-1234567890"
@@ -1427,7 +1427,7 @@ func TestModelReviewProviderModelImplementsOfficialModel(t *testing.T) {
 			RuleID:         "official-model-adapter",
 		}}}, nil
 	})
-	var official agentmodel.Model = modelReviewProviderModel{
+	var official agentmodel.Model = reviewProviderModelAdapter{
 		name:     "cr-agent-test-model",
 		provider: provider,
 	}

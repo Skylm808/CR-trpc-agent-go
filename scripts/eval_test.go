@@ -95,6 +95,42 @@ func TestEvalScriptFailsClearlyForMissingHiddenMatrixPath(t *testing.T) {
 	}
 }
 
+func TestLLMSmokeSkipsWithoutOptIn(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "llm_smoke.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_LLM_SMOKE=",
+		"OPENAI_API_KEY=",
+		"DEEPSEEK_API_KEY=",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llm_smoke.sh should skip without opt-in: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "[SKIP]") {
+		t.Fatalf("expected skip output, got: %s", out)
+	}
+}
+
+func TestLLMSmokeSkipsWithoutAPIKey(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "llm_smoke.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_LLM_SMOKE=1",
+		"CR_AGENT_LLM_PROVIDER=deepseek",
+		"DEEPSEEK_API_KEY=",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llm_smoke.sh should skip without API key: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "[SKIP] DEEPSEEK_API_KEY is not set") {
+		t.Fatalf("expected missing key skip output, got: %s", out)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

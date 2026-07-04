@@ -1,6 +1,6 @@
 # Issue #2004 需求追踪矩阵
 
-本文档将 Issue #2004 的能力要求、输入输出要求、交付物、验收命令和剩余缺口映射到当前仓库实现。当前实现是基于 `trpc-agent-go` Tool / Skill / CodeExecutor / PermissionPolicy / artifact / telemetry / Runner / SQLite 的 CLI Agent 原型；已接入 LLM Review Provider 边界、无 API Key fake provider、显式 opt-in generic HTTP provider、官方 `model/openai` OpenAI-compatible / DeepSeek provider、官方 `model.Model` adapter、官方 `runner.Run` / `event.Event` 主入口、E2B unsupported runtime 入口、base/head ref 输入、`cr-agent.yaml` 配置和 CLI 当前目录默认输入推断。尚未接入官方 Session/Memory、真实 E2B runtime adapter 和真实 hidden fixture matrix 验收记录。
+本文档将 Issue #2004 的能力要求、输入输出要求、交付物、验收命令和剩余缺口映射到当前仓库实现。当前实现是基于 `trpc-agent-go` Tool / Skill / CodeExecutor / PermissionPolicy / artifact / telemetry / Runner / SQLite 的 CLI Agent 原型；已接入 LLM Review Provider 边界、无 API Key fake provider、显式 opt-in generic HTTP provider、官方 `model/openai` OpenAI-compatible / DeepSeek provider、官方 `model.Model` adapter、官方 `runner.Run` / `event.Event` 主入口、E2B unsupported runtime 入口、base/head ref 输入、本地 `cr-agent.yaml` 配置、`cr-agent.example.yaml` 安全样例、官方 examples 风格 `-model` / `-streaming` 兼容和 CLI 当前目录默认输入推断。尚未接入官方 Session/Memory、真实 E2B runtime adapter 和真实 hidden fixture matrix 验收记录。
 
 ## 验收命令
 
@@ -45,7 +45,7 @@ scripts/eval.sh
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec`、E2B unsupported audit | workspaceexec 主路径/fallback tests + env-gated Docker test + E2B unsupported test | 🔶 | container E2E 已通过；E2B/Cube 真实 runtime adapter 未接入 |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更 / base-head / YAML 配置 / 当前目录默认推断） | `cmd/review-agent.Run`、`cmd/review-agent/config.go`、`internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `config_test.go`、`parser_test.go`、`repo_test.go`、`agent_test.go`、CLI base/head test | ✅ | 不自动 fetch 远端 ref |
-| 5 | 结构化 findings | `internal/review/types.go`、`internal/agent/model.go`、`internal/agent/model_http.go`、`internal/agent/model_openai.go`、`internal/agent/model_official.go` | `engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
+| 5 | 结构化 findings | `internal/review/types.go`、`internal/agent/model_review.go`、`internal/agent/model_provider_http.go`、`internal/agent/model_provider_openai.go`、`internal/agent/model_provider_bridge.go` | `engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | 当前 SQLite 是审计 store，不是官方 Session Service；session/sqlite / Memory 未接入 |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | Agent timeout/output limit/digest/redaction、artifact size/cap、env whitelist audit | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 | 🔶 | runtime 级 env 强隔离依赖部署侧 executor 配置 |
@@ -60,7 +60,7 @@ scripts/eval.sh
 | CodeExecutor 沙箱 | 默认 `codeexecutor/container`，`local-fallback` 仅开发测试；`tool/codeexec` 是 Go checks fallback | `internal/agent/execution.go`、README runtime 说明 |
 | Permission 治理 | 所有 `skill_run` / Go check 命令先过 `tool.PermissionPolicy`，非 allow 不执行 | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | artifact | `review_report.json`、`review_report.md`、`review_diagnostics.json` 写入官方 artifact service，本地文件和 SQLite 引用继续保留 | `TestArtifactServiceReportsCanBeSavedAsArtifacts`、`TestAgentDefaultArtifactService` |
-| LLM provider boundary | `fake-model` 模式在 Skill 后经官方 `model.Model` 调用模型边界，默认 fake provider；显式 `--model-provider http` 调用 HTTP provider；显式 `openai` / `openai-compatible` / `deepseek` 调用官方 `model/openai` provider。输入/输出脱敏，失败降级人工复核 | `TestAgentRunFakeModelUsesProviderBoundary`、`TestModelReviewProviderModelImplementsOfficialModel`、HTTP/openai/model provider tests |
+| LLM provider boundary | `fake-model` 模式在 Skill 后经官方 `model.Model` 调用模型边界，默认 fake provider；显式 `--model-provider http` 调用 HTTP provider；显式 `openai` / `openai-compatible` / `deepseek` 调用官方 `model/openai` provider。输入/输出脱敏，失败降级人工复核 | `TestAgentRunFakeModelUsesProviderBoundary`、`TestReviewProviderModelAdapterImplementsOfficialModel`、HTTP/openai/model provider tests |
 | Event facade | CLI `Agent.Run` 通过官方 `event.Event` 输出 input/skill/sandbox/model/report/task 阶段事件 | `TestAgentRunEmitsOfficialEvents` |
 | telemetry | 官方 trace span 记录 task、mode、runtime、输入类型、耗时、tool/model 调用数、model finding/exception、permission block、finding/artifact 数、severity/exception 分布和结论；SQLite metrics 表保存聚合指标 | `TestAgentRunRecordsTelemetryAttributes`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` |
 | SQLite 审计 | task、finding、permission/filter decision、sandbox run、artifact、metrics、report 按 task id 查询 | `TestAcceptanceEvidenceReportsAndSQLiteReplay` |
@@ -73,7 +73,8 @@ scripts/eval.sh
 | `--file-list` | CLI flag + Agent input | ✅ |
 | `--repo-path` | git working tree diff / 普通目录 diff | ✅ |
 | 无输入参数 | CLI 推断为 `--repo-path .`，方便在待审 repo 内少参数运行 | ✅ |
-| `cr-agent.yaml` / `--config` | 默认读取当前目录 `cr-agent.yaml`，显式 `--config` 可指定路径，CLI flags 覆盖 YAML | ✅ |
+| `cr-agent.yaml` / `--config` | 默认只读取当前目录本地 `cr-agent.yaml`，显式 `--config` 可指定路径，CLI flags 覆盖 YAML；根目录本地 YAML 被 gitignore 忽略，提交 `cr-agent.example.yaml` | ✅ |
+| 官方 examples CLI 兼容 | `-model` 作为 `--model-name` 别名，`-streaming` 安全接受但不改变报告生成；不会自动启用外部模型 | ✅ |
 | base/head ref | `--base-ref` / `--head-ref`，git repo 可生成 `base...head` diff，并进入 metadata/report/diagnostics/SQLite report/telemetry | ✅ |
 | 测试 fixture | `--fixture` + `testdata/fixtures/` | ✅ |
 | `review_report.json` | `internal/report.BuildJSON` | ✅ |
@@ -102,6 +103,7 @@ scripts/eval.sh
 | 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 14 个 |
 | 示例 report 输出 | `examples/review_report.json/md`、`examples/review_diagnostics.json` | ✅ |
 | README | `README.md` | ✅ |
+| 官方 examples 迁移样例 | `examples/cr-agent/` | ✅ |
 | 当前 roadmap | `docs/implementation-plan.md` | ✅ |
 
 ## 验收标准追踪

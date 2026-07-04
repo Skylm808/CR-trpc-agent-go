@@ -12,12 +12,14 @@ import (
 func TestRunAutoLoadsCurrentDirectoryConfig(t *testing.T) {
 	repo := t.TempDir()
 	out := filepath.Join(repo, "reports")
+	dbPath := filepath.Join(repo, "audit", "review.db")
 	skillsRoot := absoluteSkillsRoot(t)
 	writeReviewRepo(t, repo)
 	writeFile(t, filepath.Join(repo, "cr-agent.yaml"), ""+
 		"mode: rule-only\n"+
 		"runtime: local-fallback\n"+
 		"output_dir: "+slashPath(out)+"\n"+
+		"sqlite: "+slashPath(dbPath)+"\n"+
 		"skills_root: "+slashPath(skillsRoot)+"\n")
 
 	withWorkingDirectory(t, repo, func() {
@@ -26,6 +28,7 @@ func TestRunAutoLoadsCurrentDirectoryConfig(t *testing.T) {
 		}
 	})
 	assertFileExists(t, filepath.Join(out, "review_report.json"))
+	assertFileExists(t, dbPath)
 }
 
 func TestRunLoadsExplicitConfigFile(t *testing.T) {
@@ -44,6 +47,35 @@ func TestRunLoadsExplicitConfigFile(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	assertFileExists(t, filepath.Join(out, "review_report.json"))
+}
+
+func TestProgrammaticOptionsDoNotAutoLoadLocalConfig(t *testing.T) {
+	repo := t.TempDir()
+	localConfigOut := filepath.Join(repo, "from-config")
+	explicitOut := filepath.Join(repo, "from-options")
+	writeReviewRepo(t, repo)
+	writeFile(t, filepath.Join(repo, "cr-agent.yaml"), ""+
+		"mode: sandbox\n"+
+		"runtime: container\n"+
+		"repo_path: "+slashPath(repo)+"\n"+
+		"output_dir: "+slashPath(localConfigOut)+"\n"+
+		"skills_root: "+slashPath(absoluteSkillsRoot(t))+"\n")
+
+	withWorkingDirectory(t, repo, func() {
+		if err := Run(Options{
+			RepoPath:   repo,
+			OutputDir:  explicitOut,
+			Mode:       cragent.ModeRuleOnly,
+			Runtime:    cragent.RuntimeLocalFallback,
+			SkillsRoot: absoluteSkillsRoot(t),
+		}); err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	})
+	assertFileExists(t, filepath.Join(explicitOut, "review_report.json"))
+	if _, err := os.Stat(filepath.Join(localConfigOut, "review_report.json")); err == nil {
+		t.Fatalf("expected programmatic options to avoid auto-loading local cr-agent.yaml")
+	}
 }
 
 func TestRunCLIOptionsOverrideConfig(t *testing.T) {
@@ -88,6 +120,52 @@ func TestRunCLIOptionsOverrideConfig(t *testing.T) {
 	}
 }
 
+func TestParseOptionsAcceptsOfficialExampleFlags(t *testing.T) {
+	opts, err := parseOptions([]string{
+		"-model", "gpt-4o-mini",
+		"-streaming=true",
+	})
+	if err != nil {
+		t.Fatalf("parse official example flags: %v", err)
+	}
+	if opts.ModelName != "gpt-4o-mini" {
+		t.Fatalf("expected -model to set model name, got %q", opts.ModelName)
+	}
+	if !opts.Streaming {
+		t.Fatalf("expected -streaming=true to be accepted")
+	}
+	if !opts.ExplicitFlags["model"] || !opts.ExplicitFlags["streaming"] {
+		t.Fatalf("expected explicit official flags to be tracked, got %+v", opts.ExplicitFlags)
+	}
+}
+
+func TestOfficialModelFlagOverridesYAMLModelName(t *testing.T) {
+	repo := t.TempDir()
+	configPath := filepath.Join(repo, "cr-agent.yaml")
+	writeFile(t, configPath, ""+
+		"model:\n"+
+		"  provider: openai-compatible\n"+
+		"  name: yaml-model\n")
+
+	cli, err := parseOptions([]string{
+		"--config", configPath,
+		"-model", "cli-model",
+	})
+	if err != nil {
+		t.Fatalf("parse options: %v", err)
+	}
+	opts, err := resolveOptions(cli)
+	if err != nil {
+		t.Fatalf("resolve options: %v", err)
+	}
+	if opts.ModelName != "cli-model" {
+		t.Fatalf("expected -model to override YAML model.name, got %q", opts.ModelName)
+	}
+	if opts.ModelProvider != "openai-compatible" {
+		t.Fatalf("expected YAML provider to remain, got %q", opts.ModelProvider)
+	}
+}
+
 func TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort(t *testing.T) {
 	dir := t.TempDir()
 	diffPath := filepath.Join(dir, "sample.diff")
@@ -122,6 +200,33 @@ func TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort(t *testing.T) {
 	}
 	if strings.Contains(string(data), "CR_AGENT_TEST_MISSING_DEEPSEEK_KEY") {
 		t.Fatalf("report should not leak model api key env names: %s", data)
+	}
+}
+
+func TestCommittedDefaultConfigParses(t *testing.T) {
+	opts, err := optionsFromConfig(filepath.Join("..", "..", "cr-agent.example.yaml"))
+	if err != nil {
+		t.Fatalf("parse committed cr-agent.example.yaml: %v", err)
+	}
+	if opts.Mode != cragent.ModeRuleOnly {
+		t.Fatalf("expected committed config to keep safe default mode, got %q", opts.Mode)
+	}
+	if opts.ModelProvider != "" {
+		t.Fatalf("expected committed config to avoid external model provider by default, got %q", opts.ModelProvider)
+	}
+	if opts.OutputDir != ".cr-agent/reports" || opts.SQLitePath != "" {
+		t.Fatalf("unexpected committed config paths: output=%q sqlite=%q", opts.OutputDir, opts.SQLitePath)
+	}
+}
+
+func TestPrivateConfigIsIgnoredByGit(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read gitignore: %v", err)
+	}
+	if !strings.Contains(string(data), "/cr-agent.yaml") {
+		t.Fatalf("expected root cr-agent.yaml to be gitignored")
 	}
 }
 
@@ -176,4 +281,13 @@ func assertFileExists(t *testing.T, path string) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected %s: %v", path, err)
 	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

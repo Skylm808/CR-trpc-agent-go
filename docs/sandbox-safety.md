@@ -12,7 +12,7 @@
 | Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `defaultPermissionPolicy`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
 | workspace 执行 | 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
-| 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http|openai|deepseek` 才调用外部 provider。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestOpenAIModelProviderBuildsOfficialDeepSeekModel` |
+| 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http|openai|deepseek` 才调用外部 provider。OpenAI-compatible 兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`，DeepSeek 默认 `DEEPSEEK_API_KEY`。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestOpenAIModelProviderBuildsOfficialDeepSeekModel` |
 
 ## 审计字段
 
@@ -56,7 +56,7 @@
 | Skill 输出重复或未脱敏 | Agent 层 `sanitizeFinding` 兜底 | `TestParseSkillFindingsDedupesAndRedacts` |
 | SQLite 泄漏 | 全表文本列扫描 raw secret | secret redaction tests |
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
-| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 只来自 env，报告/diagnostics/SQLite 不保存 key | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
+| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 只来自 env，本地 `cr-agent.yaml` 已被 gitignore 忽略，报告/diagnostics/SQLite 不保存 key 或 key env 名 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
 
 ## 未完成边界
 

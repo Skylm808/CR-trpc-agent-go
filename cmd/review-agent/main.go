@@ -38,8 +38,10 @@ func parseOptions(args []string) (Options, error) {
 	fs.StringVar(&opts.ModelEndpoint, "model-endpoint", "", "HTTP model provider endpoint")
 	fs.StringVar(&opts.ModelAPIKeyEnv, "model-api-key-env", "", "environment variable containing the model provider API key")
 	fs.StringVar(&opts.ModelName, "model-name", "", "model name sent to the model provider")
+	fs.StringVar(&opts.ModelName, "model", "", "official examples-compatible alias for --model-name")
 	fs.StringVar(&opts.ModelBaseURL, "model-base-url", "", "OpenAI-compatible model provider base URL")
 	fs.StringVar(&opts.ModelVariant, "model-variant", "", "OpenAI-compatible model variant: openai, deepseek")
+	fs.BoolVar(&opts.Streaming, "streaming", false, "official examples-compatible flag; accepted for CLI compatibility")
 	fs.BoolVar(&opts.Staticcheck, "staticcheck", false, "run optional staticcheck in sandbox mode")
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err

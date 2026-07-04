@@ -15,7 +15,8 @@ import (
 
 const officialReviewAgentName = "cr-agent"
 
-// RunWithEvents executes a review through the official runner and returns its event stream.
+// RunWithEvents 通过官方 Runner 执行一次 review，并返回 event.Event 流。
+// 内部仍复用本项目 runDirect，避免为了接 Runner 破坏报告、SQLite 和 fixture contract。
 func (a *Agent) RunWithEvents(ctx context.Context, req Request) (<-chan *agentevent.Event, error) {
 	if a == nil {
 		return nil, fmt.Errorf("agent is required")

@@ -20,7 +20,9 @@
 | E2B unsupported 入口 | ✅ | `--runtime e2b` 生成 `runtime=e2b status=unsupported` 审计记录，不静默 fallback |
 | base/head ref 输入 | ✅ | `--base-ref` / `--head-ref` 进入 metadata/report/diagnostics/SQLite report/telemetry；git repo 可生成 `base...head` diff |
 | CLI 少参数入口 | ✅ | 未传 `--diff-file` / `--file-list` / `--repo-path` / `--fixture` 时推断为 `--repo-path .`，完整 flags 继续保留 |
-| YAML 配置入口 | ✅ | 默认读取当前目录 `cr-agent.yaml`，`--config` 可指定路径；CLI flags 覆盖 YAML，缺省配置不存在时保持内置默认 |
+| YAML 配置入口 | ✅ | 默认只读取当前目录本地 `cr-agent.yaml`，`--config` 可指定路径；CLI flags 覆盖 YAML，缺省配置不存在时保持内置默认；提交 `cr-agent.example.yaml`，本地 `cr-agent.yaml` 被 gitignore 忽略 |
+| 官方 examples 风格 CLI | ✅ | `-model` 兼容 `--model-name`，`-streaming` 安全接受；不会自动启用真实模型 |
+| examples 迁移样例 | ✅ | `examples/cr-agent/` 提供 README、安全 YAML 和 sample diff |
 | Docker container E2E | ✅ | env-gated container runtime test 已可在 Docker Desktop/daemon 下运行 |
 | 公开 fixture eval | ✅ | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | ✅ | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT`；`CR_AGENT_EVAL_EXPECTED` 保留为兼容别名 |
@@ -30,16 +32,17 @@
 
 ### 1. 官方 model.Model / Runner / Event / OpenAI-compatible provider 适配
 
-**当前状态：** 已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`。`Agent.Run` 现在是兼容 shim，内部通过 `RunWithEvents` 调用 `runner.NewRunner(...).Run(...)`，由 `reviewRunnerAgent` 这个官方 `agent.Agent` adapter 发出 `event.Event` 流。adapter 内部仍调用本项目 `runDirect` 执行体，目的是保持 CLI、报告、SQLite 和 fixture contract 不被 Runner 接入打断。真实模型配置路径也已接入：`--model-provider openai|openai-compatible|deepseek` 走官方 `trpc-agent-go/model/openai`，DeepSeek 默认使用 `VariantDeepSeek` 和 `DEEPSEEK_API_KEY`。
+**当前状态：** 已把 `ModelReviewProvider` 适配到官方 `trpc-agent-go/model.Model`。`Agent.Run` 现在是兼容 shim，内部通过 `RunWithEvents` 调用 `runner.NewRunner(...).Run(...)`，由 `reviewRunnerAgent` 这个官方 `agent.Agent` adapter 发出 `event.Event` 流。adapter 内部仍调用本项目 `runDirect` 执行体，目的是保持 CLI、报告、SQLite 和 fixture contract 不被 Runner 接入打断。真实模型配置路径也已接入：`--model-provider openai|openai-compatible|deepseek` 走官方 `trpc-agent-go/model/openai`，DeepSeek 默认使用 `VariantDeepSeek` 和 `DEEPSEEK_API_KEY`；OpenAI-compatible 默认兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`。
 
 **影响文件：**
 
-- `internal/agent/model.go`
-- `internal/agent/model_http.go`
-- `internal/agent/model_openai.go`
+- `internal/agent/model_review.go`
+- `internal/agent/model_provider_http.go`
+- `internal/agent/model_provider_openai.go`
+- `internal/agent/model_provider_bridge.go`
 - `internal/agent/agent.go`
 - `internal/agent/events.go`
-- `internal/agent/runner_official.go`
+- `internal/agent/runner_adapter.go`
 - `cmd/review-agent/*.go`
 - `docs/architecture.md`
 - `docs/data-contract.md`
@@ -136,7 +139,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 
 ### 3.5. CLI 少参数当前目录入口
 
-**当前状态：** `cmd/review-agent.Run` 会在未传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，将输入推断为 `--repo-path .`。CLI 还会默认读取当前目录 `cr-agent.yaml`，也可用 `--config` 指定路径；CLI flags 覆盖 YAML。这让用户在待审 repo 内可以直接运行默认 review，同时仍保留所有完整 flags 给验收、fixture、hidden matrix 和调试路径使用。
+**当前状态：** `cmd/review-agent.Run` 会在未传 `--diff-file`、`--file-list`、`--repo-path` 或 `--fixture` 时，将输入推断为 `--repo-path .`。CLI 还会默认读取当前目录本地 `cr-agent.yaml`，也可用 `--config` 指定路径；CLI flags 覆盖 YAML。仓库提交 `cr-agent.example.yaml`，根目录 `cr-agent.yaml` 被 `.gitignore` 忽略，便于用户保存真实 DeepSeek/OpenAI-compatible 配置但不上传。这让用户在待审 repo 内可以直接运行默认 review，同时仍保留所有完整 flags 给验收、fixture、hidden matrix 和调试路径使用。
 
 **影响文件：**
 

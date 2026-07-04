@@ -9,17 +9,22 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
+// 本文件只放“模型审查业务边界”：输入/输出结构、默认 fake provider、
+// provider 选择、模型结果合并、去重、降级和失败兜底。
+// 具体外部 provider 实现在 model_provider_*.go，避免主流程混进网络细节。
+
 const (
 	modelSourceFake = "fake_model"
 	modelSourceReal = "model"
 )
 
-// ModelReviewProvider is the narrow boundary for semantic review providers.
+// ModelReviewProvider 是语义审查 provider 的最小边界。
+// 输入只能使用脱敏后的 diff/metadata/已有 finding；输出必须复用 review.Finding。
 type ModelReviewProvider interface {
 	Review(context.Context, ModelReviewInput) (ModelReviewOutput, error)
 }
 
-// ModelReviewInput is the sanitized prompt payload for a model review.
+// ModelReviewInput 是进入模型前的脱敏 prompt payload。
 type ModelReviewInput struct {
 	DiffSummary       string                   `json:"diff_summary"`
 	InputMetadata     review.InputMetadata     `json:"input_metadata"`
@@ -28,7 +33,7 @@ type ModelReviewInput struct {
 	GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
 }
 
-// ModelReviewOutput is the provider's incremental review result.
+// ModelReviewOutput 是 provider 返回的增量审查结果。
 type ModelReviewOutput struct {
 	Findings []review.Finding `json:"findings"`
 }
@@ -46,7 +51,7 @@ type modelRunSummary struct {
 	ExceptionCount int
 }
 
-// fakeModelProvider gives tests and fake-model mode a deterministic model path.
+// fakeModelProvider 给测试和 fake-model 模式提供无网络、无 API Key 的确定性模型路径。
 type fakeModelProvider struct{}
 
 func (fakeModelProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
@@ -116,18 +121,18 @@ func (a *Agent) configuredModelProvider(mode string) ModelReviewProvider {
 				return ModelReviewOutput{}, err
 			})
 		}
-		return officialModelBackedProvider(modelProviderName(a.cfg.ModelHTTP.Model), provider)
+		return providerThroughOfficialModel(modelProviderName(a.cfg.ModelHTTP.Model), provider)
 	}
 	if a.modelProvider != nil {
-		return officialModelBackedProvider(defaultOfficialModelName, a.modelProvider)
+		return providerThroughOfficialModel(defaultModelAdapterName, a.modelProvider)
 	}
-	return officialModelBackedProvider(modelSourceFake, fakeModelProvider{})
+	return providerThroughOfficialModel(modelSourceFake, fakeModelProvider{})
 }
 
 func modelProviderName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return defaultOfficialModelName
+		return defaultModelAdapterName
 	}
 	return name
 }

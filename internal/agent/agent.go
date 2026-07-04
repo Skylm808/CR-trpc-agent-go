@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -153,6 +155,9 @@ func New(cfg Config) (*Agent, error) {
 
 	var store storage.Store
 	if cfg.SQLitePath != "" {
+		if err := ensureSQLiteParentDir(cfg.SQLitePath); err != nil {
+			return nil, err
+		}
 		// Agent 只依赖 storage.Store 接口。
 		store, err = sqlite.Open(cfg.SQLitePath)
 		if err != nil {
@@ -436,6 +441,17 @@ func artifactSessionInfo(taskID string) artifact.SessionInfo {
 		UserID:    "local",
 		SessionID: taskID,
 	}
+}
+
+func ensureSQLiteParentDir(path string) error {
+	dir := filepath.Dir(path)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create sqlite directory %q: %w", dir, err)
+	}
+	return nil
 }
 
 func artifactMIMEType(name string) string {

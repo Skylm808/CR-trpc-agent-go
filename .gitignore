@@ -1,5 +1,8 @@
 /review_report.json
 /review_report.md
+/.cr-agent/
+/cr-agent.yaml
+/cr-agent.local.yaml
 *.db
 *.sqlite
 *.sqlite3

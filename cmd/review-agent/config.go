@@ -12,6 +12,7 @@ import (
 
 const defaultConfigFile = "cr-agent.yaml"
 
+// fileConfig 对应 cr-agent.yaml。字段名保持贴近 CLI flag，便于用户从长命令迁移到配置文件。
 type fileConfig struct {
 	DiffFile     string          `yaml:"diff_file"`
 	FileList     string          `yaml:"file_list"`
@@ -109,11 +110,14 @@ func applyCLIOptions(opts *Options, cli Options) {
 	applyStringOption(&opts.ModelProvider, cli.ModelProvider, cli, "model-provider")
 	applyStringOption(&opts.ModelEndpoint, cli.ModelEndpoint, cli, "model-endpoint")
 	applyStringOption(&opts.ModelAPIKeyEnv, cli.ModelAPIKeyEnv, cli, "model-api-key-env")
-	applyStringOption(&opts.ModelName, cli.ModelName, cli, "model-name")
+	applyStringOptionAny(&opts.ModelName, cli.ModelName, cli, "model-name", "model")
 	applyStringOption(&opts.ModelBaseURL, cli.ModelBaseURL, cli, "model-base-url")
 	applyStringOption(&opts.ModelVariant, cli.ModelVariant, cli, "model-variant")
 	if optionWasSet(cli, "staticcheck", cli.Staticcheck) {
 		opts.Staticcheck = cli.Staticcheck
+	}
+	if optionWasSet(cli, "streaming", cli.Streaming) {
+		opts.Streaming = cli.Streaming
 	}
 }
 
@@ -123,11 +127,29 @@ func applyStringOption(target *string, value string, cli Options, flagName strin
 	}
 }
 
+func applyStringOptionAny(target *string, value string, cli Options, flagNames ...string) {
+	if optionWasSetAny(cli, strings.TrimSpace(value) != "", flagNames...) {
+		*target = value
+	}
+}
+
 func optionWasSet(cli Options, flagName string, fallback bool) bool {
 	if cli.ExplicitFlags != nil {
 		return cli.ExplicitFlags[flagName]
 	}
 	return fallback
+}
+
+func optionWasSetAny(cli Options, fallback bool, flagNames ...string) bool {
+	if cli.ExplicitFlags == nil {
+		return fallback
+	}
+	for _, flagName := range flagNames {
+		if cli.ExplicitFlags[flagName] {
+			return true
+		}
+	}
+	return false
 }
 
 func applyOptionDefaults(opts *Options) {

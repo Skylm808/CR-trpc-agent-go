@@ -1,0 +1,29 @@
+# CR Agent 会自动读取当前工作目录的 cr-agent.yaml。
+# 复制本文件为 cr-agent.yaml 后再填写本地配置；cr-agent.yaml 已被 .gitignore 忽略。
+
+mode: rule-only
+runtime: container
+output_dir: .cr-agent/reports
+skills_root: skills
+fixtures_root: testdata/fixtures
+staticcheck: false
+
+# 需要本地审计库时再打开；默认不启用，避免并行验收共享同一个 DB。
+# sqlite: .cr-agent/review.db
+
+# 需要接入真实 LLM 时，把 mode 改成 fake-model，并取消下面 model 配置注释。
+# API key 推荐通过环境变量提供，不要写入 YAML。
+#
+# mode: fake-model
+# model:
+#   provider: deepseek
+#   name: deepseek-chat
+#   api_key_env: DEEPSEEK_API_KEY
+#
+# OpenAI-compatible 私有网关示例：
+#
+# model:
+#   provider: openai-compatible
+#   name: your-model-name
+#   base_url: https://your-gateway.example.com/v1
+#   api_key_env: OPENAI_API_KEY
