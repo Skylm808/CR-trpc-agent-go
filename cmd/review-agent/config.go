@@ -34,6 +34,7 @@ type fileModelConfig struct {
 	Provider  string `yaml:"provider"`
 	Name      string `yaml:"name"`
 	Endpoint  string `yaml:"endpoint"`
+	APIKey    string `yaml:"api_key"`
 	APIKeyEnv string `yaml:"api_key_env"`
 	BaseURL   string `yaml:"base_url"`
 	Variant   string `yaml:"variant"`
@@ -82,6 +83,7 @@ func optionsFromConfig(path string) (Options, error) {
 		FixturesRoot:   cfg.FixturesRoot,
 		ModelProvider:  cfg.Model.Provider,
 		ModelEndpoint:  cfg.Model.Endpoint,
+		ModelAPIKey:    cfg.Model.APIKey,
 		ModelAPIKeyEnv: cfg.Model.APIKeyEnv,
 		ModelName:      cfg.Model.Name,
 		ModelBaseURL:   cfg.Model.BaseURL,
@@ -109,6 +111,7 @@ func applyCLIOptions(opts *Options, cli Options) {
 	applyStringOption(&opts.FixturesRoot, cli.FixturesRoot, cli, "fixtures-root")
 	applyStringOption(&opts.ModelProvider, cli.ModelProvider, cli, "model-provider")
 	applyStringOption(&opts.ModelEndpoint, cli.ModelEndpoint, cli, "model-endpoint")
+	applyStringOption(&opts.ModelAPIKey, cli.ModelAPIKey, cli, "model-api-key")
 	applyStringOption(&opts.ModelAPIKeyEnv, cli.ModelAPIKeyEnv, cli, "model-api-key-env")
 	applyStringOptionAny(&opts.ModelName, cli.ModelName, cli, "model-name", "model")
 	applyStringOption(&opts.ModelBaseURL, cli.ModelBaseURL, cli, "model-base-url")

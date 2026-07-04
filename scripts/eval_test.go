@@ -120,6 +120,7 @@ func TestLLMSmokeSkipsWithoutAPIKey(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"CR_AGENT_LLM_SMOKE=1",
 		"CR_AGENT_LLM_PROVIDER=deepseek",
+		"CR_AGENT_LLM_CONFIG="+filepath.Join(t.TempDir(), "missing.yaml"),
 		"DEEPSEEK_API_KEY=",
 	)
 	out, err := cmd.CombinedOutput()
@@ -128,6 +129,59 @@ func TestLLMSmokeSkipsWithoutAPIKey(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "[SKIP] DEEPSEEK_API_KEY is not set") {
 		t.Fatalf("expected missing key skip output, got: %s", out)
+	}
+}
+
+func TestLLMSmokeConfigSkipDoesNotPrintConfigContent(t *testing.T) {
+	root := repoRoot(t)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cr-agent.yaml")
+	secret := "sk-smokeconfig-1234567890abcdef"
+	if err := os.WriteFile(configPath, []byte("mode: fake-model\nmodel:\n  provider: deepseek\n  api_key: "+secret+"\n"), 0o600); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "llm_smoke.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_LLM_SMOKE=",
+		"CR_AGENT_LLM_CONFIG="+configPath,
+		"DEEPSEEK_API_KEY=",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llm_smoke.sh should skip without opt-in: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), secret) || strings.Contains(string(out), "api_key") {
+		t.Fatalf("smoke output leaked config content: %s", out)
+	}
+}
+
+func TestLLMSmokeConfigInvalidAPIKeyEnvDoesNotPrintValue(t *testing.T) {
+	root := repoRoot(t)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cr-agent.yaml")
+	secretLikeValue := "sk-invalid-env-name-1234567890abcdef"
+	if err := os.WriteFile(configPath, []byte("mode: fake-model\nmodel:\n  provider: deepseek\n  api_key_env: "+secretLikeValue+"\n"), 0o600); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "llm_smoke.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_LLM_SMOKE=1",
+		"CR_AGENT_LLM_CONFIG="+configPath,
+		"DEEPSEEK_API_KEY=",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llm_smoke.sh should skip invalid api_key_env without failing: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), secretLikeValue) {
+		t.Fatalf("smoke output leaked invalid api_key_env value: %s", out)
+	}
+	if !strings.Contains(string(out), "configured api_key_env is invalid") {
+		t.Fatalf("expected invalid api_key_env skip output, got: %s", out)
 	}
 }
 

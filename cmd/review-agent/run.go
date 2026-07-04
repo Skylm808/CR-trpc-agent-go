@@ -28,6 +28,7 @@ type Options struct {
 	Staticcheck    bool
 	ModelProvider  string
 	ModelEndpoint  string
+	ModelAPIKey    string
 	ModelAPIKeyEnv string
 	ModelName      string
 	ModelBaseURL   string
@@ -67,6 +68,7 @@ func Run(opts Options) error {
 			Enabled:   true,
 			Provider:  opts.ModelProvider,
 			Model:     opts.ModelName,
+			APIKey:    opts.ModelAPIKey,
 			APIKeyEnv: opts.ModelAPIKeyEnv,
 			BaseURL:   opts.ModelBaseURL,
 			Variant:   opts.ModelVariant,

@@ -36,6 +36,7 @@ func parseOptions(args []string) (Options, error) {
 	fs.StringVar(&opts.FixturesRoot, "fixtures-root", "", "path to fixture diffs")
 	fs.StringVar(&opts.ModelProvider, "model-provider", "", "optional model provider: http, openai, or deepseek")
 	fs.StringVar(&opts.ModelEndpoint, "model-endpoint", "", "HTTP model provider endpoint")
+	fs.StringVar(&opts.ModelAPIKey, "model-api-key", "", "local-only model API key override; prefer --model-api-key-env")
 	fs.StringVar(&opts.ModelAPIKeyEnv, "model-api-key-env", "", "environment variable containing the model provider API key")
 	fs.StringVar(&opts.ModelName, "model-name", "", "model name sent to the model provider")
 	fs.StringVar(&opts.ModelName, "model", "", "official examples-compatible alias for --model-name")

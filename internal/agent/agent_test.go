@@ -1771,6 +1771,83 @@ func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
 	}
 }
 
+func TestLowConfidenceModelFindingPersistsAsHumanReviewEvidence(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	outDir := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "review.db")
+	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+		_ = ctx
+		_ = input
+		return ModelReviewOutput{Findings: []review.Finding{{
+			Severity:       "low",
+			Category:       "logic",
+			File:           "main.go",
+			Line:           9,
+			Title:          "Needs reviewer confirmation",
+			Evidence:       "ambiguous model signal",
+			Recommendation: "Ask a human reviewer to confirm the behavior.",
+			Confidence:     "low",
+			Source:         "model",
+			RuleID:         "model-human-review-low",
+		}}}, nil
+	})
+	ag, err := New(Config{
+		SkillsRoot:    filepath.Join(root, "skills"),
+		Runtime:       RuntimeLocalFallback,
+		OutputDir:     outDir,
+		SQLitePath:    dbPath,
+		Timeout:       5 * time.Second,
+		ModelProvider: provider,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+
+	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "safe.diff"),
+		Mode:     ModeFakeModel,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !hasRuleID(result.Warnings, "model-human-review-low") ||
+		!hasRuleID(result.HumanReviewItems, "model-human-review-low") {
+		t.Fatalf("expected low confidence model finding in warnings/human review, warnings=%+v human=%+v", result.Warnings, result.HumanReviewItems)
+	}
+
+	reportJSON, err := os.ReadFile(filepath.Join(outDir, "review_report.json"))
+	if err != nil {
+		t.Fatalf("read report JSON: %v", err)
+	}
+	if !strings.Contains(string(reportJSON), `"human_review_items"`) ||
+		!strings.Contains(string(reportJSON), "model-human-review-low") {
+		t.Fatalf("expected report human_review_items to include low confidence model finding: %s", reportJSON)
+	}
+	diagnostics, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics: %v", err)
+	}
+	if !strings.Contains(string(diagnostics), `"status": "needs_human_review"`) {
+		t.Fatalf("expected diagnostics conclusion to require human review: %s", diagnostics)
+	}
+
+	store, err := sqlite.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+	items, err := store.FindingsByTaskID(context.Background(), result.TaskID)
+	if err != nil {
+		t.Fatalf("load sqlite findings: %v", err)
+	}
+	if !hasRuleID(items, "model-human-review-low") {
+		t.Fatalf("expected sqlite to persist low confidence model finding, got %+v", items)
+	}
+}
+
 // TestModelProviderRedactsInputOutputReportsAndSQLite 固定模型输入输出都经过脱敏边界。
 func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
 	t.Parallel()

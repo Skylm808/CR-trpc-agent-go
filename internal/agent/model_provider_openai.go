@@ -28,6 +28,7 @@ type OpenAIModelProviderConfig struct {
 	Enabled   bool
 	Provider  string
 	Model     string
+	APIKey    string
 	APIKeyEnv string
 	BaseURL   string
 	Variant   string
@@ -54,7 +55,7 @@ func newOpenAIModel(cfg OpenAIModelProviderConfig) (agentmodel.Model, error) {
 		return nil, fmt.Errorf("model name is required for %s provider", provider)
 	}
 	apiKeyEnv := modelAPIKeyEnv(cfg)
-	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
+	apiKey := modelAPIKey(cfg, apiKeyEnv)
 	if apiKey == "" {
 		return nil, fmt.Errorf("model provider %s requires API key", provider)
 	}
@@ -95,6 +96,14 @@ func modelAPIKeyEnv(cfg OpenAIModelProviderConfig) string {
 	default:
 		return defaultOpenAIAPIKeyEnv
 	}
+}
+
+func modelAPIKey(cfg OpenAIModelProviderConfig, envName string) string {
+	// api_key 只用于本地 ignored YAML；推荐生产路径仍是 api_key_env + 环境变量。
+	if key := strings.TrimSpace(cfg.APIKey); key != "" {
+		return key
+	}
+	return strings.TrimSpace(os.Getenv(envName))
 }
 
 func openAIModelVariant(cfg OpenAIModelProviderConfig) (officialopenai.Variant, error) {

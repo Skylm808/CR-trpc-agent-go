@@ -166,6 +166,24 @@ func TestOfficialModelFlagOverridesYAMLModelName(t *testing.T) {
 	}
 }
 
+func TestConfigSupportsLocalModelAPIKey(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cr-agent.yaml")
+	writeFile(t, configPath, ""+
+		"mode: fake-model\n"+
+		"model:\n"+
+		"  provider: deepseek\n"+
+		"  name: deepseek-chat\n"+
+		"  api_key: sk-localyaml-1234567890abcdef\n")
+
+	opts, err := optionsFromConfig(configPath)
+	if err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if opts.ModelAPIKey != "sk-localyaml-1234567890abcdef" {
+		t.Fatalf("expected local YAML API key to be parsed")
+	}
+}
+
 func TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort(t *testing.T) {
 	dir := t.TempDir()
 	diffPath := filepath.Join(dir, "sample.diff")

@@ -51,6 +51,8 @@ model:
   name: deepseek-chat
 ```
 
+`api_key_env` 表示环境变量名，不是 API key 明文。仓库根目录的本地 `cr-agent.yaml` 已被 `.gitignore` 忽略；如果只做本机 smoke，也可以在 ignored YAML 中使用 `api_key`，但不建议长期保存明文 key。
+
 ## 3. 运行您的第一个 CR Agent
 
 兼容官方示例的 `-model` / `-streaming` 参数：
@@ -64,3 +66,11 @@ go run ./cmd/review-agent \
 ```
 
 注意：`-model` 只设置模型名，不会自动启用外部模型。只有 `mode: fake-model` 且 `model.provider` 显式为 `openai`、`openai-compatible` 或 `deepseek` 时，才会调用真实 LLM。
+
+真实 LLM smoke 支持显式配置文件：
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
+scripts/llm_smoke.sh
+```

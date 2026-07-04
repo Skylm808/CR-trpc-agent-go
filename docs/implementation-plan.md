@@ -248,6 +248,8 @@ GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 - [x] 官方 artifact/telemetry 最小接入或清晰边界说明。
 - [x] LLM provider 适配官方 model.Model，并通过官方 Runner/Event adapter 暴露阶段事件。
 - [x] OpenAI-compatible / DeepSeek provider 走官方 `trpc-agent-go/model/openai`。
+- [x] 真实 LLM smoke 支持 env 和 ignored YAML config 入口。
+- [x] 模型输出解析支持纯 JSON、fenced JSON、前后说明文字，并在失败时脱敏降级。
 - [x] 官方 Runner/Event 主入口，保留 `Agent.Run` 兼容 shim。
 - [x] E2B runtime unsupported/adapter 入口。
 - [x] base/head ref 输入。

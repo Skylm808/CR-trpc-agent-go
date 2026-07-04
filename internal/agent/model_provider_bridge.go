@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -99,12 +100,9 @@ func (p officialModelReviewProvider) Review(ctx context.Context, input ModelRevi
 			}
 		}
 	}
-	if strings.TrimSpace(content) == "" {
-		return ModelReviewOutput{}, nil
-	}
-	var output ModelReviewOutput
-	if err := json.Unmarshal([]byte(content), &output); err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("decode official model response: %w", err)
+	output, err := decodeModelReviewOutput(content)
+	if err != nil {
+		return ModelReviewOutput{}, err
 	}
 	for i := range output.Findings {
 		output.Findings[i] = sanitizeFinding(output.Findings[i])
@@ -124,9 +122,97 @@ func providerThroughOfficialModel(name string, provider ModelReviewProvider) Mod
 func modelReviewInputRequest(input ModelReviewInput) *agentmodel.Request {
 	payload, _ := json.Marshal(sanitizeModelReviewInput(input))
 	return agentmodel.NewRequest([]agentmodel.Message{
-		agentmodel.NewSystemMessage("Return a JSON object matching ModelReviewOutput with a findings array."),
+		agentmodel.NewSystemMessage(modelReviewSystemPrompt()),
 		agentmodel.NewUserMessage(string(payload)),
 	})
+}
+
+func modelReviewSystemPrompt() string {
+	return strings.Join([]string{
+		"You are a code review model. You must only return a JSON object; do not return markdown, prose, or code fences.",
+		`The schema is {"findings":[{"severity":"","category":"","file":"","line":0,"title":"","evidence":"","recommendation":"","confidence":"","source":"model","rule_id":"","status":""}]}.`,
+		"Finding fields must reuse severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, and status.",
+		"confidence must be high, medium, or low. Use low for uncertain items.",
+		"Do not invent file paths or line numbers. If unsure, omit the finding.",
+		"do not duplicate existing_findings; compare file, line, category, and rule_id.",
+		"Do not output secrets, API keys, tokens, or passwords. Keep evidence minimal and redacted.",
+	}, "\n")
+}
+
+func decodeModelReviewOutput(content string) (ModelReviewOutput, error) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ModelReviewOutput{}, nil
+	}
+	candidates := []string{trimmed}
+	candidates = append(candidates, fencedJSONBlocks(trimmed)...)
+	if object := firstJSONObject(trimmed); object != "" {
+		candidates = append(candidates, object)
+	}
+	var lastErr error
+	for _, candidate := range candidates {
+		var output ModelReviewOutput
+		if err := json.Unmarshal([]byte(candidate), &output); err == nil {
+			return output, nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr == nil {
+		lastErr = errors.New("no JSON object found")
+	}
+	return ModelReviewOutput{}, fmt.Errorf("decode official model response: %s", review.RedactSecrets(lastErr.Error()))
+}
+
+var jsonFencePattern = regexp.MustCompile("(?is)```(?:json)?\\s*(\\{.*?\\})\\s*```")
+
+func fencedJSONBlocks(content string) []string {
+	matches := jsonFencePattern.FindAllStringSubmatch(content, -1)
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 {
+			out = append(out, strings.TrimSpace(match[1]))
+		}
+	}
+	return out
+}
+
+func firstJSONObject(content string) string {
+	start := strings.Index(content, "{")
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(content); i++ {
+		ch := content[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch ch {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+		switch ch {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return content[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 func modelReviewInputFromRequest(req *agentmodel.Request) (ModelReviewInput, error) {

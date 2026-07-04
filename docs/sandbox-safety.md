@@ -56,7 +56,7 @@
 | Skill 输出重复或未脱敏 | Agent 层 `sanitizeFinding` 兜底 | `TestParseSkillFindingsDedupesAndRedacts` |
 | SQLite 泄漏 | 全表文本列扫描 raw secret | secret redaction tests |
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
-| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 只来自 env，本地 `cr-agent.yaml` 已被 gitignore 忽略，报告/diagnostics/SQLite 不保存 key 或 key env 名 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
+| model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 推荐来自 env，本地 ignored `cr-agent.yaml` 可用 `model.api_key` 做 workstation smoke，报告/diagnostics/SQLite 不保存 key 或 key env 名 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
 
 ## 未完成边界
 

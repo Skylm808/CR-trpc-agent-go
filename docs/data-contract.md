@@ -44,7 +44,7 @@
 | `sandbox_summary` | ✅ 复用 `SandboxSummary` |
 | `governance_summary` | ✅ 复用 `GovernanceSummary` |
 
-当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。OpenAI-compatible / DeepSeek provider 使用官方 `trpc-agent-go/model/openai`；DeepSeek 默认 `model=deepseek-chat`、`variant=deepseek`、`api_key_env=DEEPSEEK_API_KEY`。`openai` / `openai-compatible` 默认读取 `OPENAI_API_KEY`，并在未配置 `base_url` 时读取 `OPENAI_BASE_URL`；DeepSeek 不继承 `OPENAI_BASE_URL`，除非 YAML/CLI 显式设置 base URL。API key 只能通过 `--model-api-key-env` 或 YAML `model.api_key_env` 指定的环境变量读取；空 env 名或空 env 值不会影响默认 fake/rule-only 测试路径。Claude / Gemini SDK 绑定留到后续阶段。
+当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。OpenAI-compatible / DeepSeek provider 使用官方 `trpc-agent-go/model/openai`；DeepSeek 默认 `model=deepseek-chat`、`variant=deepseek`、`api_key_env=DEEPSEEK_API_KEY`。`openai` / `openai-compatible` 默认读取 `OPENAI_API_KEY`，并在未配置 `base_url` 时读取 `OPENAI_BASE_URL`；DeepSeek 不继承 `OPENAI_BASE_URL`，除非 YAML/CLI 显式设置 base URL。推荐通过 `--model-api-key-env` 或 YAML `model.api_key_env` 指定环境变量名；本地 ignored YAML 也支持 `model.api_key`，仅用于 workstation smoke。空 key 不会影响默认 fake/rule-only 测试路径。Claude / Gemini SDK 绑定留到后续阶段。
 
 ## InputMetadata
 

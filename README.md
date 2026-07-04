@@ -35,7 +35,7 @@
 - `review_diagnostics.json` 包含 Go input metadata：changed_go_files、package_names、module_path、has_tests、touched_test_files。
 - `--base-ref` / `--head-ref` 会进入 input metadata、报告、diagnostics、SQLite report blob 和 telemetry；`--repo-path` 同时传 refs 时使用 `git diff base...head`，不自动 fetch。
 - `--runtime e2b` 是最小 unsupported/adapter 入口：不会静默 fallback 到 local/container，会在报告、diagnostics 和 SQLite sandbox run 中记录 `runtime=e2b status=unsupported`。
-- `--model-provider deepseek` 走官方 `trpc-agent-go/model/openai` 的 `VariantDeepSeek` 路线；`openai` / `openai-compatible` 默认兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`，DeepSeek 默认兼容 `DEEPSEEK_API_KEY`。API key 只从 env 读取，缺 key 时降级为人工复核，不中断 review。
+- `--model-provider deepseek` 走官方 `trpc-agent-go/model/openai` 的 `VariantDeepSeek` 路线；`openai` / `openai-compatible` 默认兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`，DeepSeek 默认兼容 `DEEPSEEK_API_KEY`。推荐用 env 提供 API key；本地 ignored YAML 也兼容 `model.api_key`，缺 key 时降级为人工复核，不中断 review。
 - 沙箱非零退出和 timeout 不会中断 review，会写入 failed / timed_out run 与 `exception_counts`。
 - 敏感信息在报告和 DB 写入前脱敏。
 - 公开 fixture 覆盖安全、secret 多形态脱敏、panic、TODO、测试缺失、goroutine/context/resource/db lifecycle、去重、sandbox failure、sandbox timeout。
@@ -137,6 +137,15 @@ model:
 ```bash
 export DEEPSEEK_API_KEY=replace-me
 go run ./cmd/review-agent
+```
+
+`api_key_env` 是环境变量名，不是 key 明文。如果你确实要把 key 放进本地 `cr-agent.yaml`，使用 `api_key` 字段；该文件已被 `.gitignore` 忽略，但仍不建议长期保存明文 key：
+
+```yaml
+model:
+  provider: deepseek
+  name: deepseek-chat
+  api_key: replace-me
 ```
 
 OpenAI-compatible 中转站可以使用官方示例风格的环境变量：
@@ -282,6 +291,7 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 | `--output-dir` | `.` | Report output directory. |
 | `--model-provider` | empty | Optional model provider: `http`, `openai`, `openai-compatible`, or `deepseek`; default empty keeps fake provider/no network behavior. |
 | `--model-endpoint` | empty | HTTP model provider endpoint, required when `--model-provider http` is enabled. |
+| `--model-api-key` | empty | Local-only API key override for smoke/debug. Prefer `--model-api-key-env` or ignored YAML because CLI args can be exposed by shell history/process listings. |
 | `--model-api-key-env` | provider default | Environment variable name containing the optional provider API key. The key value is never written to reports, diagnostics, SQLite or telemetry. |
 | `--model-name` / `-model` | provider default where available | Optional model name included in the model provider request. `-model` is an official examples-compatible alias. DeepSeek defaults to `deepseek-chat`. |
 | `--model-base-url` | YAML or `OPENAI_BASE_URL` for OpenAI-compatible providers | OpenAI-compatible base URL override. DeepSeek does not inherit `OPENAI_BASE_URL` unless this flag/YAML value is explicit. |
@@ -301,7 +311,7 @@ GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
 
 `internal/agent.ModelReviewProvider` receives only redacted prompt inputs: diff summary, input metadata, existing findings, sandbox summary and governance summary. The provider is wrapped through a thin official `trpc-agent-go/model.Model` adapter before review results are merged back into the CR report. Provider output reuses the normal `review.Finding` shape. High confidence model findings enter `findings`; low confidence or uncertain model signals become `warnings` with `needs_human_review`. Model findings dedupe against rule findings by `file + line + category + rule_id`.
 
-The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, DeepSeek, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. The `openai` / `openai-compatible` / `deepseek` providers use official `trpc-agent-go/model/openai` and remain opt-in. API keys are read from env only; local `cr-agent.yaml` is ignored by git so you can keep private provider settings locally.
+The default built-in provider is deterministic and only exists to exercise the boundary in `fake-model` mode. It does not call OpenAI, Claude, Gemini, DeepSeek, or any network API. The optional HTTP provider is a minimal generic adapter using Go's standard `net/http`; it is disabled unless `--model-provider http` is provided. The `openai` / `openai-compatible` / `deepseek` providers use official `trpc-agent-go/model/openai` and remain opt-in. API keys should normally come from env via `api_key_env`; local ignored `cr-agent.yaml` also supports `model.api_key` for workstation-only smoke testing.
 
 DeepSeek example:
 
@@ -336,6 +346,16 @@ CR_AGENT_LLM_PROVIDER=deepseek \
 DEEPSEEK_API_KEY=replace-me \
 scripts/llm_smoke.sh
 ```
+
+如果你的 provider 配置在本地 YAML：
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
+scripts/llm_smoke.sh
+```
+
+smoke 脚本不会打印 YAML 内容或 API key。
 
 HTTP provider request and response shape:
 

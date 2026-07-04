@@ -38,6 +38,20 @@ func TestOpenAIModelProviderRequiresAPIKeyBeforeNetworkCall(t *testing.T) {
 	}
 }
 
+func TestOpenAIModelProviderAcceptsLocalAPIKey(t *testing.T) {
+	model, err := newOpenAIModel(OpenAIModelProviderConfig{
+		Provider: modelProviderDeepSeek,
+		Model:    "deepseek-chat",
+		APIKey:   "sk-localyaml-1234567890abcdef",
+	})
+	if err != nil {
+		t.Fatalf("newOpenAIModel returned error: %v", err)
+	}
+	if model.Info().Name != "deepseek-chat" {
+		t.Fatalf("unexpected model info: %+v", model.Info())
+	}
+}
+
 func TestOpenAIModelProviderDefaultsToOfficialEnv(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "https://openai-gateway.example.com/v1")
 
