@@ -133,6 +133,12 @@ Each run writes:
 - `review_report.md`
 - `review_diagnostics.json`
 
+After a real model run, `metrics` includes non-sensitive audit fields:
+
+- `model_provider`
+- `model_name`
+- `model_backend`
+
 With `--sqlite /path/to/review.db`, the audit store can replay:
 
 - task status
@@ -186,6 +192,20 @@ CR_AGENT_LLM_SMOKE=1 \
 CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
 scripts/llm_smoke.sh
 ```
+
+Run live LLM smoke against any local git repo:
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+scripts/repo_llm_smoke.sh \
+  --repo /path/to/repo \
+  --config ./cr-agent.yaml \
+  --go-only \
+  --output-dir /tmp/cr-agent-repo-smoke
+```
+
+The script runs `go run ./cmd/review-agent` from this repository root and checks
+`model_call_count=1`, a present `model_provider`, and no API key leakage.
 
 Complete LLM verification is layered:
 

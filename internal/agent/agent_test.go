@@ -1371,10 +1371,35 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 	if result.Metrics.ModelCallCount != 1 || result.Metrics.ModelFindingCount == 0 || result.Metrics.ModelDurationMS == 0 {
 		t.Fatalf("expected model metrics, got %+v", result.Metrics)
 	}
+	if result.Metrics.ModelProvider != "fake" || result.Metrics.ModelName != "fake_model" || result.Metrics.ModelBackend != "trpc-agent-go/model.Model" {
+		t.Fatalf("expected non-sensitive model audit fields, got %+v", result.Metrics)
+	}
 
 	diagnostics, err := os.ReadFile(filepath.Join(outDir, "review_diagnostics.json"))
 	if err != nil {
 		t.Fatalf("read diagnostics: %v", err)
+	}
+	reportJSON, err := os.ReadFile(filepath.Join(outDir, "review_report.json"))
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	for _, artifact := range [][]byte{diagnostics, reportJSON} {
+		for _, want := range []string{
+			`"model_call_count": 1`,
+			`"model_finding_count": 1`,
+			`"model_provider": "fake"`,
+			`"model_name": "fake_model"`,
+			`"model_backend": "trpc-agent-go/model.Model"`,
+		} {
+			if !strings.Contains(string(artifact), want) {
+				t.Fatalf("expected artifact to include %q, got %s", want, artifact)
+			}
+		}
+	}
+	for _, forbidden := range []string{"api_key", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "base_url"} {
+		if strings.Contains(string(reportJSON), forbidden) || strings.Contains(string(diagnostics), forbidden) {
+			t.Fatalf("model audit fields must not leak secret configuration key %q", forbidden)
+		}
 	}
 	for _, want := range []string{`"model_call_count": 1`, `"model_finding_count": 1`} {
 		if !strings.Contains(string(diagnostics), want) {
@@ -1393,6 +1418,9 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 	}
 	if metrics.ModelCallCount != 1 || metrics.ModelFindingCount != 1 {
 		t.Fatalf("expected persisted model metrics, got %+v", metrics)
+	}
+	if metrics.ModelProvider != "fake" || metrics.ModelName != "fake_model" || metrics.ModelBackend != "trpc-agent-go/model.Model" {
+		t.Fatalf("expected persisted model audit fields, got %+v", metrics)
 	}
 	items, err := store.FindingsByTaskID(context.Background(), result.TaskID)
 	if err != nil {

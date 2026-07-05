@@ -145,9 +145,8 @@ if ! grep -q '"model_call_count"[[:space:]]*:[[:space:]]*1' "$REPORT"; then
   echo "[FAIL] report missing model_call_count=1" >&2
   exit 1
 fi
-if grep -q '"model-provider-failed"' "$REPORT" "$DIAGNOSTICS" &&
-  ! grep -q '"needs_human_review"' "$REPORT" "$DIAGNOSTICS"; then
-  echo "[FAIL] provider failure did not degrade to human review" >&2
+if grep -q '"model-provider-failed"' "$REPORT" "$DIAGNOSTICS"; then
+  echo "[FAIL] model provider failed; inspect $OUT" >&2
   exit 1
 fi
 

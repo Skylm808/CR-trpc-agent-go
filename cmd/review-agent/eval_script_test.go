@@ -180,6 +180,31 @@ func TestHiddenMatrixSmokeUsesExternalRootAndMatrix(t *testing.T) {
 	}
 }
 
+// TestRepoLLMSmokeScriptDocumentsPortableRepoEntry 固定任意本地 git repo 的 LLM smoke 入口。
+func TestRepoLLMSmokeScriptDocumentsPortableRepoEntry(t *testing.T) {
+	root := repoRootForEval(t)
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "repo_llm_smoke.sh"), "--help")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("repo LLM smoke help failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	for _, want := range []string{
+		"repo_llm_smoke.sh",
+		"--repo",
+		"--config",
+		"--go-only",
+		"--output-dir",
+		"model_provider",
+		"model_call_count=1",
+		"no API key leakage",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected repo smoke help to contain %q, got %s", want, output)
+		}
+	}
+}
+
 // repoRootForEval 查找仓库根目录。
 func repoRootForEval(t *testing.T) string {
 	t.Helper()

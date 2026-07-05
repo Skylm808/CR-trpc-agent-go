@@ -42,6 +42,22 @@ func newOpenAIReviewProvider(cfg OpenAIModelProviderConfig) (ModelReviewProvider
 	return officialModelReviewProvider{model: model}, nil
 }
 
+func openAIModelAudit(cfg OpenAIModelProviderConfig) modelAudit {
+	provider := strings.TrimSpace(cfg.Provider)
+	if provider == "" {
+		provider = modelProviderOpenAI
+	}
+	name := strings.TrimSpace(cfg.Model)
+	if name == "" && provider == modelProviderDeepSeek {
+		name = defaultDeepSeekModel
+	}
+	return modelAudit{
+		Provider: provider,
+		Name:     name,
+		Backend:  modelBackendOpenAI,
+	}
+}
+
 func newOpenAIModel(cfg OpenAIModelProviderConfig) (agentmodel.Model, error) {
 	provider := strings.TrimSpace(cfg.Provider)
 	if provider == "" {

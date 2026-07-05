@@ -16,6 +16,13 @@ import (
 const (
 	modelSourceFake = "fake_model"
 	modelSourceReal = "model"
+
+	modelProviderAuditFake   = "fake"
+	modelProviderAuditCustom = "custom"
+	modelProviderAuditHTTP   = "http"
+	modelBackendOfficial     = "trpc-agent-go/model.Model"
+	modelBackendHTTP         = "http"
+	modelBackendOpenAI       = "trpc-agent-go/model/openai"
 )
 
 // ModelReviewProvider 是语义审查 provider 的最小边界。
@@ -49,6 +56,15 @@ type modelRunSummary struct {
 	FindingCount   int
 	DurationMS     int64
 	ExceptionCount int
+	Provider       string
+	Name           string
+	Backend        string
+}
+
+type modelAudit struct {
+	Provider string
+	Name     string
+	Backend  string
 }
 
 // fakeModelProvider 给测试和 fake-model 模式提供无网络、无 API Key 的确定性模型路径。
@@ -97,36 +113,50 @@ func (fakeModelProvider) Review(ctx context.Context, input ModelReviewInput) (Mo
 	return ModelReviewOutput{Findings: findings}, nil
 }
 
-func (a *Agent) configuredModelProvider(mode string) ModelReviewProvider {
+func (a *Agent) configuredModelProvider(mode string) (ModelReviewProvider, modelAudit) {
 	if mode != ModeFakeModel {
-		return nil
+		return nil, modelAudit{}
 	}
 	if a.cfg.ModelOpenAI.Enabled {
+		audit := openAIModelAudit(a.cfg.ModelOpenAI)
 		provider, err := newOpenAIReviewProvider(a.cfg.ModelOpenAI)
 		if err != nil {
 			return modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
 				_ = ctx
 				_ = input
 				return ModelReviewOutput{}, err
-			})
+			}), audit
 		}
-		return provider
+		return provider, audit
 	}
 	if a.cfg.ModelHTTP.Enabled {
+		audit := modelAudit{
+			Provider: modelProviderAuditHTTP,
+			Name:     modelProviderName(a.cfg.ModelHTTP.Model),
+			Backend:  modelBackendHTTP,
+		}
 		provider, err := newHTTPModelProvider(a.cfg.ModelHTTP)
 		if err != nil {
 			return modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
 				_ = ctx
 				_ = input
 				return ModelReviewOutput{}, err
-			})
+			}), audit
 		}
-		return providerThroughOfficialModel(modelProviderName(a.cfg.ModelHTTP.Model), provider)
+		return providerThroughOfficialModel(modelProviderName(a.cfg.ModelHTTP.Model), provider), audit
 	}
 	if a.modelProvider != nil {
-		return providerThroughOfficialModel(defaultModelAdapterName, a.modelProvider)
+		return providerThroughOfficialModel(defaultModelAdapterName, a.modelProvider), modelAudit{
+			Provider: modelProviderAuditCustom,
+			Name:     defaultModelAdapterName,
+			Backend:  modelBackendOfficial,
+		}
 	}
-	return providerThroughOfficialModel(modelSourceFake, fakeModelProvider{})
+	return providerThroughOfficialModel(modelSourceFake, fakeModelProvider{}), modelAudit{
+		Provider: modelProviderAuditFake,
+		Name:     modelSourceFake,
+		Backend:  modelBackendOfficial,
+	}
 }
 
 func modelProviderName(name string) string {
@@ -137,8 +167,13 @@ func modelProviderName(name string) string {
 	return name
 }
 
-func (a *Agent) runModelReview(ctx context.Context, taskID string, provider ModelReviewProvider, result review.Result, diff []byte, inputMeta review.InputMetadata) (review.Result, modelRunSummary) {
-	summary := modelRunSummary{CallCount: 1}
+func (a *Agent) runModelReview(ctx context.Context, taskID string, provider ModelReviewProvider, audit modelAudit, result review.Result, diff []byte, inputMeta review.InputMetadata) (review.Result, modelRunSummary) {
+	summary := modelRunSummary{
+		CallCount: 1,
+		Provider:  audit.Provider,
+		Name:      audit.Name,
+		Backend:   audit.Backend,
+	}
 	input := ModelReviewInput{
 		DiffSummary:       review.RedactSecrets(string(diff)),
 		InputMetadata:     inputMeta,

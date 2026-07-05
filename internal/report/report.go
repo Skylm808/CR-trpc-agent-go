@@ -40,6 +40,13 @@ func BuildMarkdown(result review.Result) string {
 			result.Metrics.RedactionCount,
 		)
 	}
+	if result.Metrics.ModelProvider != "" || result.Metrics.ModelName != "" || result.Metrics.ModelBackend != "" {
+		fmt.Fprintf(&b, "Model: provider=%s name=%s backend=%s\n\n",
+			result.Metrics.ModelProvider,
+			result.Metrics.ModelName,
+			result.Metrics.ModelBackend,
+		)
+	}
 	if len(result.Metrics.SeverityCounts) > 0 {
 		b.WriteString("Severity Counts:\n")
 		for severity, count := range result.Metrics.SeverityCounts {

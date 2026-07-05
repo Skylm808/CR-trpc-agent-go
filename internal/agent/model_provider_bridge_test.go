@@ -69,6 +69,10 @@ func TestModelReviewSystemPromptDefinesStrictContract(t *testing.T) {
 		"confidence",
 		"high, medium, or low",
 		"do not duplicate existing_findings",
+		"Only report incremental semantic value",
+		"cross-file",
+		"business logic",
+		"Return an empty findings array",
 		"Do not output secrets",
 	} {
 		if !strings.Contains(prompt, want) {

@@ -102,6 +102,9 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 		ModelDurationMS:      3,
 		ToolCallCount:        1,
 		ModelCallCount:       1,
+		ModelProvider:        "fake",
+		ModelName:            "fake_model",
+		ModelBackend:         "trpc-agent-go/model.Model",
 		PermissionBlockCount: 0,
 		FindingCount:         1,
 		ModelFindingCount:    1,
@@ -123,6 +126,76 @@ func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	}
 	if gotMetrics.ModelDurationMS != 3 || gotMetrics.ModelCallCount != 1 || gotMetrics.ModelFindingCount != 1 {
 		t.Fatalf("unexpected model metrics: %+v", gotMetrics)
+	}
+	if gotMetrics.ModelProvider != "fake" || gotMetrics.ModelName != "fake_model" || gotMetrics.ModelBackend != "trpc-agent-go/model.Model" {
+		t.Fatalf("unexpected model audit fields: %+v", gotMetrics)
+	}
+}
+
+func TestStoreMigratesModelAuditColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-metrics.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE metrics (
+  task_id TEXT PRIMARY KEY,
+  total_duration_ms INTEGER NOT NULL,
+  sandbox_duration_ms INTEGER NOT NULL,
+  model_duration_ms INTEGER NOT NULL DEFAULT 0,
+  tool_call_count INTEGER NOT NULL,
+  model_call_count INTEGER NOT NULL DEFAULT 0,
+  permission_block_count INTEGER NOT NULL,
+  finding_count INTEGER NOT NULL,
+  model_finding_count INTEGER NOT NULL DEFAULT 0,
+  model_exception_count INTEGER NOT NULL DEFAULT 0,
+  severity_counts_json TEXT NOT NULL,
+  exception_counts_json TEXT NOT NULL,
+  redaction_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);`)
+	if err != nil {
+		t.Fatalf("create legacy metrics: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy db: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open should migrate legacy metrics: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := store.SaveMetrics(context.Background(), MetricsRecord{
+		TaskID:               "task-model-audit",
+		TotalDurationMS:      10,
+		SandboxDurationMS:    2,
+		ModelDurationMS:      3,
+		ToolCallCount:        1,
+		ModelCallCount:       1,
+		ModelProvider:        "deepseek",
+		ModelName:            "deepseek-chat",
+		ModelBackend:         "trpc-agent-go/model/openai",
+		PermissionBlockCount: 0,
+		FindingCount:         1,
+		ModelFindingCount:    1,
+		ModelExceptionCount:  0,
+		SeverityCountsJSON:   `{"high":1}`,
+		ExceptionCountsJSON:  `{}`,
+		RedactionCount:       0,
+		At:                   now,
+	}); err != nil {
+		t.Fatalf("SaveMetrics after migration returned error: %v", err)
+	}
+	got, err := store.MetricsByTaskID(context.Background(), "task-model-audit")
+	if err != nil {
+		t.Fatalf("MetricsByTaskID returned error: %v", err)
+	}
+	if got.ModelProvider != "deepseek" || got.ModelName != "deepseek-chat" || got.ModelBackend != "trpc-agent-go/model/openai" {
+		t.Fatalf("migration did not preserve model audit fields: %+v", got)
 	}
 }
 

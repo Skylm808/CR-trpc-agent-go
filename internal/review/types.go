@@ -53,6 +53,9 @@ type Metrics struct {
 	ModelDurationMS     int64          `json:"model_duration_ms,omitempty"`
 	ToolCallCount       int            `json:"tool_call_count,omitempty"`
 	ModelCallCount      int            `json:"model_call_count,omitempty"`
+	ModelProvider       string         `json:"model_provider,omitempty"`
+	ModelName           string         `json:"model_name,omitempty"`
+	ModelBackend        string         `json:"model_backend,omitempty"`
 	PermissionBlocks    int            `json:"permission_block_count,omitempty"`
 	FindingCount        int            `json:"finding_count,omitempty"`
 	ModelFindingCount   int            `json:"model_finding_count,omitempty"`

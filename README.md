@@ -129,6 +129,12 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 - `review_report.md`
 - `review_diagnostics.json`
 
+真实模型运行后，`metrics` 会记录非敏感审计字段：
+
+- `model_provider`
+- `model_name`
+- `model_backend`
+
 使用 `--sqlite /path/to/review.db` 时，审计库可回放：
 
 - task 状态
@@ -181,6 +187,20 @@ CR_AGENT_LLM_SMOKE=1 \
 CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
 scripts/llm_smoke.sh
 ```
+
+对任意本地 git repo 跑真实 LLM smoke：
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+scripts/repo_llm_smoke.sh \
+  --repo /path/to/repo \
+  --config ./cr-agent.yaml \
+  --go-only \
+  --output-dir /tmp/cr-agent-repo-smoke
+```
+
+脚本会从本仓库根目录运行 `go run ./cmd/review-agent`，并检查
+`model_call_count=1`、`model_provider` 存在和 API key 不泄漏。
 
 LLM 验证分三层：
 

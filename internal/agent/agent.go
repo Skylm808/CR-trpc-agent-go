@@ -278,9 +278,9 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 		Decisions:     decisions,
 		Runs:          runs,
 	})
-	if provider := a.configuredModelProvider(mode); provider != nil {
+	if provider, audit := a.configuredModelProvider(mode); provider != nil {
 		var modelSummary modelRunSummary
-		result, modelSummary = a.runModelReview(ctx, taskID, provider, result, diff, inputMeta)
+		result, modelSummary = a.runModelReview(ctx, taskID, provider, audit, result, diff, inputMeta)
 		a.emitReviewEvent(ctx, taskID, reviewEventModelReview, fmt.Sprintf("calls=%d findings=%d exceptions=%d", modelSummary.CallCount, modelSummary.FindingCount, modelSummary.ExceptionCount))
 		result = finalizeReviewResult(result, reviewResultContext{
 			TaskID:        taskID,
@@ -512,6 +512,9 @@ func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
 		attribute.Int("cr_agent.model_call_count", result.Metrics.ModelCallCount),
 		attribute.Int("cr_agent.model_finding_count", result.Metrics.ModelFindingCount),
 		attribute.Int("cr_agent.model_exception_count", result.Metrics.ModelExceptionCount),
+		attribute.String("cr_agent.model_provider", result.Metrics.ModelProvider),
+		attribute.String("cr_agent.model_name", result.Metrics.ModelName),
+		attribute.String("cr_agent.model_backend", result.Metrics.ModelBackend),
 		attribute.Int("cr_agent.sandbox_run_count", len(result.SandboxSummary.Runs)),
 		attribute.Int("cr_agent.redaction_count", result.Metrics.RedactionCount),
 		attribute.Int("cr_agent.exception_count", exceptionCount(result.Metrics.ExceptionCounts)),

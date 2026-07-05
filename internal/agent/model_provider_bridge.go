@@ -135,6 +135,9 @@ func modelReviewSystemPrompt() string {
 		"confidence must be high, medium, or low. Use low for uncertain items.",
 		"Do not invent file paths or line numbers. If unsure, omit the finding.",
 		"do not duplicate existing_findings; compare file, line, category, and rule_id.",
+		"Only report incremental semantic value beyond deterministic rule findings.",
+		"Focus on cross-file behavior, business logic, boundary conditions, data flow, and integration risks.",
+		"Return an empty findings array when the existing findings already cover the risk or when no new semantic value exists.",
 		"Do not output secrets, API keys, tokens, or passwords. Keep evidence minimal and redacted.",
 	}, "\n")
 }

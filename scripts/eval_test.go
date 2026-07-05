@@ -185,6 +185,56 @@ func TestLLMSmokeConfigInvalidAPIKeyEnvDoesNotPrintValue(t *testing.T) {
 	}
 }
 
+func TestLLMSmokeFailsWhenProviderFailed(t *testing.T) {
+	root := repoRoot(t)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cr-agent.yaml")
+	if err := os.WriteFile(configPath, []byte("mode: fake-model\nmodel:\n  provider: deepseek\n  api_key: sk-smokefail-1234567890\n"), 0o600); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	fakeGo := `#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--output-dir" ]]; then
+    out="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+mkdir -p "$out"
+cat > "$out/review_report.json" <<'JSON'
+{"findings":[],"metrics":{"model_call_count":1,"model_provider":"deepseek"},"human_review_items":[{"rule_id":"model-provider-failed","status":"needs_human_review"}],"input_metadata":{"module_path":"example.com/cragentsmoke"}}
+JSON
+cat > "$out/review_diagnostics.json" <<'JSON'
+{"metrics":{"model_call_count":1,"model_provider":"deepseek"},"conclusion":{"status":"needs_human_review"}}
+JSON
+`
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o755); err != nil {
+		t.Fatalf("write fake go: %v", err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "llm_smoke.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_LLM_SMOKE=1",
+		"CR_AGENT_LLM_CONFIG="+configPath,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("llm_smoke.sh should fail when provider failed, output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "model provider failed") {
+		t.Fatalf("expected provider failure output, got: %s", out)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

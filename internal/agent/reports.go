@@ -47,6 +47,9 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	result.Metrics.ModelDurationMS = ctx.Model.DurationMS
 	result.Metrics.ModelFindingCount = ctx.Model.FindingCount
 	result.Metrics.ModelExceptionCount = ctx.Model.ExceptionCount
+	result.Metrics.ModelProvider = ctx.Model.Provider
+	result.Metrics.ModelName = ctx.Model.Name
+	result.Metrics.ModelBackend = ctx.Model.Backend
 	result.Metrics.FindingCount = len(result.Findings)
 	result.Metrics.RedactionCount = redactionCount(result.Findings, result.Warnings)
 	result.Metrics.SeverityCounts = severityCounts(result.Findings, result.Warnings)
