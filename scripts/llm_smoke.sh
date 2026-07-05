@@ -69,21 +69,32 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-DIFF="$WORK/smoke.diff"
+REPO="$WORK/repo"
 OUT="$WORK/out"
-cat > "$DIFF" <<'DIFF'
-diff --git a/smoke.go b/smoke.go
---- a/smoke.go
-+++ b/smoke.go
-@@ -1,1 +1,4 @@
- package smoke
-+
-+func Divide(a, b int) int { return a / b }
-DIFF
+mkdir -p "$REPO"
+git -C "$REPO" init -q
+git -C "$REPO" config user.email "cr-agent-smoke@example.local"
+git -C "$REPO" config user.name "CR Agent Smoke"
+cat > "$REPO/go.mod" <<'GOMOD'
+module example.com/cragentsmoke
+
+go 1.25.0
+GOMOD
+cat > "$REPO/smoke.go" <<'GO'
+package smoke
+
+func Add(a, b int) int { return a + b }
+GO
+git -C "$REPO" add go.mod smoke.go
+git -C "$REPO" commit -q -m "base"
+cat >> "$REPO/smoke.go" <<'GO'
+
+func Divide(a, b int) int { return a / b }
+GO
 
 args=(
   run "$ROOT/cmd/review-agent"
-  --diff-file "$DIFF"
+  --repo-path "$REPO"
   --skills-root "$ROOT/skills"
   --runtime local-fallback
   --mode fake-model
@@ -105,11 +116,23 @@ if [[ ! -f "$REPORT" ]]; then
   echo "[FAIL] missing review_report.json" >&2
   exit 1
 fi
+DIAGNOSTICS="$OUT/review_diagnostics.json"
+if [[ ! -f "$DIAGNOSTICS" ]]; then
+  echo "[FAIL] missing review_diagnostics.json" >&2
+  exit 1
+fi
+if ! grep -q '"findings"[[:space:]]*:' "$REPORT" || ! grep -q '"input_metadata"[[:space:]]*:' "$REPORT"; then
+  echo "[FAIL] report schema is incomplete" >&2
+  exit 1
+fi
+if ! grep -q '"module_path"[[:space:]]*:[[:space:]]*"example.com/cragentsmoke"' "$REPORT" "$DIAGNOSTICS"; then
+  echo "[FAIL] report missing git repo metadata" >&2
+  exit 1
+fi
 if [[ -n "$EFFECTIVE_KEY_ENV" && -n "${!EFFECTIVE_KEY_ENV:-}" ]] && grep -Fq -- "${!EFFECTIVE_KEY_ENV}" "$REPORT"; then
   echo "[FAIL] report leaked API key" >&2
   exit 1
 fi
-DIAGNOSTICS="$OUT/review_diagnostics.json"
 if [[ -n "$CONFIG_API_KEY" ]] && grep -Fq -- "$CONFIG_API_KEY" "$REPORT" "$DIAGNOSTICS"; then
   echo "[FAIL] report leaked API key" >&2
   exit 1
@@ -120,6 +143,11 @@ if [[ -n "$EFFECTIVE_KEY_ENV" ]] && grep -Fq -- "$EFFECTIVE_KEY_ENV" "$REPORT" "
 fi
 if ! grep -q '"model_call_count"[[:space:]]*:[[:space:]]*1' "$REPORT"; then
   echo "[FAIL] report missing model_call_count=1" >&2
+  exit 1
+fi
+if grep -q '"model-provider-failed"' "$REPORT" "$DIAGNOSTICS" &&
+  ! grep -q '"needs_human_review"' "$REPORT" "$DIAGNOSTICS"; then
+  echo "[FAIL] provider failure did not degrade to human review" >&2
   exit 1
 fi
 

@@ -1,0 +1,23 @@
+mode: rule-only
+runtime: local-fallback
+output_dir: .cr-agent/reports
+skills_root: skills
+fixtures_root: testdata/fixtures
+staticcheck: false
+
+# Enable a real model only when you intentionally want live LLM review.
+# api_key_env is an environment variable name, not the API key value.
+#
+# mode: fake-model
+# model:
+#   provider: deepseek
+#   name: deepseek-chat
+#   api_key_env: DEEPSEEK_API_KEY
+#
+# OpenAI-compatible gateways:
+#
+# model:
+#   provider: openai-compatible
+#   name: gpt-4o-mini
+#   api_key_env: OPENAI_API_KEY
+#   base_url: https://your-gateway.example.com/v1

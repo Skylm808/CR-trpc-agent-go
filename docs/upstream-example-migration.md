@@ -18,21 +18,24 @@ examples/skills_code_review_agent/
 
 官方 examples 目录中已有 `skill`、`skillrun`、`codeexecution`、`sandboxcodeexecution`、`runner`、`memory` 等示例。当前项目更像一个完整应用示例，不只是 Skill API 演示，因此 `examples/code_review_agent` 更清晰。
 
-## 需要迁移的目录
+## 最小迁移包
+
+迁移时保持轻量，不把本仓库所有历史材料搬进官方 examples。建议只搬：
 
 | 当前路径 | 迁移用途 |
 |----------|----------|
+| `examples/cr-agent/README.md` | 官方 example 的入口说明 |
+| `examples/cr-agent/cr-agent.example.yaml` | 安全默认配置，不含密钥 |
+| `examples/cr-agent/sample.diff` | 最小可运行输入 |
 | `cmd/review-agent/` | 示例 CLI 入口 |
-| `internal/agent/` | Tool / Skill / Permission / CodeExecutor 编排 |
+| `internal/agent/` | Tool / Skill / Permission / CodeExecutor / Runner 编排 |
 | `internal/review/` | diff 解析、规则结果、脱敏和去重 |
 | `internal/report/` | JSON / Markdown 报告生成 |
-| `internal/storage/` | 审计 store 接口 |
-| `internal/storage/sqlite/` | SQLite 默认实现 |
+| `internal/storage/`、`internal/storage/sqlite/` | 审计 store 和 SQLite 默认实现 |
 | `skills/code-review/` | CR Skill、规则文档和脚本 |
 | `testdata/fixtures/` | 公开 diff 样本 |
-| `scripts/acceptance.sh`、`scripts/eval.sh` | repo-neutral 验收和公开样本评测 |
-| `docs/` 子集 | 架构、数据契约、验收追踪、迁移说明 |
-| `examples/review_report.*` | 示例报告产物 |
+| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/llm_smoke.sh` | repo-neutral 验收、公开样本评测和 opt-in LLM smoke |
+| `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/eval-matrix.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
 
 ## 不应迁移的内容
 
@@ -40,6 +43,8 @@ examples/skills_code_review_agent/
 - 个人机器路径、临时数据库、`/private/tmp` 输出。
 - hidden fixture 本体；只保留 external TSV / env var 接入契约。
 - 独立仓库私有历史、实验性 prompt、未被 README 链接的本地草稿。
+- 本地 `cr-agent.yaml`、`examples/review.db` 和任何真实 API key。
+- 过长的阶段性 implementation plan；官方 PR 描述里保留当前状态和缺口即可。
 
 ## go module 和 import 调整
 
@@ -71,8 +76,9 @@ github.com/Skylm808/CR-trpc-agent-go/...
 
 1. `GOCACHE=/private/tmp/cr-agent-gocache go test ./...`
 2. `scripts/eval.sh`
-3. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
-4. Docker 可用时运行 container E2E。
-5. `git diff --check`
-6. 确认 README 不含个人路径或独立仓库专属说法。
-7. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
+3. `bash -n scripts/llm_smoke.sh`
+4. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
+5. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
+6. `git diff --check`
+7. 确认 README 不含个人路径或独立仓库专属说法。
+8. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。

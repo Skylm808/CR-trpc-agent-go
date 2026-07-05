@@ -237,6 +237,19 @@ func TestCommittedDefaultConfigParses(t *testing.T) {
 	}
 }
 
+func TestCommittedExampleConfigParses(t *testing.T) {
+	opts, err := optionsFromConfig(filepath.Join("..", "..", "examples", "cr-agent", "cr-agent.example.yaml"))
+	if err != nil {
+		t.Fatalf("parse examples/cr-agent/cr-agent.example.yaml: %v", err)
+	}
+	if opts.Mode != cragent.ModeRuleOnly || opts.Runtime != cragent.RuntimeLocalFallback {
+		t.Fatalf("expected example config to stay safe/local, mode=%q runtime=%q", opts.Mode, opts.Runtime)
+	}
+	if opts.ModelProvider != "" || opts.ModelAPIKey != "" || opts.ModelAPIKeyEnv != "" {
+		t.Fatalf("expected example config to avoid real model by default, provider=%q key=%q key_env=%q", opts.ModelProvider, opts.ModelAPIKey, opts.ModelAPIKeyEnv)
+	}
+}
+
 func TestPrivateConfigIsIgnoredByGit(t *testing.T) {
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
