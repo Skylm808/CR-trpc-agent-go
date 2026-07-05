@@ -19,16 +19,18 @@
 | base/head ref 输入 | 已完成 | `--base-ref` / `--head-ref` 进入 metadata、报告、diagnostics、SQLite report 和 telemetry |
 | CLI 少参数入口 | 已完成 | 无输入 flags 时推断 `--repo-path .` |
 | YAML 配置入口 | 已完成 | 默认读取本地 ignored `cr-agent.yaml`；提交 `cr-agent.example.yaml` 和 `examples/cr-agent/cr-agent.example.yaml` |
+| 双语 README | 已完成 | `README.md` 为中文默认入口，`README.en.md` 为英文入口 |
 | 官方 examples 风格 CLI | 已完成 | `-model` 兼容 `--model-name`，`-streaming` 安全接受且不自动联网 |
 | 真实 git repo fixture 测试 | 已完成 | `TestRunUsesCopiedGitHubAgentRepoAsGitFixture` clone 外部 git repo 到临时目录并验证报告/SQLite |
 | LLM smoke 入口 | 已完成 | `scripts/llm_smoke.sh` 使用临时 git repo，支持 env 和 `CR_AGENT_LLM_CONFIG` |
 | 公开 fixture eval | 已完成 | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | 已完成 | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT` |
+| hidden-like 本地验收入口 | 已完成 | `scripts/hidden_matrix_smoke.sh` 用临时外部 root/matrix 模拟 hidden 样本，并保留 report root |
 
 ## 当前剩余缺口
 
-1. 真实 hidden fixture matrix 验收记录还没有提交；仓库只保留外部注入契约。
-2. E2B/Cube 真实 runtime adapter 还未实现；当前只有 unsupported 审计入口。
+1. 真实 hidden fixture matrix 验收记录还没有提交；仓库只保留外部注入契约和 hidden-like smoke。
+2. E2B/Cube 真实 runtime adapter 还未实现；当前只有 unsupported 审计入口。当前依赖的 `trpc-agent-go@v1.10.0` 已提供 `codeexecutor/e2b` 包，但本项目还缺远端 workspace staging、API/env 配置字段和生命周期清理契约，因此不默认联网执行。
 3. 官方 `session/sqlite` / Memory 还未映射；当前 SQLite 是审计 store，不是会话服务。
 4. 官方 metric exporter / OTLP dashboard 还未接；当前是 trace span + SQLite metrics。
 5. runtime 级 env 强隔离仍依赖部署侧 executor 配置。
@@ -36,7 +38,7 @@
 ## 下一步优先级
 
 1. 用真实 hidden fixture matrix 跑一次验收，记录 recall、precision、false positive rate、missing/unexpected 明细。
-2. 评估并实现最小 E2B/Cube runtime adapter，替换当前 unsupported 占位。
+2. 评估并实现最小 E2B/Cube runtime adapter，替换当前 unsupported 占位；前置条件是明确 `E2B_API_KEY` / domain / API URL 配置、远端 workspace staging、artifact 拉取和 sandbox cleanup contract。
 3. 决定是否接官方 Session/Memory；只有需要跨 PR 经验复用时再做。
 4. 进入服务化部署时接 metric exporter / OTLP dashboard。
 
@@ -45,6 +47,7 @@
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+bash scripts/hidden_matrix_smoke.sh
 CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 git diff --check
 ```
@@ -81,6 +84,8 @@ scripts/llm_smoke.sh
 - [x] base/head ref 输入。
 - [x] CLI 少参数当前目录入口。
 - [x] YAML 配置入口和 examples 安全配置样例。
+- [x] 默认中文 README 和英文 README。
+- [x] hidden-like 本地验收入口证明外部 root/matrix/report root contract。
 - [ ] 真实 hidden fixture matrix 验收记录。
 
 ## 相关文档

@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/artifact/inmemory"
+	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
 	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	agentmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -1635,6 +1636,29 @@ func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
 	}
 	if !strings.Contains(string(diagnostics), `"runtime": "e2b"`) || !strings.Contains(string(diagnostics), `"status": "unsupported"`) {
 		t.Fatalf("expected diagnostics to record e2b unsupported runtime: %s", diagnostics)
+	}
+}
+
+// TestE2BExecutorIsExplicitUnsupportedAdapter documents the current adapter
+// boundary: e2b must not silently fall back to local/container execution.
+func TestE2BExecutorIsExplicitUnsupportedAdapter(t *testing.T) {
+	t.Parallel()
+
+	exec, err := newExecutor(Config{Runtime: RuntimeE2B})
+	if err != nil {
+		t.Fatalf("newExecutor returned error: %v", err)
+	}
+	if _, ok := exec.(unsupportedExecutor); !ok {
+		t.Fatalf("expected e2b to use unsupported adapter until real workspace staging exists, got %T", exec)
+	}
+	_, err = exec.ExecuteCode(context.Background(), codeexecutor.CodeExecutionInput{
+		CodeBlocks: []codeexecutor.CodeBlock{{
+			Code:     "echo should-not-run",
+			Language: "bash",
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), `runtime "e2b" is not supported`) {
+		t.Fatalf("expected explicit unsupported e2b execution error, got %v", err)
 	}
 }
 

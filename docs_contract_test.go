@@ -29,3 +29,22 @@ func TestREADMETracksFrameworkFirstCLIContract(t *testing.T) {
 		}
 	}
 }
+
+func TestReadmeHasChineseDefaultAndEnglishVersion(t *testing.T) {
+	zh, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	en, err := os.ReadFile("README.en.md")
+	if err != nil {
+		t.Fatalf("read README.en.md: %v", err)
+	}
+	if !strings.Contains(string(zh), "English version: [README.en.md](README.en.md)") ||
+		!strings.Contains(string(zh), "## 快速开始") {
+		t.Fatalf("README.md should be the default Chinese entrypoint")
+	}
+	if !strings.Contains(string(en), "Chinese version: [README.md](README.md)") ||
+		!strings.Contains(string(en), "## Quick Start") {
+		t.Fatalf("README.en.md should keep the English entrypoint")
+	}
+}

@@ -10,8 +10,6 @@ import (
 
 // TestEvalScriptReportsFixtureMetrics 固定评测脚本输出。
 func TestEvalScriptReportsFixtureMetrics(t *testing.T) {
-	t.Parallel()
-
 	root := repoRootForEval(t)
 	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
 	cmd.Env = append(os.Environ(),
@@ -32,8 +30,6 @@ func TestEvalScriptReportsFixtureMetrics(t *testing.T) {
 
 // TestEvalScriptAcceptsExternalExpectedMatrix 固定 hidden matrix 输入契约。
 func TestEvalScriptAcceptsExternalExpectedMatrix(t *testing.T) {
-	t.Parallel()
-
 	root := repoRootForEval(t)
 	expected := filepath.Join(t.TempDir(), "expected.tsv")
 	if err := os.WriteFile(expected, []byte(strings.Join([]string{
@@ -73,8 +69,6 @@ func TestEvalScriptAcceptsExternalExpectedMatrix(t *testing.T) {
 
 // TestEvalScriptFailsWhenRecallThresholdIsMissed 固定召回率门禁。
 func TestEvalScriptFailsWhenRecallThresholdIsMissed(t *testing.T) {
-	t.Parallel()
-
 	root := repoRootForEval(t)
 	expected := filepath.Join(t.TempDir(), "expected.tsv")
 	if err := os.WriteFile(expected, []byte("secret.diff\tmissing-rule\tcritical\tfinding\ttrue\n"), 0o644); err != nil {
@@ -103,8 +97,6 @@ func TestEvalScriptFailsWhenRecallThresholdIsMissed(t *testing.T) {
 
 // TestEvalScriptFailsWhenFalsePositiveThresholdIsMissed 固定误报率门禁。
 func TestEvalScriptFailsWhenFalsePositiveThresholdIsMissed(t *testing.T) {
-	t.Parallel()
-
 	root := repoRootForEval(t)
 	expected := filepath.Join(t.TempDir(), "expected.tsv")
 	if err := os.WriteFile(expected, []byte("secret.diff\tmissing-test-hint\tlow\twarning\tfalse\n"), 0o644); err != nil {
@@ -133,8 +125,6 @@ func TestEvalScriptFailsWhenFalsePositiveThresholdIsMissed(t *testing.T) {
 
 // TestEvalScriptKeepsReportRoot 固定失败回放报告目录。
 func TestEvalScriptKeepsReportRoot(t *testing.T) {
-	t.Parallel()
-
 	root := repoRootForEval(t)
 	reportRoot := t.TempDir()
 	cmd := exec.Command("bash", filepath.Join(root, "scripts", "eval.sh"))
@@ -150,6 +140,42 @@ func TestEvalScriptKeepsReportRoot(t *testing.T) {
 	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
 		if _, err := os.Stat(filepath.Join(reportRoot, "secret.diff", name)); err != nil {
 			t.Fatalf("expected retained report %s: %v\noutput:\n%s", name, err, out)
+		}
+	}
+}
+
+// TestHiddenMatrixSmokeUsesExternalRootAndMatrix proves the hidden fixture entrypoint
+// without committing hidden samples.
+func TestHiddenMatrixSmokeUsesExternalRootAndMatrix(t *testing.T) {
+	root := repoRootForEval(t)
+	reportRoot := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "hidden_matrix_smoke.sh"))
+	cmd.Env = append(os.Environ(),
+		"CR_AGENT_HIDDEN_SMOKE_REPORT_ROOT="+reportRoot,
+		"GOCACHE="+filepath.Join(t.TempDir(), "gocache"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("hidden matrix smoke failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	for _, want := range []string{
+		"fixtures=2",
+		"recall=1.000",
+		"precision=1.000",
+		"false_positive_rate=0.000",
+		"matrix_source=external",
+		"[PASS] hidden-like matrix smoke",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected hidden smoke output to contain %q, got %s", want, output)
+		}
+	}
+	for _, fixture := range []string{"safe.diff", "secret.diff"} {
+		for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+			if _, err := os.Stat(filepath.Join(reportRoot, fixture, name)); err != nil {
+				t.Fatalf("expected hidden-like report artifact %s/%s: %v\noutput:\n%s", fixture, name, err, out)
+			}
 		}
 	}
 }

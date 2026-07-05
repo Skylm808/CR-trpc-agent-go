@@ -1,62 +1,61 @@
 # CR-trpc-agent-go
 
-Go code review agent example built on top of official
-[trpc-agent-go](https://github.com/trpc-group/trpc-agent-go) components.
+English version: [README.en.md](README.en.md)
 
-It reads a diff, fixture, file list, or git working tree, runs the code-review
-Skill through the agent pipeline, optionally runs sandboxed Go checks, then
-writes JSON/Markdown reports plus a SQLite audit trail.
+这是一个基于官方 [trpc-agent-go](https://github.com/trpc-group/trpc-agent-go)
+组件构建的 Go 代码评审 Agent 示例。它读取 diff、fixture、文件列表或 git
+工作区变更，执行 code-review Skill，可选运行沙箱 Go 检查，然后生成
+JSON/Markdown 报告和 SQLite 审计记录。
 
-## What It Is
+## 这是什么
 
-This repository is an application-style example, not a framework fork.
+这个仓库是应用层示例，不是框架 fork。
 
-It keeps the Issue #2004 path explicit:
+Issue #2004 主链路保持显式：
 
-- `trpc-agent-go/tool/skill` loads and runs `skills/code-review`.
-- `tool.PermissionPolicy` gates commands before execution.
-- `tool/workspaceexec` and `tool/codeexec` run Go checks.
-- `codeexecutor/container` is the default sandbox runtime.
-- `artifact` stores report artifacts.
-- telemetry records review summary attributes.
-- SQLite stores task, decisions, sandbox runs, findings, artifacts, metrics, and reports.
-- optional LLM review uses the official `model.Model` path; DeepSeek/OpenAI-compatible providers use `trpc-agent-go/model/openai`.
+- `trpc-agent-go/tool/skill` 加载并执行 `skills/code-review`。
+- `tool.PermissionPolicy` 在命令执行前做治理。
+- `tool/workspaceexec` 和 `tool/codeexec` 执行 Go 检查。
+- `codeexecutor/container` 是默认沙箱 runtime。
+- `artifact` 保存报告产物。
+- telemetry 记录评审摘要属性。
+- SQLite 保存 task、decision、sandbox run、finding、artifact、metrics 和 report。
+- 可选 LLM review 走官方 `model.Model`；DeepSeek/OpenAI-compatible 使用 `trpc-agent-go/model/openai`。
 
-Longer architecture and acceptance details live in [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md).
+更完整的架构和验收矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。
 
-## Quick Start
+## 快速开始
 
-Run the full unit/integration suite:
+运行完整测试：
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 ```
 
-Run the local acceptance workflow:
+运行本地验收：
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
 
-Run a review in this repository:
+在当前仓库跑一次 review：
 
 ```bash
 go run ./cmd/review-agent --runtime local-fallback --output-dir /tmp/review-out
 ```
 
-When no input flag is provided, the CLI treats the current directory as
-`--repo-path .`. The default built-in mode is `rule-only`; it does not require an
-API key.
+没有传输入参数时，CLI 会把当前目录推断为 `--repo-path .`。默认 mode 是
+`rule-only`，不需要 API key。
 
-## Config YAML
+## YAML 配置
 
-Local config is optional. Copy the safe example:
+本地配置是可选的。先复制安全样例：
 
 ```bash
 cp cr-agent.example.yaml cr-agent.yaml
 ```
 
-`cr-agent.yaml` is ignored by git. A minimal local config:
+`cr-agent.yaml` 已被 git 忽略。最小配置：
 
 ```yaml
 mode: rule-only
@@ -66,7 +65,7 @@ skills_root: skills
 fixtures_root: testdata/fixtures
 ```
 
-Config priority is:
+配置优先级：
 
 ```text
 CLI flags > YAML > env/default
@@ -74,10 +73,10 @@ CLI flags > YAML > env/default
 
 ## DeepSeek / OpenAI-Compatible
 
-`fake-model` means "enter the model review stage." It does not always mean the
-provider is fake. If `model.provider=deepseek`, the review calls DeepSeek.
+`fake-model` 表示进入模型评审阶段，不一定表示 provider 是假的。如果
+`model.provider=deepseek`，评审会调用 DeepSeek。
 
-Recommended DeepSeek config:
+推荐 DeepSeek 配置：
 
 ```yaml
 mode: fake-model
@@ -87,14 +86,14 @@ model:
   api_key_env: DEEPSEEK_API_KEY
 ```
 
-Then run:
+运行：
 
 ```bash
 export DEEPSEEK_API_KEY="your-key"
 go run ./cmd/review-agent --config ./cr-agent.yaml
 ```
 
-For workstation-only smoke testing, ignored YAML also supports a direct key:
+本机 smoke 也支持在 ignored YAML 里直接写 key：
 
 ```yaml
 mode: fake-model
@@ -104,10 +103,9 @@ model:
   api_key: sk-...
 ```
 
-Do not commit direct keys. The smoke script checks reports and diagnostics for
-key leakage.
+不要提交明文 key。smoke 脚本会检查 report 和 diagnostics 是否泄漏 key。
 
-OpenAI-compatible gateways can use:
+OpenAI-compatible 网关可以使用：
 
 ```bash
 export OPENAI_API_KEY="your-key"
@@ -116,54 +114,55 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 ## Modes
 
-| Mode | Behavior |
-|------|----------|
-| `rule-only` | Run deterministic Skill/rule checks. No model call. |
-| `dry-run` | Load the Skill and record skipped execution. |
-| `sandbox` | Run Skill checks plus Go checks through workspace execution. |
-| `fake-model` | Run Skill checks and then the model review stage. Uses fake provider unless a real provider is configured. |
+| Mode | 行为 |
+|------|------|
+| `rule-only` | 执行 deterministic Skill/rule 检查，不调用模型。 |
+| `dry-run` | 加载 Skill 并记录跳过执行。 |
+| `sandbox` | 执行 Skill 检查，并通过 workspace execution 运行 Go 检查。 |
+| `fake-model` | 执行 Skill 检查后进入模型评审阶段；未配置真实 provider 时使用 fake provider。 |
 
-## Outputs
+## 输出
 
-Each run writes:
+每次运行会写出：
 
 - `review_report.json`
 - `review_report.md`
 - `review_diagnostics.json`
 
-With `--sqlite /path/to/review.db`, the audit store can replay:
+使用 `--sqlite /path/to/review.db` 时，审计库可回放：
 
-- task status
+- task 状态
 - permission/filter decisions
 - sandbox runs
-- findings and warnings
+- findings 和 warnings
 - artifacts
 - metrics
 - final reports
 
-Sample committed outputs:
+已提交的示例输出：
 
 - [examples/review_report.json](examples/review_report.json)
 - [examples/review_report.md](examples/review_report.md)
 - [examples/review_diagnostics.json](examples/review_diagnostics.json)
 
-Common CLI flags:
+常用 CLI flags：
 
 ```text
---fixture        run a fixture from --fixtures-root
---runtime        container, local-fallback, or e2b
---staticcheck    include staticcheck ./... in sandbox mode
+--fixture        从 --fixtures-root 运行 fixture
+--runtime        container、local-fallback 或 e2b
+--staticcheck    sandbox mode 中追加 staticcheck ./...
 ```
 
-## Tests
+## 测试
 
-Public fixture evaluation:
+公开 fixture 评测和 hidden-like 外部 matrix smoke：
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+bash scripts/hidden_matrix_smoke.sh
 ```
 
-Docker container sandbox test:
+Docker container 沙箱测试：
 
 ```bash
 docker ps -a
@@ -173,8 +172,7 @@ go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -coun
 docker ps -a
 ```
 
-Live LLM smoke is opt-in and uses a temporary git repo. It verifies the real
-provider path and leakage invariants, not model accuracy:
+真实 LLM smoke 是 opt-in，使用临时 git repo，验证 provider 通路和泄漏约束，不评估模型准确率：
 
 ```bash
 scripts/llm_smoke.sh
@@ -184,23 +182,23 @@ CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
 scripts/llm_smoke.sh
 ```
 
-Complete LLM verification is layered:
+LLM 验证分三层：
 
-1. no-network unit tests for prompt, decoding, redaction, and failure handling;
-2. deterministic fake-provider integration tests for report/SQLite behavior;
-3. opt-in live smoke for DeepSeek/OpenAI-compatible connectivity.
+1. 无网络单测：prompt、decode、redaction、失败降级；
+2. deterministic fake-provider 集成测试：report/SQLite 行为；
+3. opt-in live smoke：DeepSeek/OpenAI-compatible 连通性。
 
-## Examples Migration
+## Examples 迁移
 
-The upstream-friendly example shape is in [examples/cr-agent](examples/cr-agent).
-Migration notes are in [docs/upstream-example-migration.md](docs/upstream-example-migration.md).
+轻量迁移形态见 [examples/cr-agent](examples/cr-agent)。
+迁移说明见 [docs/upstream-example-migration.md](docs/upstream-example-migration.md)。
 
-## What Is Still Missing For Issue #2004
+## Issue #2004 仍缺什么
 
-- real E2B/Cube runtime adapter;
-- real hidden fixture matrix run record;
-- official Session/Memory mapping for cross-review history;
-- metric exporter / OTLP dashboard integration;
-- deployment-level runtime environment isolation.
+- 真实 E2B/Cube runtime adapter；
+- 真实 hidden fixture matrix 验收记录；
+- 官方 Session/Memory 映射，用于跨评审历史；
+- metric exporter / OTLP dashboard；
+- 部署层 runtime 环境隔离。
 
-The authoritative progress matrix is [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md).
+权威进度矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。

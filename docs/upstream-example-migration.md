@@ -24,6 +24,7 @@ examples/skills_code_review_agent/
 
 | 当前路径 | 迁移用途 |
 |----------|----------|
+| `README.md`、`README.en.md` | 默认中文入口和英文入口 |
 | `examples/cr-agent/README.md` | 官方 example 的入口说明 |
 | `examples/cr-agent/cr-agent.example.yaml` | 安全默认配置，不含密钥 |
 | `examples/cr-agent/sample.diff` | 最小可运行输入 |
@@ -34,7 +35,7 @@ examples/skills_code_review_agent/
 | `internal/storage/`、`internal/storage/sqlite/` | 审计 store 和 SQLite 默认实现 |
 | `skills/code-review/` | CR Skill、规则文档和脚本 |
 | `testdata/fixtures/` | 公开 diff 样本 |
-| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/llm_smoke.sh` | repo-neutral 验收、公开样本评测和 opt-in LLM smoke |
+| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh` | repo-neutral 验收、公开样本评测、hidden-like matrix smoke 和 opt-in LLM smoke |
 | `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/eval-matrix.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
 
 ## 不应迁移的内容
@@ -69,16 +70,17 @@ github.com/Skylm808/CR-trpc-agent-go/...
 |----------|----------|
 | Runner / Event | 已有官方 `model.Model` adapter 和 `runner.Run` / `event.Event` adapter；迁移 examples 时保留这个主入口 |
 | Session / Memory | 需要跨 PR 历史、长期经验复用、会话恢复时接入 |
-| E2B / Cube | 当前只有 unsupported 审计入口；需要远端隔离沙箱或云端 runner 时替换为真实 adapter |
+| E2B / Cube | 当前只有 unsupported 审计入口；官方依赖里已有 `codeexecutor/e2b`，但示例迁移前仍需要补 workspace staging、API/env 配置、artifact 拉取和 sandbox cleanup contract |
 | telemetry exporter | 进入服务化部署后，把官方 trace / metric 接到 OTLP dashboard |
 
 ## 迁移前检查清单
 
 1. `GOCACHE=/private/tmp/cr-agent-gocache go test ./...`
 2. `scripts/eval.sh`
-3. `bash -n scripts/llm_smoke.sh`
-4. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
-5. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
-6. `git diff --check`
-7. 确认 README 不含个人路径或独立仓库专属说法。
-8. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
+3. `bash scripts/hidden_matrix_smoke.sh`
+4. `bash -n scripts/llm_smoke.sh`
+5. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
+6. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
+7. `git diff --check`
+8. 确认 README 不含个人路径或独立仓库专属说法。
+9. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
