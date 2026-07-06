@@ -1,7 +1,29 @@
 # Review Rules
 
-1. Flag hardcoded secrets or tokens as critical.
-2. Flag direct panic paths in newly added non-test code as high severity.
-3. Flag new functions without a nearby test hint as low confidence warnings.
-4. Flag TODO and FIXME markers in new code as medium severity.
+This catalog defines deterministic rules emitted by `scripts/check.sh`. The model review stage may add semantic findings, but it must not duplicate these rule IDs for the same file/line/category.
 
+| rule_id | Category | Severity | Status | Trigger | Guardrail / Notes |
+|---------|----------|----------|--------|---------|-------------------|
+| `secret-leak` | `security` | `critical` | `finding` | Added code contains API keys, bearer tokens, GitHub tokens, JWT-like tokens, private keys, DB URLs with credentials, or long assigned secret-like values. | Placeholder values such as `dummy`, `placeholder`, `changeme`, and short test values should not be critical findings. Evidence must be redacted. |
+| `panic-direct` | `error_handling` | `high` | `finding` | Added line calls `panic(`. | Intended for newly introduced non-test failure paths; future refinements may exclude generated code or explicit test panic assertions. |
+| `goroutine-leak` | `concurrency` | `high` | `finding` | Added goroutine has no visible lifecycle signal in the hunk. | Suppressed when the hunk includes `WaitGroup`, `ctx.Done`, `errgroup`, `done`, or `sync.`. |
+| `context-leak` | `lifecycle` | `high` | `finding` | Added `context.WithCancel`, `WithTimeout`, or `WithDeadline` without visible cancel handling. | Suppressed when the hunk includes `defer cancel()`, `ctx.Done`, or `cancel()`. |
+| `resource-leak` | `resource` | `high` | `finding` | Added `os.Open`, `os.OpenFile`, or `os.Create` without visible close handling. | Suppressed when the hunk includes `defer` or `Close()`. |
+| `db-lifecycle` | `database` | `high` | `finding` | Added `sql.Open`, `.BeginTx`, or `.Begin(` without visible cleanup. | Suppressed when the hunk includes `Rollback()` or `Close()`. |
+| `todo-marker` | `maintainability` | `medium` | `finding` | Added `TODO(` or `FIXME`. | Recommendation should ask for tracked issue or removal before merge. |
+| `missing-test-hint` | `testing` | `low` | `warning` | Added function in selected Go files lacks an error return and has no nearby test signal. | Low-confidence advisory only; must stay in warnings, not high-confidence findings. |
+
+## Fixture Coverage
+
+Public fixtures live in `testdata/fixtures/` and are exact-match evaluated by `scripts/eval.sh`.
+
+Holdout/adversarial fixtures live in `testdata/holdout/` and are evaluated by `scripts/holdout_eval.sh`. They are committed local acceptance cases, not private hidden data.
+
+External hidden or reviewer-provided fixtures can still be injected with:
+
+```bash
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/fixtures \
+CR_AGENT_EVAL_FIXTURES="case-001.diff case-002.diff" \
+CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv \
+scripts/eval.sh
+```

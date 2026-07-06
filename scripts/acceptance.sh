@@ -25,6 +25,7 @@ cd "$ROOT"
 
 run_step "go test ./..." env GOCACHE="$GOCACHE" go test ./...
 run_step "scripts/eval.sh" env GOCACHE="$GOCACHE" scripts/eval.sh
+run_step "scripts/holdout_eval.sh" env GOCACHE="$GOCACHE" scripts/holdout_eval.sh
 run_step "git diff --check" git diff --check
 
 case "$DOCKER_MODE" in

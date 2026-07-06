@@ -10,6 +10,7 @@ CONFIG="${CR_AGENT_EVAL_CONFIG:-/dev/null}"
 FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff realistic-service-risk.diff sandbox-fail.diff sandbox-timeout.diff}"
 MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
+MATRIX_SOURCE_OVERRIDE="${CR_AGENT_EVAL_MATRIX_SOURCE:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
 MIN_RECALL="${CR_AGENT_EVAL_MIN_RECALL:-0.800}"
 MAX_FALSE_POSITIVE_RATE="${CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE:-0.150}"
@@ -62,6 +63,9 @@ realistic-service-risk.diff	db-lifecycle	high	finding	true
 realistic-service-risk.diff	todo-marker	medium	finding	true
 realistic-service-risk.diff	missing-test-hint	low	warning	true
 TSV
+fi
+if [[ -n "$MATRIX_SOURCE_OVERRIDE" ]]; then
+  MATRIX_SOURCE="$MATRIX_SOURCE_OVERRIDE"
 fi
 
 for fixture in $FIXTURES; do

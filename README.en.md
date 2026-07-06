@@ -160,6 +160,7 @@ Public fixture evaluation:
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
@@ -217,10 +218,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 ## What Is Still Missing For Issue #2004
 
-- real E2B/Cube runtime adapter;
-- real hidden fixture matrix run record;
-- official Session/Memory mapping for cross-review history;
-- metric exporter / OTLP dashboard integration;
-- deployment-level runtime environment isolation.
+- more holdout/adversarial fixtures, especially semantic risks a real model can add;
+- optional external hidden evaluation when reviewer/CI provides `CR_AGENT_EVAL_FIXTURES_ROOT` and `CR_AGENT_EVAL_MATRIX`.
+
+Non-blocking extensions: real E2B/Cube adapter, cross-PR Session/Memory, metric exporter / OTLP dashboard integration, and extra production runtime hardening.
 
 The authoritative progress matrix is [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md).

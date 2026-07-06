@@ -74,6 +74,31 @@ func TestEvalScriptAcceptsHiddenMatrixPath(t *testing.T) {
 	}
 }
 
+func TestHoldoutEvalScriptRunsSelfContainedMatrix(t *testing.T) {
+	root := repoRoot(t)
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "holdout_eval.sh"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"GOCACHE="+filepath.Join(t.TempDir(), "gocache"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("holdout_eval.sh failed: %v\n%s", err, out)
+	}
+	text := string(out)
+	for _, want := range []string{
+		"fixtures=5",
+		"matrix_source=holdout",
+		"recall=1.000",
+		"precision=1.000",
+		"false_positive_rate=0.000",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("holdout eval output missing %q: %s", want, text)
+		}
+	}
+}
+
 func TestEvalScriptFailsClearlyForMissingHiddenMatrixPath(t *testing.T) {
 	root := repoRoot(t)
 	missing := filepath.Join(t.TempDir(), "missing-hidden.tsv")

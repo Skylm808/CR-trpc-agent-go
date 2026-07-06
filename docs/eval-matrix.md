@@ -1,6 +1,6 @@
 # Eval Matrix
 
-本文档说明 `scripts/eval.sh` 的公开样本评测方式，以及接入 hidden sample 时的输入契约。
+本文档说明 `scripts/eval.sh` 的公开样本评测方式、`scripts/holdout_eval.sh` 的自包含 holdout/adversarial 验收，以及接入外部 hidden sample 时的输入契约。
 
 ## 当前公开评测
 
@@ -15,6 +15,16 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
+
+## Holdout / Adversarial 验收
+
+仓库提交了 `testdata/holdout/` 作为 self-contained holdout matrix。它不是私有 hidden 数据，而是 public fixture 之外的本地验收集，用来覆盖 false-positive guardrail、组合生命周期风险和无 API key 的 fake-model 语义增量路径。
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
+```
+
+该脚本固定使用 `matrix_source=holdout`，默认以 `fake-model` 模式运行，因此 `model-semantic.diff` 可以证明模型合并链路产生增量 finding，而不依赖 DeepSeek/OpenAI API key。
 
 可选环境变量：
 
@@ -46,7 +56,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 - `duration_ms`
 - `matrix_source`
 
-## Hidden Matrix 格式
+## External Hidden Matrix 格式
 
 隐藏样本使用 TSV，每行四列或五列。四列旧格式默认 `required=true`：
 
@@ -139,4 +149,4 @@ CR_AGENT_ACCEPTANCE_DOCKER=always scripts/acceptance.sh
 
 ## 建议
 
-hidden sample 不建议提交到公开仓库。CI 可以通过私有 artifact 或 secret volume 提供 fixture root 和 expected matrix，并设置 `CR_AGENT_EVAL_REPORT_ROOT` 保留每个样本的 `review_report.json`、`review_report.md` 和 `review_diagnostics.json` 用于回放。
+`testdata/holdout/` 已经提供本仓库自包含的非公开矩阵替代物。真正私有 hidden sample 不建议提交到公开仓库；如 reviewer/CI 另有私有样本，可以通过 artifact 或 secret volume 提供 fixture root 和 expected matrix，并设置 `CR_AGENT_EVAL_REPORT_ROOT` 保留每个样本的 `review_report.json`、`review_report.md` 和 `review_diagnostics.json` 用于回放。

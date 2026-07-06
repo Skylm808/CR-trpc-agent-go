@@ -28,7 +28,7 @@ examples/cr-agent/
 | `internal/storage/`、`internal/storage/sqlite/` | 审计 store 和 SQLite 默认实现 |
 | `skills/code-review/` | CR Skill、规则文档和脚本 |
 | `testdata/fixtures/` | 公开 diff 样本 |
-| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh`、`scripts/repo_llm_smoke.sh`、`scripts/upstream_example_smoke.sh` | repo-neutral 验收、公开样本评测、hidden-like matrix smoke、opt-in LLM smoke、任意 repo LLM smoke 和 examples 迁移演练 |
+| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/holdout_eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh`、`scripts/repo_llm_smoke.sh`、`scripts/upstream_example_smoke.sh` | repo-neutral 验收、公开样本评测、holdout/adversarial 评测、hidden-like matrix smoke、opt-in LLM smoke、任意 repo LLM smoke 和 examples 迁移演练 |
 | `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/eval-matrix.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
 
 ## 不应迁移的内容
@@ -107,11 +107,12 @@ Issue 最终态里的真实远端沙箱。最小实现前置条件：
 
 1. `GOCACHE=/private/tmp/cr-agent-gocache go test ./...`
 2. `scripts/eval.sh`
-3. `bash scripts/hidden_matrix_smoke.sh`
-4. `GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh`
-5. `bash -n scripts/llm_smoke.sh`
-6. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
-7. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
-8. `git diff --check`
-9. 确认 README 不含个人路径或独立仓库专属说法。
-10. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
+3. `scripts/holdout_eval.sh`
+4. `bash scripts/hidden_matrix_smoke.sh`
+5. `GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh`
+6. `bash -n scripts/llm_smoke.sh`
+7. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
+8. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
+9. `git diff --check`
+10. 确认 README 不含个人路径或独立仓库专属说法。
+11. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。

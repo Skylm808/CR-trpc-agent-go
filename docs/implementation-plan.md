@@ -24,29 +24,28 @@
 | 真实 git repo fixture 测试 | 已完成 | `TestRunUsesGeneratedRepoFixtureWithBaseAndHeadRefs` 动态创建临时 git repo，验证 base/head diff、报告/diagnostics/SQLite |
 | LLM smoke 入口 | 已完成 | `scripts/llm_smoke.sh` 使用临时 git repo，支持 env 和 `CR_AGENT_LLM_CONFIG` |
 | 公开 fixture eval | 已完成 | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
+| holdout/adversarial eval | 已完成 | `scripts/holdout_eval.sh` 覆盖自包含 holdout matrix、false-positive guardrail 和 fake-model 语义增量路径 |
 | hidden matrix 注入契约 | 已完成 | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT` |
 | hidden-like 本地验收入口 | 已完成 | `scripts/hidden_matrix_smoke.sh` 用临时外部 root/matrix 模拟 hidden 样本，并保留 report root |
 
-## 当前剩余缺口
+## 当前必需缺口
 
-1. 真实 hidden fixture matrix 验收记录还没有提交；仓库只保留外部注入契约和 hidden-like smoke。
-2. E2B/Cube 真实 runtime adapter 还未实现；当前只有 unsupported 审计入口。当前依赖的 `trpc-agent-go@v1.10.0` 已提供 `codeexecutor/e2b` 包，但本项目还缺远端 workspace staging、API/env 配置字段和生命周期清理契约，因此不默认联网执行。
-3. 官方 `session/sqlite` / Memory 还未映射；当前 SQLite 是审计 store，不是会话服务。
-4. 官方 metric exporter / OTLP dashboard 还未接；当前是 trace span + SQLite metrics。
-5. runtime 级 env 强隔离仍依赖部署侧 executor 配置。
+1. 持续扩充 holdout/adversarial 样本，尤其是能稳定证明真实模型语义增量价值的 diff。
+2. 继续收紧 Skill contract 和脚本拆分边界，保持 `scripts/check.sh` 作为稳定入口。
 
-## 下一步优先级
+## 非阻塞扩展项
 
-1. 用真实 hidden fixture matrix 跑一次验收，记录 recall、precision、false positive rate、missing/unexpected 明细。
-2. 评估并实现最小 E2B/Cube runtime adapter，替换当前 unsupported 占位；前置条件是明确 `E2B_API_KEY` / domain / API URL 配置、远端 workspace staging、artifact 拉取和 sandbox cleanup contract。
-3. 决定是否接官方 Session/Memory；只有需要跨 PR 经验复用时再做。
-4. 进入服务化部署时接 metric exporter / OTLP dashboard。
+- E2B/Cube 真实 runtime adapter：Issue 主线可由默认 `codeexecutor/container` 满足；当前 `--runtime e2b` 是显式 unsupported 审计入口，不静默 fallback。
+- 官方 `session/sqlite` / Memory：当前 CR Agent 是一次性 diff review workflow，SQLite 审计 store 已满足 task/finding/sandbox/report 回放；跨 PR 经验复用时再接。
+- metric exporter / OTLP dashboard：当前 report / diagnostics / SQLite metrics / trace span 已记录验收所需监控审计字段，服务化部署时再接 exporter。
+- 部署层 runtime 加固：当前原型记录 env whitelist、timeout、output limit、artifact cap 和脱敏；生产环境可按平台继续加固。
 
 ## 验收命令
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 git diff --check
@@ -73,6 +72,7 @@ scripts/llm_smoke.sh
 ## Definition of Done
 
 - [x] 公开 fixture 全部可运行并按 rule_id/severity/status 断言。
+- [x] holdout/adversarial matrix 自包含运行，并覆盖 fake-model 增量 finding。
 - [x] findings、warnings、human review items 结构化、去重、脱敏。
 - [x] SQLite 记录 task / decisions / sandbox runs / artifacts / metrics / reports。
 - [x] 沙箱失败、超时不崩溃 review，且写入 DB。
@@ -86,15 +86,15 @@ scripts/llm_smoke.sh
 - [x] YAML 配置入口和 examples 安全配置样例。
 - [x] 默认中文 README 和英文 README。
 - [x] hidden-like 本地验收入口证明外部 root/matrix/report root contract。
-- [ ] 真实 hidden fixture matrix 验收记录。
+- [x] 外部 hidden matrix 注入契约；如 reviewer/CI 提供私有样本，可额外运行但不是本仓库 blocker。
 
 ## 本轮审查记录
 
 - 文档集合保持精简：`docs/` 下 10 个文档均被 `docs/README.md` 索引并服务于架构、验收、数据契约、安全、评测或迁移边界；本轮未发现可直接删除的孤立 md。
 - `examples/cr-agent` 迁移面仍保持轻量，只包含 README、安全 YAML 和 sample diff；`skills_root: skills`、`fixtures_root: testdata/fixtures` 适合迁入独立 example module 后继续使用。
 - E2B/Cube 不在本轮实现真实 adapter；当前代码和文档应继续明确它只是 unsupported 审计入口，避免半成品联网执行绕过 workspace staging、artifact 拉取和 cleanup contract。
-- 真实 LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮目标 diff 的模型阶段返回 0 条增量 finding，不能把它写成模型语义检出能力证明。
-- 真实 hidden matrix 仍 blocked：需要 reviewer/CI 提供 `CR_AGENT_EVAL_FIXTURES_ROOT`、`CR_AGENT_EVAL_FIXTURES` 和 `CR_AGENT_EVAL_MATRIX`。
+- 真实 LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮目标 diff 的模型阶段返回 0 条增量 finding，不能把它写成真实模型语义检出能力证明。
+- `testdata/holdout/model-semantic.diff` 使用 deterministic fake model 证明模型合并链路可产生增量 finding；真实模型语义价值仍需后续样本持续校准。
 
 ## 相关文档
 

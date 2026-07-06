@@ -245,6 +245,7 @@ type findingData struct {
 	Severity string `json:"severity"`
 	Status   string `json:"status"`
 	Evidence string `json:"evidence"`
+	Source   string `json:"source"`
 }
 
 func assertExpectedFindings(t *testing.T, got []findingData, want []findingExpectation) {
@@ -279,6 +280,42 @@ func assertSecretsRedacted(t *testing.T, result reportData, secrets []string) {
 	}
 }
 
+func TestFakeModelHoldoutFixtureProducesIncrementalFinding(t *testing.T) {
+	out := t.TempDir()
+	if err := Run(Options{
+		DiffFile:   filepath.Join("..", "..", "testdata", "holdout", "model-semantic.diff"),
+		OutputDir:  out,
+		Mode:       cragent.ModeFakeModel,
+		Runtime:    cragent.RuntimeLocalFallback,
+		SkillsRoot: filepath.Join("..", "..", "skills"),
+	}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "review_report.json"))
+	if err != nil {
+		t.Fatalf("read report json: %v", err)
+	}
+	var result reportData
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal report json: %v", err)
+	}
+	if result.Metrics.ModelCallCount != 1 {
+		t.Fatalf("expected one model call, got %+v", result.Metrics)
+	}
+	if !hasReportFinding(result.Findings, "fake-model-semantic-risk", "fake_model") {
+		t.Fatalf("expected incremental fake model finding, got %+v", result.Findings)
+	}
+}
+
+func hasReportFinding(findings []findingData, ruleID, source string) bool {
+	for _, finding := range findings {
+		if finding.RuleID == ruleID && finding.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
 func assertReportAcceptanceContract(t *testing.T, jsonText string, result reportData) {
 	t.Helper()
 	if result.TaskID == "" || result.Summary == "" {
@@ -306,5 +343,6 @@ func assertReportAcceptanceContract(t *testing.T, jsonText string, result report
 
 type metricsData struct {
 	FindingCount   int            `json:"finding_count"`
+	ModelCallCount int            `json:"model_call_count"`
 	SeverityCounts map[string]int `json:"severity_counts"`
 }

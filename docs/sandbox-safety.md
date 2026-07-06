@@ -58,10 +58,10 @@
 | artifact 过大 | 写本地和 artifact service 前先检查大小 | `TestAgentRunRejectsOversizedArtifacts` |
 | model prompt/output 泄漏 | prompt diff summary 和 provider output evidence 均经 Agent 脱敏；外部 provider API key 推荐来自 env，本地 ignored `cr-agent.yaml` 可用 `model.api_key` 做 workstation smoke，报告/diagnostics/SQLite 不保存 key 或 key env 名 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestRunDeepSeekProviderMissingAPIKeyDoesNotAbort` |
 
-## 未完成边界
+## 非阻塞扩展边界
 
-- E2B / Cube 真实 runtime 尚未接入；当前 `--runtime e2b` 只生成显式 unsupported 审计记录，不静默 fallback。
-- Claude / Gemini 厂商 SDK provider 尚未接入；当前 fake provider、opt-in HTTP provider 和官方 `model/openai` OpenAI-compatible / DeepSeek provider 验证边界、脱敏、分流、审计和失败降级。
-- 官方 metric exporter / OTLP dashboard 尚未部署；当前使用官方 telemetry trace span 和 SQLite metrics。
-- 当前 env whitelist 是审计边界，容器级强环境隔离仍依赖部署侧 executor 配置。
-- 复杂业务逻辑错误不靠 deterministic 规则保证，真实检出率取决于外部模型端点或后续领域规则补齐。
+- E2B / Cube 真实 runtime 是远端沙箱扩展；Issue 主线允许 `codeexecutor/container`，当前默认 container 路径已经覆盖沙箱执行、timeout、output limit、permission gate 和失败记录。
+- Claude / Gemini 厂商 SDK provider 属于可选模型扩展；当前 fake provider、opt-in HTTP provider 和官方 `model/openai` OpenAI-compatible / DeepSeek provider 已验证边界、脱敏、分流、审计和失败降级。
+- 官方 metric exporter / OTLP dashboard 属于服务化部署扩展；当前使用官方 telemetry trace span、report diagnostics 和 SQLite metrics 覆盖验收要求的监控审计字段。
+- 当前 env whitelist 是 Agent 审计边界，容器级环境隔离由 `codeexecutor/container` 和部署侧 executor 配置共同保证；生产部署可继续收紧网络、secret 注入和镜像策略。
+- 复杂业务逻辑错误不完全依赖 deterministic 规则；`testdata/holdout/` 和 fake-model 语义样本用于证明模型增量合并路径，真实检出率仍应通过更多 holdout/adversarial fixture 或真实模型 smoke 持续校准。

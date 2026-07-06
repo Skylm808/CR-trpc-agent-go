@@ -12,6 +12,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 
 - `go test ./...`
 - `scripts/eval.sh`
+- `scripts/holdout_eval.sh`
 - `git diff --check`
 - Docker daemon 可用时自动执行 container E2E
 
@@ -37,7 +38,7 @@ scripts/acceptance.sh
 
 推荐宿主 CI 拆成两个入口：
 
-- 基础 acceptance：运行 `scripts/acceptance.sh`，显式 `CR_AGENT_ACCEPTANCE_DOCKER=skip`，覆盖公开 fixture、报告字段、SQLite 回放、eval 统计和格式检查。
+- 基础 acceptance：运行 `scripts/acceptance.sh`，显式 `CR_AGENT_ACCEPTANCE_DOCKER=skip`，覆盖公开 fixture、holdout/adversarial matrix、报告字段、SQLite 回放、eval 统计和格式检查。
 - container E2E：在有 Docker daemon 的 runner 上设置 `CR_AGENT_ACCEPTANCE_DOCKER=always`，单独验证真实容器沙箱。
 
 GitHub Actions 可按需使用下面的宿主仓库片段：

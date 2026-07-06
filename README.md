@@ -156,6 +156,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
+GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
@@ -212,10 +213,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 ## Issue #2004 仍缺什么
 
-- 真实 E2B/Cube runtime adapter；
-- 真实 hidden fixture matrix 验收记录；
-- 官方 Session/Memory 映射，用于跨评审历史；
-- metric exporter / OTLP dashboard；
-- 部署层 runtime 环境隔离。
+- 继续扩充 holdout/adversarial 样本，尤其是真实模型能发现的语义风险；
+- 如果 reviewer/CI 提供私有样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加外部 hidden 验收。
+
+非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。
 
 权威进度矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。
