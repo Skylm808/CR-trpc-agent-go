@@ -47,7 +47,7 @@
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
-bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 git diff --check
 ```
@@ -80,13 +80,21 @@ scripts/llm_smoke.sh
 - [x] container runtime 有 env-gated E2E 测试。
 - [x] LLM provider 适配官方 `model.Model`，OpenAI-compatible / DeepSeek 走官方 `model/openai`。
 - [x] 官方 Runner/Event 主入口，保留 `Agent.Run` 兼容 shim。
-- [x] E2B runtime unsupported/adapter 入口。
+- [x] E2B runtime unsupported 审计入口。
 - [x] base/head ref 输入。
 - [x] CLI 少参数当前目录入口。
 - [x] YAML 配置入口和 examples 安全配置样例。
 - [x] 默认中文 README 和英文 README。
 - [x] hidden-like 本地验收入口证明外部 root/matrix/report root contract。
 - [ ] 真实 hidden fixture matrix 验收记录。
+
+## 本轮审查记录
+
+- 文档集合保持精简：`docs/` 下 10 个文档均被 `docs/README.md` 索引并服务于架构、验收、数据契约、安全、评测或迁移边界；本轮未发现可直接删除的孤立 md。
+- `examples/cr-agent` 迁移面仍保持轻量，只包含 README、安全 YAML 和 sample diff；`skills_root: skills`、`fixtures_root: testdata/fixtures` 适合迁入独立 example module 后继续使用。
+- E2B/Cube 不在本轮实现真实 adapter；当前代码和文档应继续明确它只是 unsupported 审计入口，避免半成品联网执行绕过 workspace staging、artifact 拉取和 cleanup contract。
+- 真实 LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮目标 diff 的模型阶段返回 0 条增量 finding，不能把它写成模型语义检出能力证明。
+- 真实 hidden matrix 仍 blocked：需要 reviewer/CI 提供 `CR_AGENT_EVAL_FIXTURES_ROOT`、`CR_AGENT_EVAL_FIXTURES` 和 `CR_AGENT_EVAL_MATRIX`。
 
 ## 相关文档
 

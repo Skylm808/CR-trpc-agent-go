@@ -40,7 +40,7 @@ scripts/eval.sh
 没有真实 hidden 样本时，可用公开的 hidden-like harness 验证外部 root、matrix 和 report root 契约：
 
 ```bash
-bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 ```
 
 真实 LLM smoke 是显式 opt-in，不会打印本地 YAML 或 API key：
@@ -72,11 +72,13 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 | 项目 | 结果 |
 |------|------|
+| 公开 fixture eval | `fixtures=15`、`recall=1.000`、`precision=1.000`、`false_positive_rate=0.000`、`missing_findings=0`、`unexpected_findings=0` |
 | 真实 hidden fixture matrix | 本机未发现 `CR_AGENT_EVAL_*` hidden env 或外部 hidden fixture 目录；未提交 hidden 样本 |
 | hidden-like external matrix | `fixtures=2`、`recall=1.000`、`precision=1.000`、`false_positive_rate=0.000`、`matrix_source=external` |
-| hidden-like report_root | `/var/folders/jx/mjflhphd6txdbrh3_pmqyz1c0000gn/T//cr-agent-hidden-smoke-reports.CjOXxO`；临时目录不作为仓库产物提交 |
-| upstream examples dry run | `scripts/upstream_example_smoke.sh --work-dir /tmp/cr-agent-upstream-example-smoke --keep` 通过，验证 `examples/cr-agent` 下 `go run ./cmd/review-agent`、根目录样例 YAML 和报告路径 |
-| 真实 repo LLM go-only | `/Users/skylm/Desktop/GOLAND/trpc-agent/trpc-GitHub-agent` 使用 `scripts/repo_llm_smoke.sh --go-only` 通过；报告含 `model_provider=deepseek`、`model_name=deepseek-chat`、`model_backend=trpc-agent-go/model/openai`，无 key 泄漏，model 增量 finding 为 7，未重复 deterministic findings |
+| hidden-like report_root | `/var/folders/jx/mjflhphd6txdbrh3_pmqyz1c0000gn/T//cr-agent-hidden-smoke-reports.O1PpCT`；临时目录不作为仓库产物提交 |
+| upstream examples dry run | `scripts/upstream_example_smoke.sh` 通过，验证临时迁移目录 `.../trpc-agent-go/examples/cr-agent` 下 `go run ./cmd/review-agent`、根目录样例 YAML 和报告路径 |
+| 真实 repo LLM go-only | `/Users/skylm/Desktop/GOLAND/trpc-agent/trpc-GitHub-agent` 使用 `scripts/repo_llm_smoke.sh --go-only` 通过；报告含 `model_provider=deepseek`、`model_name=deepseek-chat`、`model_backend=trpc-agent-go/model/openai`、`model_call_count=1`，无 key 泄漏；本轮模型返回 0 条 `source=model` 增量 finding，因此没有重复 deterministic finding |
+| container E2E | `CR_AGENT_RUN_CONTAINER_TESTS=1 ... TestAgentRunContainerRuntimeExecutesGoChecks` 通过；测试创建的 `golang:1.25-bookworm` executor 容器已删除，`docker ps -a` 回到运行前的 4 个既有退出容器 |
 
 ## 能力要求追踪
 

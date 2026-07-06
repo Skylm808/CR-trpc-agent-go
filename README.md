@@ -93,17 +93,8 @@ export DEEPSEEK_API_KEY="your-key"
 go run ./cmd/review-agent --config ./cr-agent.yaml
 ```
 
-本机 smoke 也支持在 ignored YAML 里直接写 key：
-
-```yaml
-mode: fake-model
-model:
-  provider: deepseek
-  name: deepseek-chat
-  api_key: sk-...
-```
-
-不要提交明文 key。smoke 脚本会检查 report 和 diagnostics 是否泄漏 key。
+本机 smoke 也支持在 ignored YAML 里直接写 `model.api_key`，但推荐优先使用
+`api_key_env`。不要提交明文 key。smoke 脚本会检查 report 和 diagnostics 是否泄漏 key。
 
 OpenAI-compatible 网关可以使用：
 
@@ -165,7 +156,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
-bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 

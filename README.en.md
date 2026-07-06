@@ -96,18 +96,9 @@ export DEEPSEEK_API_KEY="your-key"
 go run ./cmd/review-agent --config ./cr-agent.yaml
 ```
 
-For workstation-only smoke testing, ignored YAML also supports a direct key:
-
-```yaml
-mode: fake-model
-model:
-  provider: deepseek
-  name: deepseek-chat
-  api_key: sk-...
-```
-
-Do not commit direct keys. The smoke script checks reports and diagnostics for
-key leakage.
+For workstation-only smoke testing, ignored YAML also supports `model.api_key`,
+but `api_key_env` is preferred. Do not commit direct keys. The smoke script
+checks reports and diagnostics for key leakage.
 
 OpenAI-compatible gateways can use:
 
@@ -169,7 +160,7 @@ Public fixture evaluation:
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
-bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
