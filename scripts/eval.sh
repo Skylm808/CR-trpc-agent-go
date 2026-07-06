@@ -7,7 +7,7 @@ SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
 CONFIG="${CR_AGENT_EVAL_CONFIG:-/dev/null}"
-FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff sandbox-fail.diff sandbox-timeout.diff}"
+FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff realistic-service-risk.diff sandbox-fail.diff sandbox-timeout.diff}"
 MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
@@ -53,6 +53,14 @@ context.diff	context-leak	high	finding	true
 resource.diff	resource-leak	high	finding	true
 db-lifecycle.diff	db-lifecycle	high	finding	true
 dedupe.diff	panic-direct	high	finding	true
+realistic-service-risk.diff	secret-leak	critical	finding	true
+realistic-service-risk.diff	panic-direct	high	finding	true
+realistic-service-risk.diff	goroutine-leak	high	finding	true
+realistic-service-risk.diff	context-leak	high	finding	true
+realistic-service-risk.diff	resource-leak	high	finding	true
+realistic-service-risk.diff	db-lifecycle	high	finding	true
+realistic-service-risk.diff	todo-marker	medium	finding	true
+realistic-service-risk.diff	missing-test-hint	low	warning	true
 TSV
 fi
 

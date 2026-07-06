@@ -12,3 +12,4 @@ These diff fixtures exercise the first-version deterministic review path.
 - `context.diff`: context-oriented sample for future rules
 - `resource.diff`: resource lifecycle sample for future rules
 - `db-lifecycle.diff`: database lifecycle sample for future rules
+- `realistic-service-risk.diff`: multi-file PR-shaped sample that combines secret, panic, goroutine, context, resource, database, TODO, and missing-test risks

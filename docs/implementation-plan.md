@@ -21,7 +21,7 @@
 | YAML 配置入口 | 已完成 | 默认读取本地 ignored `cr-agent.yaml`；提交 `cr-agent.example.yaml` 和 `examples/cr-agent/cr-agent.example.yaml` |
 | 双语 README | 已完成 | `README.md` 为中文默认入口，`README.en.md` 为英文入口 |
 | 官方 examples 风格 CLI | 已完成 | `-model` 兼容 `--model-name`，`-streaming` 安全接受且不自动联网 |
-| 真实 git repo fixture 测试 | 已完成 | `TestRunUsesCopiedGitHubAgentRepoAsGitFixture` clone 外部 git repo 到临时目录并验证报告/SQLite |
+| 真实 git repo fixture 测试 | 已完成 | `TestRunUsesGeneratedRepoFixtureWithBaseAndHeadRefs` 动态创建临时 git repo，验证 base/head diff、报告/diagnostics/SQLite |
 | LLM smoke 入口 | 已完成 | `scripts/llm_smoke.sh` 使用临时 git repo，支持 env 和 `CR_AGENT_LLM_CONFIG` |
 | 公开 fixture eval | 已完成 | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
 | hidden matrix 注入契约 | 已完成 | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT` |

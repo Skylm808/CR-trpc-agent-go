@@ -80,35 +80,15 @@ func TestRunInfersCurrentDirectoryRepoPathWhenInputIsOmitted(t *testing.T) {
 	}
 }
 
-func TestRunUsesCopiedGitHubAgentRepoAsGitFixture(t *testing.T) {
-	source := os.Getenv("CR_AGENT_GIT_REPO_FIXTURE")
-	if source == "" {
-		source = "/Users/skylm/Desktop/GOLAND/trpc-agent/trpc-GitHub-agent"
-	}
-	if _, err := os.Stat(filepath.Join(source, ".git")); err != nil {
-		t.Skipf("git repo fixture is unavailable: %s", source)
-	}
-
-	repo := filepath.Join(t.TempDir(), "trpc-GitHub-agent")
-	cloneGitRepo(t, source, repo)
-	// 真实仓库 fixture 只读，测试只改临时 clone，避免污染用户工作区。
-	mainPath := filepath.Join(repo, "main.go")
-	mainBytes, err := os.ReadFile(mainPath)
-	if err != nil {
-		t.Fatalf("read cloned main.go: %v", err)
-	}
-	replaced := strings.Replace(string(mainBytes), "package main", "package main // cr-agent git fixture\n\nfunc crAgentGoalFixturePanic() { panic(\"goal fixture\") }", 1)
-	if replaced == string(mainBytes) {
-		t.Fatalf("cloned main.go does not contain package declaration")
-	}
-	if err := os.WriteFile(mainPath, []byte(replaced), 0o644); err != nil {
-		t.Fatalf("write cloned main.go: %v", err)
-	}
+func TestRunUsesGeneratedRepoFixtureWithBaseAndHeadRefs(t *testing.T) {
+	repo := createRiskyGitRepoFixture(t)
 
 	out := t.TempDir()
 	dbPath := filepath.Join(t.TempDir(), "review.db")
 	if err := Run(Options{
 		RepoPath:   repo,
+		BaseRef:    "base",
+		HeadRef:    "head",
 		OutputDir:  out,
 		SQLitePath: dbPath,
 		Mode:       cragent.ModeRuleOnly,
@@ -126,12 +106,16 @@ func TestRunUsesCopiedGitHubAgentRepoAsGitFixture(t *testing.T) {
 	if err := json.Unmarshal(reportBytes, &report); err != nil {
 		t.Fatalf("unmarshal report: %v", err)
 	}
-	if !reportHasRuleID(report, "panic-direct") {
-		t.Fatalf("expected panic-direct finding from copied git repo, got %+v", report.Findings)
+	for _, ruleID := range []string{"secret-leak", "panic-direct", "goroutine-leak", "context-leak", "resource-leak", "db-lifecycle", "missing-test-hint"} {
+		if !reportHasRuleID(report, ruleID) {
+			t.Fatalf("expected %s from generated git repo, findings=%+v warnings=%+v", ruleID, report.Findings, report.Warnings)
+		}
 	}
-	if !strings.Contains(string(report.InputMetadata), `"module_path": "trpc-GitHub-agent"`) ||
-		!strings.Contains(string(report.InputMetadata), `"main.go"`) ||
-		!strings.Contains(string(report.InputMetadata), `"main"`) {
+	if !strings.Contains(string(report.InputMetadata), `"module_path": "example.com/risky-service"`) ||
+		!strings.Contains(string(report.InputMetadata), `"service.go"`) ||
+		!strings.Contains(string(report.InputMetadata), `"service"`) ||
+		!strings.Contains(string(report.InputMetadata), `"base_ref": "base"`) ||
+		!strings.Contains(string(report.InputMetadata), `"head_ref": "head"`) {
 		t.Fatalf("expected git repo metadata in report, got %s", report.InputMetadata)
 	}
 
@@ -139,7 +123,7 @@ func TestRunUsesCopiedGitHubAgentRepoAsGitFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read diagnostics: %v", err)
 	}
-	for _, want := range []string{`"input_metadata"`, `"module_path": "trpc-GitHub-agent"`, `"changed_go_files"`, `"main.go"`} {
+	for _, want := range []string{`"input_metadata"`, `"module_path": "example.com/risky-service"`, `"changed_go_files"`, `"service.go"`} {
 		if !strings.Contains(string(diagnosticsBytes), want) {
 			t.Fatalf("diagnostics missing %q: %s", want, diagnosticsBytes)
 		}
@@ -175,11 +159,82 @@ func TestRunUsesCopiedGitHubAgentRepoAsGitFixture(t *testing.T) {
 	}
 }
 
-func cloneGitRepo(t *testing.T, source string, dest string) {
+func createRiskyGitRepoFixture(t *testing.T) string {
 	t.Helper()
-	cmd := exec.Command("git", "clone", "--quiet", "--no-hardlinks", source, dest)
+	repo := filepath.Join(t.TempDir(), "risky-service")
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "cr-agent@example.test")
+	runGit(t, repo, "config", "user.name", "CR Agent Test")
+	writeRepoFile(t, repo, "go.mod", "module example.com/risky-service\n\ngo 1.22\n")
+	writeRepoFile(t, repo, "service.go", "package service\n\nfunc Existing() string { return \"ok\" }\n")
+	writeRepoFile(t, repo, "service_test.go", "package service\n\nimport \"testing\"\n\nfunc TestExisting(t *testing.T) {\n\tif Existing() != \"ok\" {\n\t\tt.Fatal(\"unexpected result\")\n\t}\n}\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "--quiet", "-m", "base")
+	runGit(t, repo, "tag", "base")
+	writeRepoFile(t, repo, "service.go", `package service
+
+import (
+	"context"
+	"database/sql"
+	"net/http"
+	"os"
+	"time"
+)
+
+const adminToken = "sk-live-realistic1234567890abcdef"
+
+func Existing() string { return "ok" }
+
+func ImportHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	_ = cancel
+	file, err := os.Open("payload.json")
+	if err != nil {
+		panic(err)
+	}
+	_ = file
+	db, err := sql.Open("sqlite", "file:risky.db")
+	if err != nil {
+		panic(err)
+	}
+	_ = db
+	go func() {
+		<-ctx.Done()
+	}()
+	// TODO(ops): add focused tests before shipping this import path.
+	w.WriteHeader(http.StatusAccepted)
+}
+`)
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "--quiet", "-m", "head")
+	runGit(t, repo, "tag", "head")
+	return repo
+}
+
+func writeRepoFile(t *testing.T, repo string, name string, content string) {
+	t.Helper()
+	path := filepath.Join(repo, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create parent dir for %s: %v", name, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+func runGit(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	cmdArgs := args
+	if args[0] != "init" {
+		cmdArgs = append([]string{"-C", repo}, args...)
+	} else if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("create repo dir: %v", err)
+	} else {
+		cmdArgs = []string{"init", repo}
+	}
+	cmd := exec.Command("git", cmdArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("clone fixture repo: %v\n%s", err, out)
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }
 

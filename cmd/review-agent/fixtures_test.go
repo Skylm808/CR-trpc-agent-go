@@ -77,6 +77,19 @@ func TestAllFixturesMatchExpectedReviewResults(t *testing.T) {
 		"dedupe.diff": {
 			Findings: []findingExpectation{{RuleID: "panic-direct", Severity: "high", Status: "finding"}},
 		},
+		"realistic-service-risk.diff": {
+			Findings: []findingExpectation{
+				{RuleID: "secret-leak", Severity: "critical", Status: "finding"},
+				{RuleID: "context-leak", Severity: "high", Status: "finding"},
+				{RuleID: "resource-leak", Severity: "high", Status: "finding"},
+				{RuleID: "panic-direct", Severity: "high", Status: "finding"},
+				{RuleID: "db-lifecycle", Severity: "high", Status: "finding"},
+				{RuleID: "goroutine-leak", Severity: "high", Status: "finding"},
+				{RuleID: "todo-marker", Severity: "medium", Status: "finding"},
+			},
+			Warnings: []findingExpectation{{RuleID: "missing-test-hint", Severity: "low", Status: "warning"}},
+			Secrets:  []string{"sk-live-realistic1234567890abcdef"},
+		},
 		"sandbox-fail.diff":    {},
 		"sandbox-timeout.diff": {},
 	}

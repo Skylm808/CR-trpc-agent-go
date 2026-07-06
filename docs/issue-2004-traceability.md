@@ -141,7 +141,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | 沙箱脚本 | `skills/code-review/scripts/check.sh` | ✅ |
 | Agent 编排 | `internal/agent/agent.go` | ✅ |
 | DB schema | `internal/storage/sqlite/sqlite.go` | ✅ artifacts 表只保存引用、摘要和大小 |
-| 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 14 个 |
+| 8+ 测试样例 | `testdata/fixtures/*.diff` | ✅ 15 个 |
 | 示例 report 输出 | `examples/review_report.json/md`、`examples/review_diagnostics.json` | ✅ |
 | README | `README.md` 中文默认入口、`README.en.md` 英文入口 | ✅ |
 | 官方 examples 迁移样例 | `examples/cr-agent/README.md`、`examples/cr-agent/cr-agent.example.yaml`、`examples/cr-agent/sample.diff` | ✅ |
@@ -152,7 +152,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 | # | 验收标准 | 状态 | 验证方式 | 缺口 |
 |---|---------|------|---------|------|
-| 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` 覆盖 14 条 fixture | — |
+| 1 | 8 条公开 diff 全部可运行并生成报告 | ✅ | `TestAllFixturesMatchExpectedReviewResults` 覆盖 15 条 fixture，包含 multi-file PR-shaped `realistic-service-risk.diff` | — |
 | 2 | 隐藏样本高危检出率 >= 80%，误报率 <= 15% | 🔶 | `scripts/eval.sh` 支持 external expected TSV、阈值门禁和报告保留；`scripts/hidden_matrix_smoke.sh` 用临时 external root/matrix 证明 contract，本轮 hidden-like 结果 recall=1.000、precision=1.000、false_positive_rate=0.000 | 真实 hidden 样本本体不提交，本机也未发现外部 hidden 样本，因此仍需私有样本持续校准 |
 | 3 | DB 完整记录 task/sandbox/finding/report，可按 task_id 查询 | ✅ | `sqlite_test.go`、`agent_test.go`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` | — |
 | 4 | 沙箱超时控制；失败不崩溃 | ✅ | `TestAgentRunRecordsSandboxFailureWithoutCrashing`、timeout test、container E2E、`sandbox-safety.md` | — |
