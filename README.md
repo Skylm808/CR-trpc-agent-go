@@ -166,6 +166,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
 Docker container 沙箱测试：
@@ -212,6 +213,11 @@ LLM 验证分三层：
 
 轻量迁移形态见 [examples/cr-agent](examples/cr-agent)。
 迁移说明见 [docs/upstream-example-migration.md](docs/upstream-example-migration.md)。
+本地迁移演练可运行：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
+```
 
 ## Issue #2004 仍缺什么
 

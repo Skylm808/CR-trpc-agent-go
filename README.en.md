@@ -170,6 +170,7 @@ Public fixture evaluation:
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 bash scripts/hidden_matrix_smoke.sh
+GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
 Docker container sandbox test:
@@ -217,6 +218,11 @@ Complete LLM verification is layered:
 
 The upstream-friendly example shape is in [examples/cr-agent](examples/cr-agent).
 Migration notes are in [docs/upstream-example-migration.md](docs/upstream-example-migration.md).
+Local migration rehearsal:
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
+```
 
 ## What Is Still Missing For Issue #2004
 

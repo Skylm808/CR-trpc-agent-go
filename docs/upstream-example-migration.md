@@ -35,7 +35,7 @@ examples/skills_code_review_agent/
 | `internal/storage/`、`internal/storage/sqlite/` | 审计 store 和 SQLite 默认实现 |
 | `skills/code-review/` | CR Skill、规则文档和脚本 |
 | `testdata/fixtures/` | 公开 diff 样本 |
-| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh` | repo-neutral 验收、公开样本评测、hidden-like matrix smoke 和 opt-in LLM smoke |
+| `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh`、`scripts/repo_llm_smoke.sh`、`scripts/upstream_example_smoke.sh` | repo-neutral 验收、公开样本评测、hidden-like matrix smoke、opt-in LLM smoke、任意 repo LLM smoke 和 examples 迁移演练 |
 | `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/eval-matrix.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
 
 ## 不应迁移的内容
@@ -73,14 +73,52 @@ github.com/Skylm808/CR-trpc-agent-go/...
 | E2B / Cube | 当前只有 unsupported 审计入口；官方依赖里已有 `codeexecutor/e2b`，但示例迁移前仍需要补 workspace staging、API/env 配置、artifact 拉取和 sandbox cleanup contract |
 | telemetry exporter | 进入服务化部署后，把官方 trace / metric 接到 OTLP dashboard |
 
+## 本地迁移演练
+
+不污染官方仓库的 dry run：
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache \
+scripts/upstream_example_smoke.sh \
+  --work-dir /tmp/cr-agent-upstream-example-smoke \
+  --keep
+```
+
+脚本会把最小迁移包复制到：
+
+```text
+/tmp/cr-agent-upstream-example-smoke/trpc-agent-go/examples/code_review_agent
+```
+
+并在该目录执行 `go run ./cmd/review-agent`，使用
+`examples/cr-agent/cr-agent.example.yaml` 和 `examples/cr-agent/sample.diff`
+生成 `review_report.json`、`review_report.md`、`review_diagnostics.json`。
+
+当前演练结论：采用独立 example module 的路径最自然；样例 config 中的
+`skills_root: skills`、`fixtures_root: testdata/fixtures` 在迁移目录下无需改动。
+
+## E2B / Cube 最小 adapter 边界
+
+当前 `--runtime e2b` 的 explicit unsupported 入口足以避免静默 fallback，但不等于
+Issue 最终态里的真实远端沙箱。最小实现前置条件：
+
+1. 配置：`E2B_API_KEY` / endpoint / template 或 image 名称，全部只从 env/YAML 引用，不入报告。
+2. workspace staging：把待审 repo 或最小 diff 工作区上传到远端 workspace。
+3. 命令映射：复用现有 PermissionPolicy、timeout、output limit 和 env whitelist 审计。
+4. artifact 拉取：stdout/stderr digest、报告和必要日志回传本地 artifact/SQLite。
+5. cleanup contract：无论成功、失败还是超时，都关闭远端 sandbox，并有测试证明不会遗留实例。
+
+在这些条件明确前，继续保持 unsupported 比半成品联网执行更可审计。
+
 ## 迁移前检查清单
 
 1. `GOCACHE=/private/tmp/cr-agent-gocache go test ./...`
 2. `scripts/eval.sh`
 3. `bash scripts/hidden_matrix_smoke.sh`
-4. `bash -n scripts/llm_smoke.sh`
-5. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
-6. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
-7. `git diff --check`
-8. 确认 README 不含个人路径或独立仓库专属说法。
-9. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
+4. `GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh`
+5. `bash -n scripts/llm_smoke.sh`
+6. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
+7. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
+8. `git diff --check`
+9. 确认 README 不含个人路径或独立仓库专属说法。
+10. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。

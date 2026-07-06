@@ -205,6 +205,30 @@ func TestRepoLLMSmokeScriptDocumentsPortableRepoEntry(t *testing.T) {
 	}
 }
 
+// TestUpstreamExampleSmokeDocumentsMigrationEntry 固定官方 examples 迁移演练入口。
+func TestUpstreamExampleSmokeDocumentsMigrationEntry(t *testing.T) {
+	root := repoRootForEval(t)
+	cmd := exec.Command("bash", filepath.Join(root, "scripts", "upstream_example_smoke.sh"), "--help")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("upstream example smoke help failed: %v\n%s", err, out)
+	}
+	output := string(out)
+	for _, want := range []string{
+		"upstream_example_smoke.sh",
+		"examples/code_review_agent",
+		"--work-dir",
+		"--keep",
+		"go run ./cmd/review-agent",
+		"cr-agent.example.yaml",
+		"review_report.json",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected upstream example smoke help to contain %q, got %s", want, output)
+		}
+	}
+}
+
 // repoRootForEval 查找仓库根目录。
 func repoRootForEval(t *testing.T) string {
 	t.Helper()
