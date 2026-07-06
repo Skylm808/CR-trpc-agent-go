@@ -24,13 +24,13 @@
 | 真实 git repo fixture 测试 | 已完成 | `TestRunUsesGeneratedRepoFixtureWithBaseAndHeadRefs` 动态创建临时 git repo，验证 base/head diff、报告/diagnostics/SQLite |
 | LLM smoke 入口 | 已完成 | `scripts/llm_smoke.sh` 使用临时 git repo，支持 env 和 `CR_AGENT_LLM_CONFIG` |
 | 公开 fixture eval | 已完成 | `scripts/eval.sh` 覆盖公开 matrix、recall、precision、false positive rate |
-| holdout/adversarial eval | 已完成 | `scripts/holdout_eval.sh` 覆盖自包含 holdout matrix、false-positive guardrail 和 fake-model 语义增量路径 |
+| holdout/adversarial eval | 已完成 | `scripts/holdout_eval.sh` 覆盖自包含 holdout matrix、false-positive guardrail 和 6 类 fake-model 语义增量路径 |
 | hidden matrix 注入契约 | 已完成 | `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` / `CR_AGENT_EVAL_REPORT_ROOT` |
 | hidden-like 本地验收入口 | 已完成 | `scripts/hidden_matrix_smoke.sh` 用临时外部 root/matrix 模拟 hidden 样本，并保留 report root |
 
 ## 当前必需缺口
 
-1. 持续扩充 holdout/adversarial 样本，尤其是能稳定证明真实模型语义增量价值的 diff。
+1. 持续扩充 holdout/adversarial 样本，尤其是用真实 DeepSeek/OpenAI smoke 校准 fake-model semantic cases 的有效性。
 2. 继续收紧 Skill contract 和脚本拆分边界，保持 `scripts/check.sh` 作为稳定入口。
 
 ## 非阻塞扩展项
@@ -72,7 +72,7 @@ scripts/llm_smoke.sh
 ## Definition of Done
 
 - [x] 公开 fixture 全部可运行并按 rule_id/severity/status 断言。
-- [x] holdout/adversarial matrix 自包含运行，并覆盖 fake-model 增量 finding。
+- [x] holdout/adversarial matrix 自包含运行，并覆盖 authz、nil boundary、state inconsistency、transaction semantic、error swallow 等 fake-model 增量 finding。
 - [x] findings、warnings、human review items 结构化、去重、脱敏。
 - [x] SQLite 记录 task / decisions / sandbox runs / artifacts / metrics / reports。
 - [x] 沙箱失败、超时不崩溃 review，且写入 DB。
@@ -94,7 +94,7 @@ scripts/llm_smoke.sh
 - `examples/cr-agent` 迁移面仍保持轻量，只包含 README、安全 YAML 和 sample diff；`skills_root: skills`、`fixtures_root: testdata/fixtures` 适合迁入独立 example module 后继续使用。
 - E2B/Cube 不在本轮实现真实 adapter；当前代码和文档应继续明确它只是 unsupported 审计入口，避免半成品联网执行绕过 workspace staging、artifact 拉取和 cleanup contract。
 - 真实 LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮目标 diff 的模型阶段返回 0 条增量 finding，不能把它写成真实模型语义检出能力证明。
-- `testdata/holdout/model-semantic.diff` 使用 deterministic fake model 证明模型合并链路可产生增量 finding；真实模型语义价值仍需后续样本持续校准。
+- `testdata/holdout/model-*.diff` 使用 deterministic fake model 证明模型合并链路可产生多类增量 finding；真实模型语义价值仍需后续 DeepSeek/OpenAI smoke 持续校准，且 smoke 不是 CI 必需项。
 
 ## 相关文档
 

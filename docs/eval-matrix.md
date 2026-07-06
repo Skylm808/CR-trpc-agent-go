@@ -24,7 +24,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 ```
 
-该脚本固定使用 `matrix_source=holdout`，默认以 `fake-model` 模式运行，因此 `model-semantic.diff` 可以证明模型合并链路产生增量 finding，而不依赖 DeepSeek/OpenAI API key。
+该脚本固定使用 `matrix_source=holdout`，默认以 `fake-model` 模式运行，因此 `model-*.diff` 可以证明模型合并链路产生增量 finding，而不依赖 DeepSeek/OpenAI API key。当前 semantic holdout 覆盖 authz bypass、nil/zero-value boundary、cross-function state inconsistency、transaction semantic misuse、error swallowed causing unsafe success，以及一个 safe semantic guardrail。
+
+真实 DeepSeek/OpenAI smoke 只是 opt-in 校准路径，不是 CI 必需项；CI 默认依赖 fake-model semantic holdout 保证无 key 可测。
 
 可选环境变量：
 

@@ -281,30 +281,95 @@ func assertSecretsRedacted(t *testing.T, result reportData, secrets []string) {
 }
 
 func TestFakeModelHoldoutFixtureProducesIncrementalFinding(t *testing.T) {
-	out := t.TempDir()
-	if err := Run(Options{
-		DiffFile:   filepath.Join("..", "..", "testdata", "holdout", "model-semantic.diff"),
-		OutputDir:  out,
-		Mode:       cragent.ModeFakeModel,
-		Runtime:    cragent.RuntimeLocalFallback,
-		SkillsRoot: filepath.Join("..", "..", "skills"),
-	}); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(out, "review_report.json"))
-	if err != nil {
-		t.Fatalf("read report json: %v", err)
-	}
-	var result reportData
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("unmarshal report json: %v", err)
-	}
+	result := runHoldoutFixture(t, "model-semantic.diff")
 	if result.Metrics.ModelCallCount != 1 {
 		t.Fatalf("expected one model call, got %+v", result.Metrics)
 	}
 	if !hasReportFinding(result.Findings, "fake-model-semantic-risk", "fake_model") {
 		t.Fatalf("expected incremental fake model finding, got %+v", result.Findings)
 	}
+}
+
+func TestFakeModelSemanticHoldoutFixturesProduceDistinctIncrementalFindings(t *testing.T) {
+	tests := []struct {
+		fixture string
+		ruleID  string
+	}{
+		{fixture: "model-authz-bypass.diff", ruleID: "fake-model-authz-bypass"},
+		{fixture: "model-nil-boundary.diff", ruleID: "fake-model-nil-boundary"},
+		{fixture: "model-state-inconsistency.diff", ruleID: "fake-model-state-inconsistency"},
+		{fixture: "model-transaction-semantic.diff", ruleID: "fake-model-transaction-semantic"},
+		{fixture: "model-error-swallow.diff", ruleID: "fake-model-error-swallow"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.fixture, func(t *testing.T) {
+			result := runHoldoutFixture(t, tc.fixture)
+			if result.Metrics.ModelCallCount != 1 {
+				t.Fatalf("expected one model call, got %+v", result.Metrics)
+			}
+			if len(result.Warnings) != 0 {
+				t.Fatalf("expected semantic holdout to route high-confidence model output to findings only, warnings=%+v", result.Warnings)
+			}
+			if !hasReportFinding(result.Findings, tc.ruleID, "fake_model") {
+				t.Fatalf("expected %s from fake model, findings=%+v", tc.ruleID, result.Findings)
+			}
+			for _, finding := range result.Findings {
+				if finding.Source != "fake_model" {
+					t.Fatalf("semantic holdout should not depend on deterministic findings, got %+v", result.Findings)
+				}
+			}
+		})
+	}
+}
+
+func TestFakeModelSafeSemanticHoldoutDoesNotProduceFindings(t *testing.T) {
+	result := runHoldoutFixture(t, "model-safe-semantic.diff")
+	if result.Metrics.ModelCallCount != 1 {
+		t.Fatalf("expected one model call, got %+v", result.Metrics)
+	}
+	if len(result.Findings) != 0 || len(result.Warnings) != 0 {
+		t.Fatalf("expected safe semantic holdout to stay clean, findings=%+v warnings=%+v", result.Findings, result.Warnings)
+	}
+}
+
+func TestPublicFixtureRuleOnlyDoesNotRunModelReview(t *testing.T) {
+	result := runFixtureWithMode(t, filepath.Join("..", "..", "testdata", "fixtures", "safe.diff"), cragent.ModeRuleOnly)
+	if result.Metrics.ModelCallCount != 0 {
+		t.Fatalf("rule-only public fixture should not call model review, got %+v", result.Metrics)
+	}
+	for _, finding := range append(result.Findings, result.Warnings...) {
+		if finding.Source == "fake_model" {
+			t.Fatalf("rule-only public fixture should not contain fake model output, got %+v", result)
+		}
+	}
+}
+
+func runHoldoutFixture(t *testing.T, fixture string) reportData {
+	t.Helper()
+	return runFixtureWithMode(t, filepath.Join("..", "..", "testdata", "holdout", fixture), cragent.ModeFakeModel)
+}
+
+func runFixtureWithMode(t *testing.T, diffFile string, mode string) reportData {
+	t.Helper()
+	out := t.TempDir()
+	if err := Run(Options{
+		DiffFile:   diffFile,
+		OutputDir:  out,
+		Mode:       mode,
+		Runtime:    cragent.RuntimeLocalFallback,
+		SkillsRoot: filepath.Join("..", "..", "skills"),
+	}); err != nil {
+		t.Fatalf("Run returned error for %s: %v", diffFile, err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "review_report.json"))
+	if err != nil {
+		t.Fatalf("read report json for %s: %v", diffFile, err)
+	}
+	var result reportData
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal report json for %s: %v", diffFile, err)
+	}
+	return result
 }
 
 func hasReportFinding(findings []findingData, ruleID, source string) bool {

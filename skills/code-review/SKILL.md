@@ -74,7 +74,10 @@ The optional model stage runs after this Skill. The model receives a redacted di
 Examples of model-only risks:
 
 - cross-file authorization bypass;
+- nil or zero-value boundary behavior changes;
 - business state transition inconsistency;
+- transaction semantics that commit failed business operations;
+- swallowed errors that still return success;
 - cancellation swallowed across function boundaries;
 - integration behavior that deterministic line rules cannot infer.
 

@@ -95,22 +95,82 @@ func (fakeModelProvider) Review(ctx context.Context, input ModelReviewInput) (Mo
 				default:
 					continue
 				}
+				signal := fakeModelSignalForLine(line.Text)
 				findings = append(findings, review.Finding{
-					Severity:       "medium",
-					Category:       "logic",
+					Severity:       signal.Severity,
+					Category:       signal.Category,
 					File:           file.Path,
 					Line:           line.NewLine,
-					Title:          "Fake model semantic review signal",
+					Title:          signal.Title,
 					Evidence:       strings.TrimSpace(line.Text),
-					Recommendation: "Inspect the semantic risk before merging.",
+					Recommendation: signal.Recommendation,
 					Confidence:     confidence,
 					Source:         modelSourceFake,
-					RuleID:         "fake-model-semantic-risk",
+					RuleID:         signal.RuleID,
 				})
 			}
 		}
 	}
 	return ModelReviewOutput{Findings: findings}, nil
+}
+
+type fakeModelSignal struct {
+	RuleID         string
+	Severity       string
+	Category       string
+	Title          string
+	Recommendation string
+}
+
+func fakeModelSignalForLine(text string) fakeModelSignal {
+	for marker, signal := range map[string]fakeModelSignal{
+		"CR_AGENT_FAKE_MODEL_AUTHZ_BYPASS": {
+			RuleID:         "fake-model-authz-bypass",
+			Severity:       "high",
+			Category:       "authorization",
+			Title:          "Semantic authorization bypass risk",
+			Recommendation: "Require explicit authorization checks for the newly allowed branch.",
+		},
+		"CR_AGENT_FAKE_MODEL_NIL_BOUNDARY": {
+			RuleID:         "fake-model-nil-boundary",
+			Severity:       "medium",
+			Category:       "boundary",
+			Title:          "Nil or zero-value boundary changes behavior",
+			Recommendation: "Add explicit handling and tests for nil or zero-value input.",
+		},
+		"CR_AGENT_FAKE_MODEL_STATE_INCONSISTENCY": {
+			RuleID:         "fake-model-state-inconsistency",
+			Severity:       "medium",
+			Category:       "state",
+			Title:          "Cross-function state transition is inconsistent",
+			Recommendation: "Keep state transitions and persisted status values aligned.",
+		},
+		"CR_AGENT_FAKE_MODEL_TRANSACTION_SEMANTIC": {
+			RuleID:         "fake-model-transaction-semantic",
+			Severity:       "high",
+			Category:       "database",
+			Title:          "Transaction semantics can commit a failed operation",
+			Recommendation: "Rollback on semantic failure paths before returning success or committing.",
+		},
+		"CR_AGENT_FAKE_MODEL_ERROR_SWALLOW": {
+			RuleID:         "fake-model-error-swallow",
+			Severity:       "high",
+			Category:       "error_handling",
+			Title:          "Error is swallowed and reported as success",
+			Recommendation: "Propagate or handle the error instead of returning a successful result.",
+		},
+	} {
+		if strings.Contains(text, marker) {
+			return signal
+		}
+	}
+	return fakeModelSignal{
+		RuleID:         "fake-model-semantic-risk",
+		Severity:       "medium",
+		Category:       "logic",
+		Title:          "Fake model semantic review signal",
+		Recommendation: "Inspect the semantic risk before merging.",
+	}
 }
 
 func (a *Agent) configuredModelProvider(mode string) (ModelReviewProvider, modelAudit) {

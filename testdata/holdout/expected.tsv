@@ -3,3 +3,8 @@ holdout-lifecycle-combo.diff	context-leak	high	finding	true
 holdout-lifecycle-combo.diff	resource-leak	high	finding	true
 holdout-lifecycle-combo.diff	db-lifecycle	high	finding	true
 model-semantic.diff	fake-model-semantic-risk	medium	finding	true
+model-authz-bypass.diff	fake-model-authz-bypass	high	finding	true
+model-nil-boundary.diff	fake-model-nil-boundary	medium	finding	true
+model-state-inconsistency.diff	fake-model-state-inconsistency	medium	finding	true
+model-transaction-semantic.diff	fake-model-transaction-semantic	high	finding	true
+model-error-swallow.diff	fake-model-error-swallow	high	finding	true

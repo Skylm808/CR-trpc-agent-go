@@ -38,7 +38,13 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 | `holdout-placeholder-secret.diff` | placeholder secret-like 名称和值 | — | — | — | ✅ 零 critical finding |
 | `holdout-secret-private-key.diff` | private key 形态泄漏 | `secret-leak` | critical | finding | ✅ |
 | `holdout-lifecycle-combo.diff` | context、资源和 DB 生命周期组合风险 | `context-leak`、`resource-leak`、`db-lifecycle` | high | finding | ✅ |
-| `model-semantic.diff` | deterministic fake model 语义增量路径 | `fake-model-semantic-risk` | medium | finding | ✅ `source=fake_model` |
+| `model-semantic.diff` | generic deterministic fake model 语义增量路径 | `fake-model-semantic-risk` | medium | finding | ✅ `source=fake_model` |
+| `model-authz-bypass.diff` | 非 admin 空 owner 授权绕过 | `fake-model-authz-bypass` | high | finding | ✅ `source=fake_model` |
+| `model-nil-boundary.diff` | nil/zero-value 边界语义变化 | `fake-model-nil-boundary` | medium | finding | ✅ `source=fake_model` |
+| `model-state-inconsistency.diff` | 内存状态和持久化状态不一致 | `fake-model-state-inconsistency` | medium | finding | ✅ `source=fake_model` |
+| `model-transaction-semantic.diff` | 语义失败路径仍可能提交事务 | `fake-model-transaction-semantic` | high | finding | ✅ `source=fake_model` |
+| `model-error-swallow.diff` | 错误被吞掉并返回成功 | `fake-model-error-swallow` | high | finding | ✅ `source=fake_model` |
+| `model-safe-semantic.diff` | 安全边界收紧的 semantic guardrail | — | — | — | ✅ 零 finding |
 
 ## Issue 8 类公开样本映射
 
