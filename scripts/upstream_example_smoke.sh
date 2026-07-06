@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 usage() {
   cat <<'USAGE'
 upstream_example_smoke.sh simulates moving this repository into the official
-trpc-agent-go examples/code_review_agent directory.
+trpc-agent-go/examples/cr-agent directory.
 
 Usage:
   scripts/upstream_example_smoke.sh [options]
@@ -17,12 +17,12 @@ Options:
   -h, --help        Show this help.
 
 The script copies only the upstream migration package into:
-  $work_dir/trpc-agent-go/examples/code_review_agent
+  $work_dir/trpc-agent-go/examples/cr-agent
 
 Then it runs:
   go run ./cmd/review-agent
 
-with examples/cr-agent/cr-agent.example.yaml and verifies review_report.json,
+with cr-agent.example.yaml and verifies review_report.json,
 review_report.md, and review_diagnostics.json are produced.
 USAGE
 }
@@ -65,7 +65,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-EXAMPLE="$WORK_DIR/trpc-agent-go/examples/code_review_agent"
+EXAMPLE="$WORK_DIR/trpc-agent-go/examples/cr-agent"
 OUT="$WORK_DIR/out"
 mkdir -p "$EXAMPLE" "$OUT"
 
@@ -77,37 +77,38 @@ copy_path() {
 }
 
 for path in \
-  go.mod \
-  go.sum \
-  README.md \
-  README.en.md \
-  cmd \
-  internal \
-  skills \
-  testdata \
-  examples/cr-agent \
-  scripts/acceptance.sh \
-  scripts/eval.sh \
-  scripts/hidden_matrix_smoke.sh \
+	go.mod \
+	go.sum \
+	cmd \
+	internal \
+	skills \
+	testdata \
+	scripts/acceptance.sh \
+	scripts/eval.sh \
+	scripts/hidden_matrix_smoke.sh \
   scripts/llm_smoke.sh \
   scripts/repo_llm_smoke.sh \
   docs/architecture.md \
   docs/data-contract.md \
   docs/eval-matrix.md \
-  docs/issue-2004-traceability.md \
-  docs/sandbox-safety.md \
-  docs/upstream-example-migration.md; do
-  copy_path "$path" "$EXAMPLE/$path"
+	docs/issue-2004-traceability.md \
+	docs/sandbox-safety.md \
+	docs/upstream-example-migration.md; do
+	copy_path "$path" "$EXAMPLE/$path"
 done
 
+cp "$ROOT/examples/cr-agent/README.md" "$EXAMPLE/README.md"
+cp "$ROOT/examples/cr-agent/cr-agent.example.yaml" "$EXAMPLE/cr-agent.example.yaml"
+cp "$ROOT/examples/cr-agent/sample.diff" "$EXAMPLE/sample.diff"
+
 (
-  cd "$EXAMPLE"
-  GOCACHE="${GOCACHE:-/private/tmp/cr-agent-gocache}" go run ./cmd/review-agent \
-    --config ./examples/cr-agent/cr-agent.example.yaml \
-    --diff-file ./examples/cr-agent/sample.diff \
-    --skills-root ./skills \
-    --runtime local-fallback \
-    --output-dir "$OUT" >/dev/null
+	cd "$EXAMPLE"
+	GOCACHE="${GOCACHE:-/private/tmp/cr-agent-gocache}" go run ./cmd/review-agent \
+		--config ./cr-agent.example.yaml \
+		--diff-file ./sample.diff \
+		--skills-root ./skills \
+		--runtime local-fallback \
+		--output-dir "$OUT" >/dev/null
 )
 
 for name in review_report.json review_report.md review_diagnostics.json; do

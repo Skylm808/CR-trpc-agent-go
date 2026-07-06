@@ -7,16 +7,10 @@
 优先建议使用：
 
 ```text
-examples/code_review_agent/
+examples/cr-agent/
 ```
 
-备选路径：
-
-```text
-examples/skills_code_review_agent/
-```
-
-官方 examples 目录中已有 `skill`、`skillrun`、`codeexecution`、`sandboxcodeexecution`、`runner`、`memory` 等示例。当前项目更像一个完整应用示例，不只是 Skill API 演示，因此 `examples/code_review_agent` 更清晰。
+官方 examples 目录中已有 `skill`、`skillrun`、`codeexecution`、`sandboxcodeexecution`、`runner`、`memory` 等示例。当前项目更像一个完整应用示例，不只是 Skill API 演示。按当前 issue / 本地样例命名，`examples/cr-agent` 最贴近用户入口，也避免再引入一层新命名。
 
 ## 最小迁移包
 
@@ -24,10 +18,9 @@ examples/skills_code_review_agent/
 
 | 当前路径 | 迁移用途 |
 |----------|----------|
-| `README.md`、`README.en.md` | 默认中文入口和英文入口 |
-| `examples/cr-agent/README.md` | 官方 example 的入口说明 |
-| `examples/cr-agent/cr-agent.example.yaml` | 安全默认配置，不含密钥 |
-| `examples/cr-agent/sample.diff` | 最小可运行输入 |
+| `examples/cr-agent/README.md` -> `README.md` | 官方 example 的入口说明 |
+| `examples/cr-agent/cr-agent.example.yaml` -> `cr-agent.example.yaml` | 安全默认配置，不含密钥 |
+| `examples/cr-agent/sample.diff` -> `sample.diff` | 最小可运行输入 |
 | `cmd/review-agent/` | 示例 CLI 入口 |
 | `internal/agent/` | Tool / Skill / Permission / CodeExecutor / Runner 编排 |
 | `internal/review/` | diff 解析、规则结果、脱敏和去重 |
@@ -57,7 +50,7 @@ github.com/Skylm808/CR-trpc-agent-go/...
 
 调整为官方 examples 内部可用路径。可选方案：
 
-1. 作为 `examples/code_review_agent` 独立 Go module，保留本示例自己的 `go.mod`，依赖 `trpc.group/trpc-go/trpc-agent-go`。
+1. 作为 `examples/cr-agent` 独立 Go module，保留本示例自己的 `go.mod`，依赖 `trpc.group/trpc-go/trpc-agent-go`。
 2. 合并到官方 `examples/go.mod`，把包路径改成 examples module 下的相对 import。
 
 建议先采用独立 example module，便于隔离 SQLite、Docker E2E 和 fixture 评测脚本。
@@ -87,11 +80,11 @@ scripts/upstream_example_smoke.sh \
 脚本会把最小迁移包复制到：
 
 ```text
-/tmp/cr-agent-upstream-example-smoke/trpc-agent-go/examples/code_review_agent
+/tmp/cr-agent-upstream-example-smoke/trpc-agent-go/examples/cr-agent
 ```
 
-并在该目录执行 `go run ./cmd/review-agent`，使用
-`examples/cr-agent/cr-agent.example.yaml` 和 `examples/cr-agent/sample.diff`
+并在该目录执行 `go run ./cmd/review-agent`，使用根目录下的
+`cr-agent.example.yaml` 和 `sample.diff`
 生成 `review_report.json`、`review_report.md`、`review_diagnostics.json`。
 
 当前演练结论：采用独立 example module 的路径最自然；样例 config 中的

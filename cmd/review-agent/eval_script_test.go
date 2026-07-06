@@ -216,7 +216,7 @@ func TestUpstreamExampleSmokeDocumentsMigrationEntry(t *testing.T) {
 	output := string(out)
 	for _, want := range []string{
 		"upstream_example_smoke.sh",
-		"examples/code_review_agent",
+		"trpc-agent-go/examples/cr-agent",
 		"--work-dir",
 		"--keep",
 		"go run ./cmd/review-agent",

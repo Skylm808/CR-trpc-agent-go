@@ -74,9 +74,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 |------|------|
 | 真实 hidden fixture matrix | 本机未发现 `CR_AGENT_EVAL_*` hidden env 或外部 hidden fixture 目录；未提交 hidden 样本 |
 | hidden-like external matrix | `fixtures=2`、`recall=1.000`、`precision=1.000`、`false_positive_rate=0.000`、`matrix_source=external` |
-| hidden-like report_root | `/var/folders/jx/mjflhphd6txdbrh3_pmqyz1c0000gn/T//cr-agent-hidden-smoke-reports.tY0yKj`；临时目录不作为仓库产物提交 |
-| upstream examples dry run | `scripts/upstream_example_smoke.sh --work-dir /tmp/cr-agent-upstream-example-smoke --keep` 通过，验证 `examples/code_review_agent` 下 `go run ./cmd/review-agent`、样例 YAML 和报告路径 |
-| 真实 repo LLM go-only | `/Users/skylm/Desktop/GOLAND/trpc-agent/trpc-GitHub-agent` 使用 `scripts/repo_llm_smoke.sh --go-only` 通过；报告含 `model_provider=deepseek`、`model_name=deepseek-chat`、`model_backend=trpc-agent-go/model/openai`，无 key 泄漏，model 增量 finding 为 5，未重复 deterministic findings |
+| hidden-like report_root | `/var/folders/jx/mjflhphd6txdbrh3_pmqyz1c0000gn/T//cr-agent-hidden-smoke-reports.CjOXxO`；临时目录不作为仓库产物提交 |
+| upstream examples dry run | `scripts/upstream_example_smoke.sh --work-dir /tmp/cr-agent-upstream-example-smoke --keep` 通过，验证 `examples/cr-agent` 下 `go run ./cmd/review-agent`、根目录样例 YAML 和报告路径 |
+| 真实 repo LLM go-only | `/Users/skylm/Desktop/GOLAND/trpc-agent/trpc-GitHub-agent` 使用 `scripts/repo_llm_smoke.sh --go-only` 通过；报告含 `model_provider=deepseek`、`model_name=deepseek-chat`、`model_backend=trpc-agent-go/model/openai`，无 key 泄漏，model 增量 finding 为 7，未重复 deterministic findings |
 
 ## 能力要求追踪
 
