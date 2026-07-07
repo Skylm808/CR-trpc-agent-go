@@ -6,108 +6,31 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/reviewexec"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/reviewgate"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
-	dockercontainer "github.com/docker/docker/api/types/container"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
-	containerexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/container"
-	localexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/local"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-	workspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 )
 
 // newExecutor 创建 trpc-agent-go 执行器。
 func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
-	switch cfg.Runtime {
-	case RuntimeLocalFallback:
-		workDir, err := os.MkdirTemp("", "cr-agent-localexec-*")
-		if err != nil {
-			return nil, fmt.Errorf("create local fallback workdir: %w", err)
-		}
-		// 本地 fallback 只用于测试和开发。
-		return localexec.New(
-			localexec.WithTimeout(cfg.Timeout),
-			localexec.WithWorkDir(workDir),
-		), nil
-	case RuntimeContainer:
-		// 默认使用官方容器执行器。
-		opts := []containerexec.Option{
-			containerexec.WithContainerConfig(dockercontainer.Config{
-				Image:      defaultContainerImage,
-				WorkingDir: "/",
-				Cmd:        []string{"tail", "-f", "/dev/null"},
-				Tty:        true,
-				OpenStdin:  true,
-				Env: []string{
-					"PATH=" + goSandboxPath,
-					"GOPATH=/go",
-					"GOTOOLCHAIN=local",
-				},
-			}),
-		}
-		if strings.TrimSpace(cfg.ContainerRepoHostPath) != "" {
-			// repo 只读挂载到固定路径。
-			opts = append(opts, containerexec.WithBindMount(cfg.ContainerRepoHostPath, containerRepoMountPath, "ro"))
-		}
-		exec, err := containerexec.New(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("create container executor: %w", err)
-		}
-		return exec, nil
-	case RuntimeE2B:
-		return unsupportedExecutor{runtime: RuntimeE2B}, nil
-	default:
-		return nil, fmt.Errorf("unsupported runtime %q", cfg.Runtime)
-	}
+	return reviewexec.NewExecutor(reviewexec.Config{
+		Runtime:               cfg.Runtime,
+		Timeout:               cfg.Timeout,
+		ContainerRepoHostPath: cfg.ContainerRepoHostPath,
+	})
 }
 
-type unsupportedExecutor struct {
-	runtime string
-}
-
-func (e unsupportedExecutor) ExecuteCode(context.Context, codeexecutor.CodeExecutionInput) (codeexecutor.CodeExecutionResult, error) {
-	return codeexecutor.CodeExecutionResult{}, fmt.Errorf("runtime %q is not supported by this adapter yet", e.runtime)
-}
-
-func (e unsupportedExecutor) CodeBlockDelimiter() codeexecutor.CodeBlockDelimiter {
-	return codeexecutor.CodeBlockDelimiter{Start: "```", End: "```"}
-}
+type unsupportedExecutor = reviewexec.UnsupportedExecutor
 
 // defaultPermissionPolicy 返回固定命令白名单。
 func defaultPermissionPolicy() tool.PermissionPolicy {
-	return tool.PermissionPolicyFunc(func(ctx context.Context, req *tool.PermissionRequest) (tool.PermissionDecision, error) {
-		_ = ctx
-		if req == nil {
-			return tool.DenyPermission("missing permission request"), nil
-		}
-		args := string(req.Arguments)
-		// 只允许 code-review 固定脚本。
-		if req.ToolName == "skill_run" && strings.Contains(args, defaultSkillCommand) {
-			return tool.AllowPermission(), nil
-		}
-		if req.ToolName == "workspace_exec" &&
-			(strings.Contains(args, "go test ./...") ||
-				strings.Contains(args, "go vet ./...") ||
-				strings.Contains(args, "staticcheck ./...")) {
-			return tool.AllowPermission(), nil
-		}
-		if req.ToolName == "execute_code" &&
-			(strings.Contains(args, "go test ./...") ||
-				strings.Contains(args, "go vet ./...") ||
-				strings.Contains(args, "staticcheck ./...")) {
-			return tool.AllowPermission(), nil
-		}
-		if strings.Contains(args, "go test ./...") ||
-			strings.Contains(args, "go vet ./...") ||
-			strings.Contains(args, "staticcheck ./...") {
-			return tool.AllowPermission(), nil
-		}
-		return tool.AskPermission("unrecognized tool command requires human review"), nil
-	})
+	return reviewgate.NewPermissionPolicy(defaultSkillCommand, reviewgate.AllowedReviewCommands(true))
 }
 
 // runDryRun 只加载 Skill 并记录跳过执行的治理/沙箱摘要。
@@ -243,10 +166,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 // runGoSandboxChecks 执行 Go 项目检查。
 func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]storage.DecisionRecord, []storage.SandboxRunRecord) {
 	// staticcheck 需要显式开启。
-	commands := []string{"go test ./...", "go vet ./..."}
-	if a.cfg.EnableStaticcheck {
-		commands = append(commands, "staticcheck ./...")
-	}
+	commands := reviewgate.AllowedReviewCommands(a.cfg.EnableStaticcheck)
 	decisions := make([]storage.DecisionRecord, 0, len(commands))
 	runs := make([]storage.SandboxRunRecord, 0, len(commands))
 	for _, command := range commands {
@@ -260,12 +180,7 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 // runGoSandboxCommand 执行单个 Go 检查命令。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
 	execCommand := goSandboxExecCommand(a.cfg.Runtime, command)
-	workspaceArgs, _ := json.Marshal(map[string]any{
-		"command": execCommand,
-		"cwd":     "work/repo",
-		"timeout": int(a.cfg.Timeout.Seconds()),
-		"env":     goSandboxEnv(a.cfg.Runtime),
-	})
+	workspaceArgs, _ := reviewexec.WorkspaceArgs(execCommand, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
 	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
@@ -342,51 +257,17 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 }
 
 func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, command string) (any, error) {
-	if a.exec == nil {
-		return nil, fmt.Errorf("workspace exec is not configured")
-	}
-	exec := workspaceexec.NewExecTool(a.exec,
-		workspaceexec.WithWorkspaceBootstrap(codeexecutor.WorkspaceBootstrapSpec{
-			Files: []codeexecutor.WorkspaceFile{{
-				Target: "work/repo",
-				Input: &codeexecutor.InputSpec{
-					From: "host://" + repoPath,
-					To:   "work/repo/.repo",
-					Mode: "copy",
-				},
-			}},
-		}),
-	)
-	args, err := json.Marshal(map[string]any{
-		"command": command,
-		"cwd":     "work/repo",
-		"timeout": int(a.cfg.Timeout.Seconds()),
-		"env":     goSandboxEnv(a.cfg.Runtime),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return exec.Call(ctx, args)
+	return reviewexec.RunWorkspaceCommand(ctx, a.exec, repoPath, command, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
 }
 
 // goSandboxExecCommand 返回 runtime 内实际执行命令。
 func goSandboxExecCommand(runtime string, command string) string {
-	if runtime == RuntimeContainer && strings.HasPrefix(command, "go ") {
-		return goSandboxBinary + strings.TrimPrefix(command, "go")
-	}
-	return command
+	return reviewexec.SandboxExecCommand(runtime, command)
 }
 
 // goSandboxEnv 固定 Go 检查的最小环境。
 func goSandboxEnv(runtime string) map[string]string {
-	pathValue := goSandboxPath
-	if runtime == RuntimeLocalFallback && os.Getenv("PATH") != "" {
-		pathValue = os.Getenv("PATH")
-	}
-	return map[string]string{
-		"GOCACHE": goSandboxCacheDir,
-		"PATH":    pathValue,
-	}
+	return reviewexec.SandboxEnv(runtime)
 }
 
 // decodeSkillRunOutput 将 trpc-agent-go 的 skill_run 返回值转为本地结构。
@@ -499,19 +380,15 @@ type commandOutput struct {
 
 // shellQuote 对本地路径做 POSIX 单引号转义。
 func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return reviewexec.ShellQuote(value)
 }
 
 // sandboxRepoPathForRuntime 返回 runtime 内 repo 路径。
 func sandboxRepoPathForRuntime(runtime string, hostRepoPath string) string {
-	if runtime == RuntimeContainer {
-		return containerRepoMountPath
-	}
-	return hostRepoPath
+	return reviewexec.SandboxRepoPathForRuntime(runtime, hostRepoPath)
 }
 
 // goSandboxCode 构造 Go 检查命令。
 func goSandboxCode(runtime string, hostRepoPath string, command string) string {
-	return "cd " + shellQuote(sandboxRepoPathForRuntime(runtime, hostRepoPath)) +
-		" && GOCACHE=" + shellQuote(goSandboxCacheDir) + " " + command
+	return reviewexec.SandboxCode(runtime, hostRepoPath, command)
 }

@@ -1,4 +1,4 @@
-package agent
+package reviewmodel
 
 import (
 	"context"
@@ -13,32 +13,28 @@ import (
 	agentmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// 本文件只负责桥接：把本项目的 ModelReviewProvider 适配到官方 model.Model，
-// 再把官方 model.Model 的结构化响应解析回 ModelReviewOutput。
+const DefaultModelAdapterName = "cr-agent-review-provider"
 
-const defaultModelAdapterName = "cr-agent-review-provider"
-
-// reviewProviderModelAdapter 把本项目的 ModelReviewProvider 包成官方 model.Model。
-// 这样 fake provider、HTTP provider 和真实 OpenAI-compatible provider 都走同一条 Runner/Model 边界。
-type reviewProviderModelAdapter struct {
-	name     string
-	provider ModelReviewProvider
+// ProviderModelAdapter wraps a Provider as the official model.Model interface.
+type ProviderModelAdapter struct {
+	Name     string
+	Provider Provider
 }
 
-func (m reviewProviderModelAdapter) GenerateContent(ctx context.Context, req *agentmodel.Request) (<-chan *agentmodel.Response, error) {
-	if m.provider == nil {
+func (m ProviderModelAdapter) GenerateContent(ctx context.Context, req *agentmodel.Request) (<-chan *agentmodel.Response, error) {
+	if m.Provider == nil {
 		return nil, errors.New("model review provider is required")
 	}
-	input, err := modelReviewInputFromRequest(req)
+	input, err := InputFromRequest(req)
 	if err != nil {
 		return nil, err
 	}
-	output, err := m.provider.Review(ctx, sanitizeModelReviewInput(input))
+	output, err := m.Provider.Review(ctx, SanitizeInput(input))
 	if err != nil {
 		return nil, err
 	}
 	for i := range output.Findings {
-		output.Findings[i] = sanitizeFinding(output.Findings[i])
+		output.Findings[i] = SanitizeFinding(output.Findings[i])
 	}
 	payload, err := json.Marshal(output)
 	if err != nil {
@@ -62,26 +58,26 @@ func (m reviewProviderModelAdapter) GenerateContent(ctx context.Context, req *ag
 	return ch, nil
 }
 
-func (m reviewProviderModelAdapter) Info() agentmodel.Info {
-	name := strings.TrimSpace(m.name)
+func (m ProviderModelAdapter) Info() agentmodel.Info {
+	name := strings.TrimSpace(m.Name)
 	if name == "" {
-		name = defaultModelAdapterName
+		name = DefaultModelAdapterName
 	}
 	return agentmodel.Info{Name: name}
 }
 
-// officialModelReviewProvider 调用官方 model.Model，再把结构化 JSON 响应还原成审查增量。
-type officialModelReviewProvider struct {
-	model agentmodel.Model
+// OfficialProvider calls an official model.Model and decodes structured output.
+type OfficialProvider struct {
+	Model agentmodel.Model
 }
 
-func (p officialModelReviewProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
-	if p.model == nil {
-		return ModelReviewOutput{}, errors.New("official model is required")
+func (p OfficialProvider) Review(ctx context.Context, input Input) (Output, error) {
+	if p.Model == nil {
+		return Output{}, errors.New("official model is required")
 	}
-	responses, err := p.model.GenerateContent(ctx, modelReviewInputRequest(input))
+	responses, err := p.Model.GenerateContent(ctx, InputRequest(input))
 	if err != nil {
-		return ModelReviewOutput{}, err
+		return Output{}, err
 	}
 	var content string
 	for response := range responses {
@@ -89,7 +85,7 @@ func (p officialModelReviewProvider) Review(ctx context.Context, input ModelRevi
 			continue
 		}
 		if response.Error != nil {
-			return ModelReviewOutput{}, fmt.Errorf("official model response error: %s", review.RedactSecrets(response.Error.Message))
+			return Output{}, fmt.Errorf("official model response error: %s", review.RedactSecrets(response.Error.Message))
 		}
 		for _, choice := range response.Choices {
 			if strings.TrimSpace(choice.Message.Content) != "" {
@@ -100,34 +96,37 @@ func (p officialModelReviewProvider) Review(ctx context.Context, input ModelRevi
 			}
 		}
 	}
-	output, err := decodeModelReviewOutput(content)
+	output, err := DecodeOutput(content)
 	if err != nil {
-		return ModelReviewOutput{}, err
+		return Output{}, err
 	}
 	for i := range output.Findings {
-		output.Findings[i] = sanitizeFinding(output.Findings[i])
+		output.Findings[i] = SanitizeFinding(output.Findings[i])
 	}
 	return output, nil
 }
 
-func providerThroughOfficialModel(name string, provider ModelReviewProvider) ModelReviewProvider {
-	return officialModelReviewProvider{
-		model: reviewProviderModelAdapter{
-			name:     name,
-			provider: provider,
+// ProviderThroughOfficialModel sends a provider through the official model.Model boundary.
+func ProviderThroughOfficialModel(name string, provider Provider) Provider {
+	return OfficialProvider{
+		Model: ProviderModelAdapter{
+			Name:     name,
+			Provider: provider,
 		},
 	}
 }
 
-func modelReviewInputRequest(input ModelReviewInput) *agentmodel.Request {
-	payload, _ := json.Marshal(sanitizeModelReviewInput(input))
+// InputRequest builds the official model request for the review payload.
+func InputRequest(input Input) *agentmodel.Request {
+	payload, _ := json.Marshal(SanitizeInput(input))
 	return agentmodel.NewRequest([]agentmodel.Message{
-		agentmodel.NewSystemMessage(modelReviewSystemPrompt()),
+		agentmodel.NewSystemMessage(SystemPrompt()),
 		agentmodel.NewUserMessage(string(payload)),
 	})
 }
 
-func modelReviewSystemPrompt() string {
+// SystemPrompt defines the strict JSON output contract.
+func SystemPrompt() string {
 	return strings.Join([]string{
 		"You are a code review model. You must only return a JSON object; do not return markdown, prose, or code fences.",
 		`The schema is {"findings":[{"severity":"","category":"","file":"","line":0,"title":"","evidence":"","recommendation":"","confidence":"","source":"model","rule_id":"","status":""}]}.`,
@@ -142,10 +141,11 @@ func modelReviewSystemPrompt() string {
 	}, "\n")
 }
 
-func decodeModelReviewOutput(content string) (ModelReviewOutput, error) {
+// DecodeOutput accepts strict JSON plus common fenced/embedded JSON responses.
+func DecodeOutput(content string) (Output, error) {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
-		return ModelReviewOutput{}, nil
+		return Output{}, nil
 	}
 	candidates := []string{trimmed}
 	candidates = append(candidates, fencedJSONBlocks(trimmed)...)
@@ -154,7 +154,7 @@ func decodeModelReviewOutput(content string) (ModelReviewOutput, error) {
 	}
 	var lastErr error
 	for _, candidate := range candidates {
-		var output ModelReviewOutput
+		var output Output
 		if err := json.Unmarshal([]byte(candidate), &output); err == nil {
 			return output, nil
 		} else {
@@ -164,7 +164,7 @@ func decodeModelReviewOutput(content string) (ModelReviewOutput, error) {
 	if lastErr == nil {
 		lastErr = errors.New("no JSON object found")
 	}
-	return ModelReviewOutput{}, fmt.Errorf("decode official model response: %s", review.RedactSecrets(lastErr.Error()))
+	return Output{}, fmt.Errorf("decode official model response: %s", review.RedactSecrets(lastErr.Error()))
 }
 
 var jsonFencePattern = regexp.MustCompile("(?is)```(?:json)?\\s*(\\{.*?\\})\\s*```")
@@ -218,20 +218,21 @@ func firstJSONObject(content string) string {
 	return ""
 }
 
-func modelReviewInputFromRequest(req *agentmodel.Request) (ModelReviewInput, error) {
+// InputFromRequest decodes the last user message as Input.
+func InputFromRequest(req *agentmodel.Request) (Input, error) {
 	if req == nil {
-		return ModelReviewInput{}, errors.New("model request is required")
+		return Input{}, errors.New("model request is required")
 	}
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		msg := req.Messages[i]
 		if msg.Role != agentmodel.RoleUser || strings.TrimSpace(msg.Content) == "" {
 			continue
 		}
-		var input ModelReviewInput
+		var input Input
 		if err := json.Unmarshal([]byte(msg.Content), &input); err != nil {
-			return ModelReviewInput{}, fmt.Errorf("decode model review input: %w", err)
+			return Input{}, fmt.Errorf("decode model review input: %w", err)
 		}
 		return input, nil
 	}
-	return ModelReviewInput{}, errors.New("model request has no user input payload")
+	return Input{}, errors.New("model request has no user input payload")
 }

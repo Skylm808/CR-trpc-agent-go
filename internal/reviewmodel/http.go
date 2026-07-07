@@ -1,4 +1,4 @@
-package agent
+package reviewmodel
 
 import (
 	"bytes"
@@ -14,13 +14,11 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// 本文件只放 generic HTTP provider。它用于接临时网关或测试服务；
-// 官方 OpenAI-compatible / DeepSeek 路线见 model_provider_openai.go。
+const defaultHTTPTimeout = 30 * time.Second
+const defaultHTTPOutputLimitBytes = 64 * 1024
 
-const defaultModelHTTPTimeout = 30 * time.Second
-
-// HTTPModelProviderConfig 控制显式开启的 generic HTTP model provider。
-type HTTPModelProviderConfig struct {
+// HTTPConfig controls the opt-in generic HTTP provider.
+type HTTPConfig struct {
 	Enabled   bool
 	Endpoint  string
 	APIKeyEnv string
@@ -29,19 +27,21 @@ type HTTPModelProviderConfig struct {
 	Client    *http.Client
 }
 
-type httpModelProvider struct {
+// HTTPReviewRequest is the generic HTTP provider request body.
+type HTTPReviewRequest struct {
+	Model string `json:"model,omitempty"`
+	Input Input  `json:"input"`
+}
+
+type httpProvider struct {
 	endpoint string
 	apiKey   string
 	model    string
 	client   *http.Client
 }
 
-type httpModelReviewRequest struct {
-	Model string           `json:"model,omitempty"`
-	Input ModelReviewInput `json:"input"`
-}
-
-func newHTTPModelProvider(cfg HTTPModelProviderConfig) (ModelReviewProvider, error) {
+// NewHTTPProvider creates the generic HTTP model provider.
+func NewHTTPProvider(cfg HTTPConfig) (Provider, error) {
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -51,7 +51,7 @@ func newHTTPModelProvider(cfg HTTPModelProviderConfig) (ModelReviewProvider, err
 	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
-		timeout = defaultModelHTTPTimeout
+		timeout = defaultHTTPTimeout
 	}
 	client := cfg.Client
 	if client == nil {
@@ -65,7 +65,7 @@ func newHTTPModelProvider(cfg HTTPModelProviderConfig) (ModelReviewProvider, err
 	if envName := strings.TrimSpace(cfg.APIKeyEnv); envName != "" {
 		apiKey = os.Getenv(envName)
 	}
-	return &httpModelProvider{
+	return &httpProvider{
 		endpoint: endpoint,
 		apiKey:   apiKey,
 		model:    strings.TrimSpace(cfg.Model),
@@ -73,18 +73,18 @@ func newHTTPModelProvider(cfg HTTPModelProviderConfig) (ModelReviewProvider, err
 	}, nil
 }
 
-func (p *httpModelProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
-	payload := httpModelReviewRequest{
+func (p *httpProvider) Review(ctx context.Context, input Input) (Output, error) {
+	payload := HTTPReviewRequest{
 		Model: p.model,
-		Input: sanitizeModelReviewInput(input),
+		Input: SanitizeInput(input),
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("marshal model request: %w", err)
+		return Output{}, fmt.Errorf("marshal model request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("create model request: %w", err)
+		return Output{}, fmt.Errorf("create model request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.apiKey != "" {
@@ -92,29 +92,30 @@ func (p *httpModelProvider) Review(ctx context.Context, input ModelReviewInput) 
 	}
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("call model provider: %w", err)
+		return Output{}, fmt.Errorf("call model provider: %w", err)
 	}
 	defer resp.Body.Close()
 
-	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, int64(defaultOutputLimitBytes)))
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, int64(defaultHTTPOutputLimitBytes)))
 	if err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("read model response: %w", err)
+		return Output{}, fmt.Errorf("read model response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return ModelReviewOutput{}, fmt.Errorf("model provider returned %d: %s", resp.StatusCode, review.RedactSecrets(string(responseBody)))
+		return Output{}, fmt.Errorf("model provider returned %d: %s", resp.StatusCode, review.RedactSecrets(string(responseBody)))
 	}
-	var output ModelReviewOutput
+	var output Output
 	if err := json.Unmarshal(responseBody, &output); err != nil {
-		return ModelReviewOutput{}, fmt.Errorf("decode model response: %w", err)
+		return Output{}, fmt.Errorf("decode model response: %w", err)
 	}
 	for i := range output.Findings {
-		output.Findings[i] = sanitizeFinding(output.Findings[i])
+		output.Findings[i] = SanitizeFinding(output.Findings[i])
 	}
 	return output, nil
 }
 
-func sanitizeModelReviewInput(input ModelReviewInput) ModelReviewInput {
+// SanitizeInput redacts provider input.
+func SanitizeInput(input Input) Input {
 	input.DiffSummary = review.RedactSecrets(input.DiffSummary)
-	input.ExistingFindings = sanitizedFindingSnapshot(input.ExistingFindings, nil)
+	input.ExistingFindings = SanitizedFindingSnapshot(input.ExistingFindings, nil)
 	return input
 }

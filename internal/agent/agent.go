@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/reviewexec"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 
@@ -31,11 +32,11 @@ import (
 
 const (
 	// RuntimeContainer 是默认沙箱运行时。
-	RuntimeContainer = "container"
+	RuntimeContainer = reviewexec.RuntimeContainer
 	// RuntimeLocalFallback 仅用于本地开发和测试。
-	RuntimeLocalFallback = "local-fallback"
+	RuntimeLocalFallback = reviewexec.RuntimeLocalFallback
 	// RuntimeE2B 是预留的 E2B 沙箱入口；当前显式返回 unsupported。
-	RuntimeE2B = "e2b"
+	RuntimeE2B = reviewexec.RuntimeE2B
 
 	// ModeRuleOnly 只执行确定性规则。
 	ModeRuleOnly = "rule-only"
@@ -53,12 +54,12 @@ const (
 	defaultOutputLimitBytes = 64 * 1024
 	defaultMaxArtifactBytes = 1024 * 1024
 	defaultTimeout          = 30 * time.Second
-	containerRepoMountPath  = "/workspace/repo"
-	defaultContainerImage   = "golang:1.25-bookworm"
-	goSandboxCacheDir       = "/tmp/cr-agent-gocache"
-	goSandboxBinary         = "/usr/local/go/bin/go"
-	goSandboxPath           = "/go/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin"
-	sandboxEnvWhitelist     = "PATH,HOME,TMPDIR,GOCACHE"
+	containerRepoMountPath  = reviewexec.ContainerRepoMountPath
+	defaultContainerImage   = reviewexec.DefaultContainerImage
+	goSandboxCacheDir       = reviewexec.GoSandboxCacheDir
+	goSandboxBinary         = reviewexec.GoSandboxBinary
+	goSandboxPath           = reviewexec.GoSandboxPath
+	sandboxEnvWhitelist     = reviewexec.SandboxEnvWhitelist
 )
 
 // Config 保存一次审查的依赖和边界。

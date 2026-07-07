@@ -6,7 +6,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [architecture.md](architecture.md) | 系统架构、组件划分、框架集成映射、mode 定义、官方 model/Runner/Event 适配路径 |
+| [architecture.md](architecture.md) | 系统架构、项目自有分层、框架集成映射、mode 定义、官方 model/Runner/Event 适配路径 |
 | [implementation-plan.md](implementation-plan.md) | 当前真实 roadmap、优先级、验收标准和验证命令 |
 | [data-contract.md](data-contract.md) | 实体字段、SQLite schema、按 task_id 查询契约 |
 | [sandbox-safety.md](sandbox-safety.md) | 沙箱执行、Permission、输出限制、脱敏和 artifact cap 安全边界矩阵 |

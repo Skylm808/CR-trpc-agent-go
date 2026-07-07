@@ -8,10 +8,11 @@
 |------|----------|------|
 | 默认 runtime | `container`，基于官方 `codeexecutor/container` | `internal/agent.newExecutor` |
 | 本地 fallback | 只能显式选择 `local-fallback`，用于开发和测试 | `TestLocalFallbackExecutorsUseIsolatedWorkDirs`、README |
-| Skill 执行 | 只允许 `skills/code-review/scripts/check.sh` | `toolskill.WithAllowedCommands`、`defaultPermissionPolicy` |
-| Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `defaultPermissionPolicy`、sandbox mode tests |
+| Skill 执行 | 只允许 `skills/code-review/scripts/check.sh` | `toolskill.WithAllowedCommands`、`internal/reviewgate.NewPermissionPolicy` |
+| Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `internal/reviewgate.AllowedReviewCommands`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
-| workspace 执行 | 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
+| workspace 执行 | `internal/reviewexec` 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
+| 执行 env | workspace command 只接收 `PATH`、`HOME`、`TMPDIR`、`GOCACHE`；API key / token env 不进入 sandbox spec | `TestSandboxEnvUsesOnlyWhitelistedKeysAndDropsSecrets`、`TestSandboxEnvWhitelistMatchesActualEnvKeys` |
 | 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http|openai|deepseek` 才调用外部 provider。OpenAI-compatible 兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`，DeepSeek 默认 `DEEPSEEK_API_KEY`。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestOpenAIModelProviderBuildsOfficialDeepSeekModel` |
 
 ## 审计字段
@@ -25,7 +26,7 @@
 | `status` | `ok` / `failed` / `error` / `timed_out` / `skipped` / `unsupported` / permission action | failure / timeout / dry-run / E2B tests |
 | `timeout_ms` | 固定每次执行超时边界 | failure / timeout tests |
 | `output_limit_bytes` | 固定输出上限 | failure / timeout tests |
-| `env_whitelist` | 记录允许进入执行环境的环境变量名 | dry-run / sandbox tests |
+| `env_whitelist` | 记录允许进入执行环境的环境变量名；必须和 `internal/reviewexec.SandboxEnv` 实际传入的 key 对齐 | dry-run / sandbox tests、`internal/reviewexec` env tests |
 | `stdout_digest` / `stderr_digest` | 用摘要保留失败线索，避免保存完整输出 | failure tests |
 | `output` | 兼容字段，只保存脱敏且受限的失败线索 | Go check failure test |
 
@@ -63,5 +64,5 @@
 - E2B / Cube 真实 runtime 是远端沙箱扩展；Issue 主线允许 `codeexecutor/container`，当前默认 container 路径已经覆盖沙箱执行、timeout、output limit、permission gate 和失败记录。
 - Claude / Gemini 厂商 SDK provider 属于可选模型扩展；当前 fake provider、opt-in HTTP provider 和官方 `model/openai` OpenAI-compatible / DeepSeek provider 已验证边界、脱敏、分流、审计和失败降级。
 - 官方 metric exporter / OTLP dashboard 属于服务化部署扩展；当前使用官方 telemetry trace span、report diagnostics 和 SQLite metrics 覆盖验收要求的监控审计字段。
-- 当前 env whitelist 是 Agent 审计边界，容器级环境隔离由 `codeexecutor/container` 和部署侧 executor 配置共同保证；生产部署可继续收紧网络、secret 注入和镜像策略。
+- 当前 env whitelist 已是实际 workspace command env allowlist，同时也是报告/SQLite 审计字段；容器级隔离仍由 `codeexecutor/container` 和部署侧 executor 配置共同保证。生产部署可继续收紧网络、secret 注入和镜像策略，但不应把模型 API key env 传进 sandbox。
 - 复杂业务逻辑错误不完全依赖 deterministic 规则；`testdata/holdout/` 和 fake-model 语义样本用于证明模型增量合并路径，真实检出率仍应通过更多 holdout/adversarial fixture 或真实模型 smoke 持续校准。
