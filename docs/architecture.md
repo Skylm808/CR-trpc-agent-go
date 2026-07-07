@@ -38,15 +38,17 @@
 
 | 包 | 职责 |
 |----|------|
-| `internal/agent` | CLI review workflow 编排、官方 Runner/Event adapter、report/SQLite/artifact 串联；保留兼容 facade，不直接承载 provider/runtime 细节 |
+| `internal/agent` | CLI review workflow 编排、官方 Runner/Event adapter、report/SQLite/artifact 串联；不直接承载输入读取、provider/runtime 或规则细节 |
+| `internal/input` | `--diff-file`、`--file-list`、`--fixture`、`--repo-path`、`--base-ref` / `--head-ref` 输入收敛成 unified diff，并提取 Go module、package、changed files 和 test metadata |
 | `internal/execution` | `container` / `local-fallback` / `e2b unsupported` executor 创建、测试专用 `fake-execution` seam、workspace Go check args、只读 repo mount、sandbox env allowlist、legacy codeexec fallback command 构造 |
 | `internal/approval` | `scripts/check.sh`、`go test ./...`、`go vet ./...`、可选 `staticcheck ./...` 的统一 allowlist 和 PermissionPolicy |
 | `internal/semantics` | fake/http/OpenAI-compatible/DeepSeek provider、official `model.Model` adapter、semantic marker、model finding normalize/merge/error fallback |
-| `internal/review` | 公共 review types、unified diff parser、deterministic rule engine、dedupe、redaction |
+| `internal/rules` | TODO/FIXME、panic、missing-test、goroutine/context/resource/db lifecycle、secret 等 deterministic rule engine |
+| `internal/review` | 公共 review types、unified diff parser、dedupe、redaction，以及 `AnalyzeDiff` / `BuildReport` 兼容 facade |
 | `internal/storage` / `internal/storage/sqlite` | 真实 SQLite 审计 store；不降级为 JSON-backed store |
 | `internal/report` | JSON / Markdown report rendering |
 
-`internal/input` 和 `internal/rules` 是后续可继续拆分方向；本轮没有迁移它们，避免扩大 CLI 输入和规则引擎 diff。
+`internal/agent/input.go` 只保留兼容测试用的薄 adapter；主流程直接调用 `internal/input`。`internal/review.AnalyzeDiff` 继续作为外部 facade，但 deterministic 规则执行已经委托给 `internal/rules`，避免把 parser/types 和规则策略混在同一个包里。
 
 `fake-execution` 只存在于 `internal/execution` 的测试 seam，不作为 CLI/生产 fallback；默认生产 runtime 仍是 `container`，开发 fallback 仍必须显式使用 `local-fallback`。
 
@@ -63,10 +65,12 @@
 ```text
 CLI 输入（--diff-file / --file-list / --repo-path / --fixture；未传输入时推断 --repo-path .）
   -> internal/agent.Agent
+  -> internal/input 生成 unified diff + input metadata
   -> official runner.NewRunner(...).Run(...)
   -> trpc-agent-go/tool/skill skill_load(code-review)
   -> tool.PermissionPolicy 决策 scripts/check.sh
   -> trpc-agent-go/tool/skill skill_run(scripts/check.sh)
+  -> internal/review facade -> internal/rules deterministic findings/warnings
   -> fake-model 模式：redacted input -> internal/semantics -> official model.Model -> provider(fake/http/openai/deepseek) -> finding/warning merge
   -> 可选 sandbox 模式：internal/execution 优先 tool/workspaceexec 执行 go test / go vet / staticcheck，失败时退回 tool/codeexec
   -> 通过 official event.Event 输出 input/skill/model/sandbox/report/task 阶段事件

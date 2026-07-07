@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/input"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
@@ -238,11 +239,11 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 	recordReviewStartTelemetry(span, a.cfg, req, mode)
 
 	// 统一把输入收敛成 diff。
-	diff, inputRef, err := readInput(a.cfg, req)
+	diff, inputRef, err := input.Read(inputConfig(a.cfg), inputRequest(req))
 	if err != nil {
 		return review.Result{}, err
 	}
-	inputMeta := inputMetadataForRequest(diff, req)
+	inputMeta := input.MetadataForRequest(diff, inputRequest(req))
 	// taskID 便于报告和数据库关联。
 	taskID = newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))

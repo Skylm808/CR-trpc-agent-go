@@ -95,8 +95,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | 1 | CR Skill（SKILL.md + 规则 + 脚本，>=4 类规则） | `skills/code-review/`、`internal/agent` | `agent_test.go`、`skill_test.go`、fixture tests、holdout eval | ✅ | — |
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec`、E2B unsupported audit | workspaceexec 主路径/fallback tests + env-gated Docker test + E2B unsupported tests | ✅ | Issue 主线由默认 container runtime 满足；E2B/Cube 保留 explicit unsupported 扩展入口，不作为 blocker |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
-| 4 | 输入解析（diff / 文件列表 / git 变更 / base-head / YAML 配置 / 当前目录默认推断） | `cmd/review-agent.Run`、`cmd/review-agent/config.go`、`internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `config_test.go`、`parser_test.go`、`repo_test.go`、`agent_test.go`、CLI base/head test、真实 git repo fixture clone test | ✅ | 不自动 fetch 远端 ref |
-| 5 | 结构化 findings | `internal/review/types.go`、`internal/semantics`、`internal/agent/model_review.go` facade | `engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
+| 4 | 输入解析（diff / 文件列表 / git 变更 / base-head / YAML 配置 / 当前目录默认推断） | `cmd/review-agent.Run`、`cmd/review-agent/config.go`、`internal/input`、`internal/review/parser.go` | `internal/input/input_test.go`、`config_test.go`、`parser_test.go`、`repo_test.go`、`agent_test.go`、CLI base/head test、真实 git repo fixture clone test | ✅ | 不自动 fetch 远端 ref |
+| 5 | 结构化 findings | `internal/review/types.go`、`internal/rules`、`internal/semantics`、`internal/agent/model_review.go` facade | `internal/rules/rules_test.go`、`engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | 当前 SQLite 是审计 store；一次性 CR workflow 不需要长对话 Session/Memory |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
 | 8 | 安全边界 | `internal/execution` timeout/output limit/env allowlist/digest、Agent redaction、artifact size/cap | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 + `internal/execution` env tests | ✅ | 生产部署可继续做平台级 runtime 加固 |
@@ -150,6 +150,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | 规则文档 | `skills/code-review/rules.md` | ✅ |
 | 沙箱脚本 | `skills/code-review/scripts/check.sh` | ✅ |
 | Agent 编排 | `internal/agent/agent.go` | ✅ |
+| 输入读取边界 | `internal/input` | ✅ |
+| deterministic 规则引擎 | `internal/rules` | ✅ |
 | DB schema | `internal/storage/sqlite/sqlite.go` | ✅ artifacts 表只保存引用、摘要和大小 |
 | 8+ 测试样例 | `testdata/fixtures/*.diff`、`testdata/holdout/*.diff` | ✅ public 15 个 + holdout 5 个 |
 | 示例 report 输出 | `examples/review_report.json/md`、`examples/review_diagnostics.json` | ✅ |

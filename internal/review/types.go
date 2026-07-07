@@ -1,4 +1,4 @@
-// Package review 提供 diff 解析、规则引擎和共享结构。
+// Package review 提供公共审查结构、diff 解析、去重和脱敏 facade。
 package review
 
 import (
