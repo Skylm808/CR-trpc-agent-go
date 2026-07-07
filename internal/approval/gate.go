@@ -1,5 +1,5 @@
-// Package reviewgate owns review command approval boundaries.
-package reviewgate
+// Package approval owns review command approval boundaries.
+package approval
 
 import (
 	"context"

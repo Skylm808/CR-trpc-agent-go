@@ -1,4 +1,4 @@
-package reviewmodel
+package semantics
 
 import (
 	"bytes"

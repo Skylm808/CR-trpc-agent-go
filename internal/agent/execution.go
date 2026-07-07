@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/approval"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
-	"github.com/Skylm808/CR-trpc-agent-go/internal/reviewexec"
-	"github.com/Skylm808/CR-trpc-agent-go/internal/reviewgate"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -19,18 +19,18 @@ import (
 
 // newExecutor 创建 trpc-agent-go 执行器。
 func newExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
-	return reviewexec.NewExecutor(reviewexec.Config{
+	return execution.NewExecutor(execution.Config{
 		Runtime:               cfg.Runtime,
 		Timeout:               cfg.Timeout,
 		ContainerRepoHostPath: cfg.ContainerRepoHostPath,
 	})
 }
 
-type unsupportedExecutor = reviewexec.UnsupportedExecutor
+type unsupportedExecutor = execution.UnsupportedExecutor
 
 // defaultPermissionPolicy 返回固定命令白名单。
 func defaultPermissionPolicy() tool.PermissionPolicy {
-	return reviewgate.NewPermissionPolicy(defaultSkillCommand, reviewgate.AllowedReviewCommands(true))
+	return approval.NewPermissionPolicy(defaultSkillCommand, approval.AllowedReviewCommands(true))
 }
 
 // runDryRun 只加载 Skill 并记录跳过执行的治理/沙箱摘要。
@@ -166,7 +166,7 @@ func (a *Agent) runSkillChecks(ctx context.Context, taskID string, diff []byte) 
 // runGoSandboxChecks 执行 Go 项目检查。
 func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]storage.DecisionRecord, []storage.SandboxRunRecord) {
 	// staticcheck 需要显式开启。
-	commands := reviewgate.AllowedReviewCommands(a.cfg.EnableStaticcheck)
+	commands := approval.AllowedReviewCommands(a.cfg.EnableStaticcheck)
 	decisions := make([]storage.DecisionRecord, 0, len(commands))
 	runs := make([]storage.SandboxRunRecord, 0, len(commands))
 	for _, command := range commands {
@@ -180,7 +180,7 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 // runGoSandboxCommand 执行单个 Go 检查命令。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
 	execCommand := goSandboxExecCommand(a.cfg.Runtime, command)
-	workspaceArgs, _ := reviewexec.WorkspaceArgs(execCommand, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
+	workspaceArgs, _ := execution.WorkspaceArgs(execCommand, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
 	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
@@ -257,17 +257,17 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 }
 
 func (a *Agent) runWorkspaceGoChecks(ctx context.Context, repoPath string, command string) (any, error) {
-	return reviewexec.RunWorkspaceCommand(ctx, a.exec, repoPath, command, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
+	return execution.RunWorkspaceCommand(ctx, a.exec, repoPath, command, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
 }
 
 // goSandboxExecCommand 返回 runtime 内实际执行命令。
 func goSandboxExecCommand(runtime string, command string) string {
-	return reviewexec.SandboxExecCommand(runtime, command)
+	return execution.SandboxExecCommand(runtime, command)
 }
 
 // goSandboxEnv 固定 Go 检查的最小环境。
 func goSandboxEnv(runtime string) map[string]string {
-	return reviewexec.SandboxEnv(runtime)
+	return execution.SandboxEnv(runtime)
 }
 
 // decodeSkillRunOutput 将 trpc-agent-go 的 skill_run 返回值转为本地结构。
@@ -380,15 +380,15 @@ type commandOutput struct {
 
 // shellQuote 对本地路径做 POSIX 单引号转义。
 func shellQuote(value string) string {
-	return reviewexec.ShellQuote(value)
+	return execution.ShellQuote(value)
 }
 
 // sandboxRepoPathForRuntime 返回 runtime 内 repo 路径。
 func sandboxRepoPathForRuntime(runtime string, hostRepoPath string) string {
-	return reviewexec.SandboxRepoPathForRuntime(runtime, hostRepoPath)
+	return execution.SandboxRepoPathForRuntime(runtime, hostRepoPath)
 }
 
 // goSandboxCode 构造 Go 检查命令。
 func goSandboxCode(runtime string, hostRepoPath string, command string) string {
-	return reviewexec.SandboxCode(runtime, hostRepoPath, command)
+	return execution.SandboxCode(runtime, hostRepoPath, command)
 }

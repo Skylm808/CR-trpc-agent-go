@@ -8,10 +8,10 @@
 |------|----------|------|
 | 默认 runtime | `container`，基于官方 `codeexecutor/container` | `internal/agent.newExecutor` |
 | 本地 fallback | 只能显式选择 `local-fallback`，用于开发和测试 | `TestLocalFallbackExecutorsUseIsolatedWorkDirs`、README |
-| Skill 执行 | 只允许 `skills/code-review/scripts/check.sh` | `toolskill.WithAllowedCommands`、`internal/reviewgate.NewPermissionPolicy` |
-| Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `internal/reviewgate.AllowedReviewCommands`、sandbox mode tests |
+| Skill 执行 | 只允许 `skills/code-review/scripts/check.sh` | `toolskill.WithAllowedCommands`、`internal/approval.NewPermissionPolicy` |
+| Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `internal/approval.AllowedReviewCommands`、sandbox mode tests |
 | 非 allow 决策 | `deny` / `ask` / `needs_human_review` 不进入 executor | `TestAgentRunDoesNotExecuteNonAllowPermission` |
-| workspace 执行 | `internal/reviewexec` 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
+| workspace 执行 | `internal/execution` 优先用官方 `tool/workspaceexec`，失败时才用 `tool/codeexec` fallback | `TestRunGoSandboxCommandPrefersWorkspaceExec`、`TestRunGoSandboxCommandFallsBackToCodeExec` |
 | 执行 env | workspace command 只接收 `PATH`、`HOME`、`TMPDIR`、`GOCACHE`；API key / token env 不进入 sandbox spec | `TestSandboxEnvUsesOnlyWhitelistedKeysAndDropsSecrets`、`TestSandboxEnvWhitelistMatchesActualEnvKeys` |
 | 模型审查 | `fake-model` 默认只调用本地 deterministic provider；显式 `--model-provider http|openai|deepseek` 才调用外部 provider。OpenAI-compatible 兼容 `OPENAI_API_KEY` / `OPENAI_BASE_URL`，DeepSeek 默认 `DEEPSEEK_API_KEY`。prompt 输入先脱敏，provider output 再脱敏 | `TestModelProviderRedactsInputOutputReportsAndSQLite`、`TestHTTPModelProviderCallsServerAndMergesFindings`、`TestOpenAIModelProviderBuildsOfficialDeepSeekModel` |
 
@@ -26,7 +26,7 @@
 | `status` | `ok` / `failed` / `error` / `timed_out` / `skipped` / `unsupported` / permission action | failure / timeout / dry-run / E2B tests |
 | `timeout_ms` | 固定每次执行超时边界 | failure / timeout tests |
 | `output_limit_bytes` | 固定输出上限 | failure / timeout tests |
-| `env_whitelist` | 记录允许进入执行环境的环境变量名；必须和 `internal/reviewexec.SandboxEnv` 实际传入的 key 对齐 | dry-run / sandbox tests、`internal/reviewexec` env tests |
+| `env_whitelist` | 记录允许进入执行环境的环境变量名；必须和 `internal/execution.SandboxEnv` 实际传入的 key 对齐 | dry-run / sandbox tests、`internal/execution` env tests |
 | `stdout_digest` / `stderr_digest` | 用摘要保留失败线索，避免保存完整输出 | failure tests |
 | `output` | 兼容字段，只保存脱敏且受限的失败线索 | Go check failure test |
 

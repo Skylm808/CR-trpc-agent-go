@@ -1,6 +1,6 @@
 # 迁移到官方 examples 的准备说明
 
-本文档用于后续把当前仓库迁移到 `trpc-group/trpc-agent-go` 官方仓库的 `examples` 目录。当前阶段不做大搬家，也不在官方仓库直接改代码；先保持独立仓库提交，等验收链路稳定后再发 PR。当前分层也不会照抄 upstream PR #2121 的 `inputsource` / `sandboxrun` / `safetywrap` 命名，而是保留本项目自己的 `reviewexec` / `reviewgate` / `reviewmodel` 语义。
+本文档用于后续把当前仓库迁移到 `trpc-group/trpc-agent-go` 官方仓库的 `examples` 目录。当前阶段不做大搬家，也不在官方仓库直接改代码；先保持独立仓库提交，等验收链路稳定后再发 PR。当前分层也不会照抄 upstream PR #2121 的 `inputsource` / `sandboxrun` / `safetywrap` 命名，而是保留本项目自己的 `execution` / `approval` / `semantics` 语义。
 
 ## 建议目标路径
 
@@ -23,9 +23,9 @@ examples/cr-agent/
 | `examples/cr-agent/sample.diff` -> `sample.diff` | 最小可运行输入 |
 | `cmd/review-agent/` | 示例 CLI 入口 |
 | `internal/agent/` | Tool / Skill / Runner/Event 编排和兼容 facade |
-| `internal/reviewexec/` | container/local/e2b-unsupported runtime、测试专用 fake-execution seam、workspace Go checks、sandbox env allowlist |
-| `internal/reviewgate/` | PermissionPolicy 和允许执行命令清单 |
-| `internal/reviewmodel/` | fake/http/OpenAI-compatible/DeepSeek provider、official model adapter、model finding merge |
+| `internal/execution/` | container/local/e2b-unsupported runtime、测试专用 fake-execution seam、workspace Go checks、sandbox env allowlist |
+| `internal/approval/` | PermissionPolicy 和允许执行命令清单 |
+| `internal/semantics/` | fake/http/OpenAI-compatible/DeepSeek provider、official model adapter、model finding merge |
 | `internal/review/` | diff 解析、规则结果、脱敏和去重 |
 | `internal/report/` | JSON / Markdown 报告生成 |
 | `internal/storage/`、`internal/storage/sqlite/` | 审计 store 和 SQLite 默认实现 |
@@ -100,7 +100,7 @@ Issue 最终态里的真实远端沙箱。最小实现前置条件：
 
 1. 配置：`E2B_API_KEY` / endpoint / template 或 image 名称，全部只从 env/YAML 引用，不入报告。
 2. workspace staging：把待审 repo 或最小 diff 工作区上传到远端 workspace。
-3. 命令映射：复用现有 `reviewgate` PermissionPolicy、`reviewexec` timeout、output limit 和实际 env allowlist。
+3. 命令映射：复用现有 `approval` PermissionPolicy、`execution` timeout、output limit 和实际 env allowlist。
 4. artifact 拉取：stdout/stderr digest、报告和必要日志回传本地 artifact/SQLite。
 5. cleanup contract：无论成功、失败还是超时，都关闭远端 sandbox，并有测试证明不会遗留实例。
 

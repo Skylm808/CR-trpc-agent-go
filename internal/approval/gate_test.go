@@ -1,4 +1,4 @@
-package reviewgate
+package approval
 
 import (
 	"context"

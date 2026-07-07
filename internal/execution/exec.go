@@ -1,5 +1,5 @@
-// Package reviewexec owns sandbox runtime and Go check execution helpers.
-package reviewexec
+// Package execution owns sandbox runtime and Go check execution helpers.
+package execution
 
 import (
 	"context"

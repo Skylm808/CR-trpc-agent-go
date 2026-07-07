@@ -96,10 +96,10 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | 2 | 沙箱执行（container/E2B，local 仅 fallback） | `codeexecutor/container`、`tool/workspaceexec`、`tool/codeexec`、E2B unsupported audit | workspaceexec 主路径/fallback tests + env-gated Docker test + E2B unsupported tests | ✅ | Issue 主线由默认 container runtime 满足；E2B/Cube 保留 explicit unsupported 扩展入口，不作为 blocker |
 | 3 | skill_run / workspace_exec / PermissionPolicy | `tool/skill`、`tool/workspaceexec`、`tool/codeexec`、`tool.PermissionPolicy` | `agent_test.go`、`policy_test.go` | ✅ | — |
 | 4 | 输入解析（diff / 文件列表 / git 变更 / base-head / YAML 配置 / 当前目录默认推断） | `cmd/review-agent.Run`、`cmd/review-agent/config.go`、`internal/agent.readInput`、`internal/agent.inputMetadata`、`internal/review/parser.go` | `config_test.go`、`parser_test.go`、`repo_test.go`、`agent_test.go`、CLI base/head test、真实 git repo fixture clone test | ✅ | 不自动 fetch 远端 ref |
-| 5 | 结构化 findings | `internal/review/types.go`、`internal/reviewmodel`、`internal/agent/model_review.go` facade | `engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
+| 5 | 结构化 findings | `internal/review/types.go`、`internal/semantics`、`internal/agent/model_review.go` facade | `engine_test.go`、fixture tests、model provider tests | ✅ | provider 已走官方 `model.Model` adapter；CLI 兼容入口已走官方 Runner/Event adapter |
 | 6 | 数据库存储 | `internal/storage/sqlite` | `sqlite_test.go`、`agent_test.go` | ✅ | 当前 SQLite 是审计 store；一次性 CR workflow 不需要长对话 Session/Memory |
 | 7 | 去重降噪 | `DedupeFindings`、`dedupe.diff` | `types_test.go`、fixture tests | ✅ | 更多低置信分类可扩展 |
-| 8 | 安全边界 | `internal/reviewexec` timeout/output limit/env allowlist/digest、Agent redaction、artifact size/cap | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 + `internal/reviewexec` env tests | ✅ | 生产部署可继续做平台级 runtime 加固 |
+| 8 | 安全边界 | `internal/execution` timeout/output limit/env allowlist/digest、Agent redaction、artifact size/cap | `sandbox-safety.md` + sandbox failure/timeout tests + 多形态 secret 报告/DB 扫描 + `internal/execution` env tests | ✅ | 生产部署可继续做平台级 runtime 加固 |
 | 9 | 监控审计 | SQLite metrics 表 + 官方 trace span + report metrics | report/agent/sqlite tests | ✅ | exporter/OTLP dashboard 是服务化扩展，不是原型验收 blocker |
 
 ## 框架模块证据
@@ -107,11 +107,11 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | Issue 能力 | 当前实现 | 证据 |
 |------------|----------|------|
 | Skill 加载与执行 | `tool/skill` 的 `skill_load` / `skill_run` 执行 `skills/code-review/scripts/check.sh` | `internal/agent/execution.go`、`skills/code-review/SKILL.md` |
-| workspace 级脚本 | `tool/workspaceexec` 执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...` | `internal/reviewexec`、`TestAgentRunContainerRuntimeExecutesGoChecks` |
-| CodeExecutor 沙箱 | 默认 `codeexecutor/container`，`local-fallback` 仅开发测试；`tool/codeexec` 是 Go checks fallback | `internal/reviewexec`、README runtime 说明 |
-| Permission 治理 | 所有 `skill_run` / Go check 命令先过 `tool.PermissionPolicy`，非 allow 不执行 | `internal/reviewgate`、`TestAgentRunDoesNotExecuteNonAllowPermission` |
+| workspace 级脚本 | `tool/workspaceexec` 执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...` | `internal/execution`、`TestAgentRunContainerRuntimeExecutesGoChecks` |
+| CodeExecutor 沙箱 | 默认 `codeexecutor/container`，`local-fallback` 仅开发测试；`tool/codeexec` 是 Go checks fallback | `internal/execution`、README runtime 说明 |
+| Permission 治理 | 所有 `skill_run` / Go check 命令先过 `tool.PermissionPolicy`，非 allow 不执行 | `internal/approval`、`TestAgentRunDoesNotExecuteNonAllowPermission` |
 | artifact | `review_report.json`、`review_report.md`、`review_diagnostics.json` 写入官方 artifact service，本地文件和 SQLite 引用继续保留 | `TestArtifactServiceReportsCanBeSavedAsArtifacts`、`TestAgentDefaultArtifactService` |
-| LLM provider boundary | `fake-model` 模式在 Skill 后经 `internal/reviewmodel` 和官方 `model.Model` 调用模型边界，默认 fake provider；显式 `--model-provider http` 调用 HTTP provider；显式 `openai` / `openai-compatible` / `deepseek` 调用官方 `model/openai` provider。输入/输出脱敏，失败降级人工复核 | `TestAgentRunFakeModelUsesProviderBoundary`、`TestReviewProviderModelAdapterImplementsOfficialModel`、HTTP/openai/model provider tests |
+| LLM provider boundary | `fake-model` 模式在 Skill 后经 `internal/semantics` 和官方 `model.Model` 调用模型边界，默认 fake provider；显式 `--model-provider http` 调用 HTTP provider；显式 `openai` / `openai-compatible` / `deepseek` 调用官方 `model/openai` provider。输入/输出脱敏，失败降级人工复核 | `TestAgentRunFakeModelUsesProviderBoundary`、`TestReviewProviderModelAdapterImplementsOfficialModel`、HTTP/openai/model provider tests |
 | Event facade | CLI `Agent.Run` 通过官方 `event.Event` 输出 input/skill/sandbox/model/report/task 阶段事件 | `TestAgentRunEmitsOfficialEvents` |
 | telemetry | 官方 trace span 记录 task、mode、runtime、输入类型、耗时、tool/model 调用数、model provider/name/backend、model finding/exception、permission block、finding/artifact 数、severity/exception 分布和结论；SQLite metrics 表保存聚合指标 | `TestAgentRunRecordsTelemetryAttributes`、`TestAcceptanceEvidenceReportsAndSQLiteReplay` |
 | SQLite 审计 | task、finding、permission/filter decision、sandbox run、artifact、metrics、report 按 task id 查询 | `TestAcceptanceEvidenceReportsAndSQLiteReplay` |
