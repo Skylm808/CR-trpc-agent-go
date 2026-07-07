@@ -87,8 +87,8 @@ func TestHoldoutEvalScriptRunsSelfContainedMatrix(t *testing.T) {
 	}
 	text := string(out)
 	for _, want := range []string{
-		"fixtures=11",
-		"expected=10",
+		"fixtures=15",
+		"expected=22",
 		"matrix_source=holdout",
 		"recall=1.000",
 		"precision=1.000",

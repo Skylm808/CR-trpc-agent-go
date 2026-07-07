@@ -6,6 +6,10 @@ These fixtures are self-contained adversarial samples for local acceptance. They
 - `holdout-placeholder-secret.diff`: placeholder secret-like names that should not produce critical findings.
 - `holdout-secret-private-key.diff`: private-key shaped secret leak.
 - `holdout-lifecycle-combo.diff`: combined context, resource, and database lifecycle risks.
+- `holdout-pr-shaped-service.diff`: multi-file PR-shaped sample with risky Go code and safe docs change.
+- `holdout-guarded-lifecycle.diff`: false-positive guardrail for same-line cleanup/lifecycle guards.
+- `holdout-batch-worker-combo.diff`: combined worker lifecycle risks in a more realistic batch path.
+- `holdout-env-secret-guard.diff`: false-positive guardrail for env-sourced bearer token construction.
 - `model-semantic.diff`: generic deterministic fake-model semantic signal.
 - `model-authz-bypass.diff`: authorization bypass signal that deterministic line rules should not claim.
 - `model-nil-boundary.diff`: nil/zero-value boundary signal.

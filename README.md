@@ -152,12 +152,34 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 ## 测试
 
-公开 fixture 评测和 hidden-like 外部 matrix smoke：
+Reviewer 最短复现路径：
 
 ```bash
+GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
+CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
+```
+
+如果只想快速看报告产物和 SQLite 审计，可运行：
+
+```bash
+out="$(mktemp -d)"
+GOCACHE=/private/tmp/cr-agent-gocache go run ./cmd/review-agent \
+  --config /dev/null \
+  --fixture realistic-service-risk.diff \
+  --fixtures-root testdata/fixtures \
+  --skills-root skills \
+  --runtime local-fallback \
+  --sqlite "$out/review.db" \
+  --output-dir "$out"
+ls "$out"
+```
+
+upstream examples 迁移 smoke 仍是独立检查：
+
+```bash
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
@@ -213,9 +235,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 ## Issue #2004 仍缺什么
 
-- 继续扩充 holdout/adversarial 样本，尤其是真实模型能发现的语义风险；
+- 继续用更多 holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险；
 - 如果 reviewer/CI 提供私有样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加外部 hidden 验收。
 
-非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。
+非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。Issue 主线允许 `codeexecutor/container` 或 E2B workspace runtime；当前默认生产路径已经是 container，且具备 timeout、output limit、permission gate、failure record 和 SQLite 审计，所以 E2B 不是当前 blocker。
 
 权威进度矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。

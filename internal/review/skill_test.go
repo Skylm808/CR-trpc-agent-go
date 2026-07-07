@@ -11,9 +11,18 @@ import (
 )
 
 func TestSkillFilesExist(t *testing.T) {
-	_, err := SkillRoot()
+	skillRoot, err := SkillRoot()
 	if err != nil {
 		t.Fatalf("SkillRoot returned error: %v", err)
+	}
+	for _, rel := range []string{
+		"scripts/check.sh",
+		"scripts/check_rules.py",
+		"scripts/check_fallback.go",
+	} {
+		if _, err := os.Stat(filepath.Join(skillRoot, rel)); err != nil {
+			t.Fatalf("expected skill file %s: %v", rel, err)
+		}
 	}
 }
 
