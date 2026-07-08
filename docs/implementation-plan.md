@@ -93,7 +93,7 @@ scripts/llm_smoke.sh
 - 文档集合保持精简：`docs/` 下 10 个文档均被 `docs/README.md` 索引并服务于架构、验收、数据契约、安全、评测或迁移边界；本轮未发现可直接删除的孤立 md。
 - `examples/cr-agent` 迁移面仍保持轻量，只包含 README、安全 YAML 和 sample diff；`skills_root: skills`、`fixtures_root: testdata/fixtures` 适合迁入独立 example module 后继续使用。
 - E2B/Cube 不在本轮实现真实 adapter；当前代码和文档应继续明确它只是 unsupported 审计入口，避免半成品联网执行绕过 workspace staging、artifact 拉取和 cleanup contract。
-- 真实 LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮目标 diff 的模型阶段返回 0 条增量 finding，不能把它写成真实模型语义检出能力证明。
+- 真实 repo LLM smoke 已证明 DeepSeek/OpenAI-compatible provider 通路和泄漏约束；本轮 `trpc-GitHub-agent` go-only diff 产生 `source=model` 增量 finding，报告包含 `model_provider=deepseek`、`model_name=deepseek-chat`、`model_backend=trpc-agent-go/model/openai`、`model_call_count=1`，且未出现 `model-provider-failed`。
 - `testdata/holdout/model-*.diff` 使用 deterministic fake model 证明模型合并链路可产生多类增量 finding；真实模型语义价值仍需后续 DeepSeek/OpenAI smoke 持续校准，且 smoke 不是 CI 必需项。
 
 ## 相关文档

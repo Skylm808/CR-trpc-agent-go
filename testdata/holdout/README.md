@@ -10,6 +10,8 @@ These fixtures are self-contained adversarial samples for local acceptance. They
 - `holdout-guarded-lifecycle.diff`: false-positive guardrail for same-line cleanup/lifecycle guards.
 - `holdout-batch-worker-combo.diff`: combined worker lifecycle risks in a more realistic batch path.
 - `holdout-env-secret-guard.diff`: false-positive guardrail for env-sourced bearer token construction.
+- `holdout-expanded-go-risks.diff`: adversarial mix of HTTP body, SQL concat, command injection, context propagation, mutex, loop defer, bare error return, and loop string concat rules.
+- `holdout-expanded-safe-patterns.diff`: safe guardrail for the expanded Go rule family.
 - `model-semantic.diff`: generic deterministic fake-model semantic signal.
 - `model-authz-bypass.diff`: authorization bypass signal that deterministic line rules should not claim.
 - `model-nil-boundary.diff`: nil/zero-value boundary signal.

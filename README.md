@@ -235,8 +235,8 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 
 ## Issue #2004 仍缺什么
 
-- 继续用更多 holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险；
-- 如果 reviewer/CI 提供私有样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加外部 hidden 验收。
+- 继续用 self-contained holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险；
+- reviewer 未提供私有 hidden 样本时不作为 blocker；仓库用 holdout matrix 和 hidden-like external smoke 提供可复现替代证据，若未来有私有样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加外部验收。
 
 非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。Issue 主线允许 `codeexecutor/container` 或 E2B workspace runtime；当前默认生产路径已经是 container，且具备 timeout、output limit、permission gate、failure record 和 SQLite 审计，所以 E2B 不是当前 blocker。
 

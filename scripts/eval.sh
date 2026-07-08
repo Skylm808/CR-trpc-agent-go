@@ -7,7 +7,7 @@ SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
 MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
 CONFIG="${CR_AGENT_EVAL_CONFIG:-/dev/null}"
-FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff dedupe.diff realistic-service-risk.diff sandbox-fail.diff sandbox-timeout.diff}"
+FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff http-body.diff sql-string-concat.diff command-injection.diff context-background.diff mutex-unlock.diff defer-in-loop.diff bare-return-err.diff string-concat-loop.diff dedupe.diff realistic-service-risk.diff sandbox-fail.diff sandbox-timeout.diff}"
 MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 MATRIX_SOURCE_OVERRIDE="${CR_AGENT_EVAL_MATRIX_SOURCE:-}"
@@ -53,6 +53,14 @@ goroutine.diff	goroutine-leak	high	finding	true
 context.diff	context-leak	high	finding	true
 resource.diff	resource-leak	high	finding	true
 db-lifecycle.diff	db-lifecycle	high	finding	true
+http-body.diff	http-body-close	high	finding	true
+sql-string-concat.diff	sql-string-concat	critical	finding	true
+command-injection.diff	command-injection	critical	finding	true
+context-background.diff	context-background-misuse	medium	finding	true
+mutex-unlock.diff	mutex-unlock-missing	high	finding	true
+defer-in-loop.diff	defer-in-loop	medium	finding	true
+bare-return-err.diff	bare-return-err	medium	finding	true
+string-concat-loop.diff	string-concat-loop	low	needs_human_review	true
 dedupe.diff	panic-direct	high	finding	true
 realistic-service-risk.diff	secret-leak	critical	finding	true
 realistic-service-risk.diff	panic-direct	high	finding	true

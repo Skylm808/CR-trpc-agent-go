@@ -74,6 +74,30 @@ func TestAllFixturesMatchExpectedReviewResults(t *testing.T) {
 		"db-lifecycle.diff": {
 			Findings: []findingExpectation{{RuleID: "db-lifecycle", Severity: "high", Status: "finding"}},
 		},
+		"http-body.diff": {
+			Findings: []findingExpectation{{RuleID: "http-body-close", Severity: "high", Status: "finding"}},
+		},
+		"sql-string-concat.diff": {
+			Findings: []findingExpectation{{RuleID: "sql-string-concat", Severity: "critical", Status: "finding"}},
+		},
+		"command-injection.diff": {
+			Findings: []findingExpectation{{RuleID: "command-injection", Severity: "critical", Status: "finding"}},
+		},
+		"context-background.diff": {
+			Findings: []findingExpectation{{RuleID: "context-background-misuse", Severity: "medium", Status: "finding"}},
+		},
+		"mutex-unlock.diff": {
+			Findings: []findingExpectation{{RuleID: "mutex-unlock-missing", Severity: "high", Status: "finding"}},
+		},
+		"defer-in-loop.diff": {
+			Findings: []findingExpectation{{RuleID: "defer-in-loop", Severity: "medium", Status: "finding"}},
+		},
+		"bare-return-err.diff": {
+			Findings: []findingExpectation{{RuleID: "bare-return-err", Severity: "medium", Status: "finding"}},
+		},
+		"string-concat-loop.diff": {
+			Warnings: []findingExpectation{{RuleID: "string-concat-loop", Severity: "low", Status: "needs_human_review"}},
+		},
 		"dedupe.diff": {
 			Findings: []findingExpectation{{RuleID: "panic-direct", Severity: "high", Status: "finding"}},
 		},

@@ -3,6 +3,7 @@ package review
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -14,7 +15,7 @@ var hunkHeader = regexp.MustCompile(`^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@`)
 // ParseUnifiedDiff 解析 unified diff。
 func ParseUnifiedDiff(input string) (ParsedDiff, error) {
 	var parsed ParsedDiff
-	scanner := bufio.NewScanner(strings.NewReader(input))
+	reader := bufio.NewReader(strings.NewReader(input))
 
 	var current *ParsedFile
 	var currentHunk *Hunk
@@ -30,8 +31,15 @@ func ParseUnifiedDiff(input string) (ParsedDiff, error) {
 		currentHunk = nil
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return ParsedDiff{}, err
+		}
+		if len(line) == 0 && err == io.EOF {
+			break
+		}
+		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
 			flushHunk()
@@ -85,9 +93,9 @@ func ParseUnifiedDiff(input string) (ParsedDiff, error) {
 				newLine++
 			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return ParsedDiff{}, err
+		if err == io.EOF {
+			break
+		}
 	}
 	flushHunk()
 	if current != nil {
