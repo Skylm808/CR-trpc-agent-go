@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 )
 
 // Options 保存 CLI 参数。
@@ -57,14 +58,14 @@ func Run(opts Options) error {
 	switch opts.ModelProvider {
 	case "":
 	case "http":
-		cfg.ModelHTTP = cragent.HTTPModelProviderConfig{
+		cfg.ModelHTTP = llm.HTTPConfig{
 			Enabled:   true,
 			Endpoint:  opts.ModelEndpoint,
 			APIKeyEnv: opts.ModelAPIKeyEnv,
 			Model:     opts.ModelName,
 		}
 	case "openai", "openai-compatible", "deepseek":
-		cfg.ModelOpenAI = cragent.OpenAIModelProviderConfig{
+		cfg.ModelOpenAI = llm.OpenAIConfig{
 			Enabled:   true,
 			Provider:  opts.ModelProvider,
 			Model:     opts.ModelName,

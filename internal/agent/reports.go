@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/report"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
@@ -32,7 +33,7 @@ type reviewResultContext struct {
 	ToolCallCount int
 	Decisions     []storage.DecisionRecord
 	Runs          []storage.SandboxRunRecord
-	Model         modelRunSummary
+	Model         llm.RunSummary
 }
 
 // finalizeReviewResult 补齐报告、落库和 telemetry 共用字段。

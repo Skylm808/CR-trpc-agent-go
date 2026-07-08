@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
-	"github.com/Skylm808/CR-trpc-agent-go/internal/input"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
@@ -88,11 +88,11 @@ type Config struct {
 	// ArtifactService 接入官方 artifact service。
 	ArtifactService artifact.Service
 	// ModelProvider 是可选的模型审查边界；fake-model 默认使用 deterministic provider。
-	ModelProvider ModelReviewProvider
+	ModelProvider llm.Provider
 	// ModelHTTP 是显式开启的 HTTP 模型 provider 配置。
-	ModelHTTP HTTPModelProviderConfig
+	ModelHTTP llm.HTTPConfig
 	// ModelOpenAI 是显式开启的官方 OpenAI-compatible 模型 provider 配置。
-	ModelOpenAI OpenAIModelProviderConfig
+	ModelOpenAI llm.OpenAIConfig
 	// EventSink 接收本项目通过官方 event.Event 暴露的阶段事件。
 	EventSink func(context.Context, *agentevent.Event)
 }
@@ -134,7 +134,7 @@ type Agent struct {
 	// artifactService 保存官方产物。
 	artifactService artifact.Service
 	// modelProvider 提供语义审查增量。
-	modelProvider ModelReviewProvider
+	modelProvider llm.Provider
 }
 
 // New 创建基于 trpc-agent-go 的 CR Agent。
@@ -239,11 +239,11 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 	recordReviewStartTelemetry(span, a.cfg, req, mode)
 
 	// 统一把输入收敛成 diff。
-	diff, inputRef, err := input.Read(inputConfig(a.cfg), inputRequest(req))
+	diff, inputRef, err := readInput(a.cfg, req)
 	if err != nil {
 		return review.Result{}, err
 	}
-	inputMeta := input.MetadataForRequest(diff, inputRequest(req))
+	inputMeta := inputMetadataForRequest(diff, req)
 	// taskID 便于报告和数据库关联。
 	taskID = newTaskID(diff)
 	span.SetAttributes(attribute.String("cr_agent.task_id", taskID))
@@ -281,7 +281,7 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 		Runs:          runs,
 	})
 	if provider, audit := a.configuredModelProvider(mode); provider != nil {
-		var modelSummary modelRunSummary
+		var modelSummary llm.RunSummary
 		result, modelSummary = a.runModelReview(ctx, taskID, provider, audit, result, diff, inputMeta)
 		a.emitReviewEvent(ctx, taskID, reviewEventModelReview, fmt.Sprintf("calls=%d findings=%d exceptions=%d", modelSummary.CallCount, modelSummary.FindingCount, modelSummary.ExceptionCount))
 		result = finalizeReviewResult(result, reviewResultContext{

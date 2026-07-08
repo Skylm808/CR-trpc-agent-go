@@ -1,5 +1,5 @@
-// Package semantics owns semantic model review providers and merge policy.
-package semantics
+// Package llm owns model review providers and merge policy.
+package llm
 
 import (
 	"context"

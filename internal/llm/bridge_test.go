@@ -1,12 +1,14 @@
-package agent
+package llm
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-func TestDecodeModelReviewOutputAcceptsPlainJSON(t *testing.T) {
-	output, err := decodeModelReviewOutput(`{"findings":[{"rule_id":"plain-json","confidence":"high"}]}`)
+func TestDecodeLLMOutputAcceptsPlainJSON(t *testing.T) {
+	output, err := DecodeOutput(`{"findings":[{"rule_id":"plain-json","confidence":"high"}]}`)
 	if err != nil {
 		t.Fatalf("decode plain JSON: %v", err)
 	}
@@ -15,8 +17,8 @@ func TestDecodeModelReviewOutputAcceptsPlainJSON(t *testing.T) {
 	}
 }
 
-func TestDecodeModelReviewOutputAcceptsFencedJSON(t *testing.T) {
-	output, err := decodeModelReviewOutput("```json\n{\"findings\":[{\"rule_id\":\"fenced-json\",\"confidence\":\"low\"}]}\n```")
+func TestDecodeLLMOutputAcceptsFencedJSON(t *testing.T) {
+	output, err := DecodeOutput("```json\n{\"findings\":[{\"rule_id\":\"fenced-json\",\"confidence\":\"low\"}]}\n```")
 	if err != nil {
 		t.Fatalf("decode fenced JSON: %v", err)
 	}
@@ -25,8 +27,8 @@ func TestDecodeModelReviewOutputAcceptsFencedJSON(t *testing.T) {
 	}
 }
 
-func TestDecodeModelReviewOutputExtractsJSONFromText(t *testing.T) {
-	output, err := decodeModelReviewOutput("Review result:\n{\"findings\":[{\"rule_id\":\"embedded-json\",\"confidence\":\"medium\"}]}\nDone.")
+func TestDecodeLLMOutputExtractsJSONFromText(t *testing.T) {
+	output, err := DecodeOutput("Review result:\n{\"findings\":[{\"rule_id\":\"embedded-json\",\"confidence\":\"medium\"}]}\nDone.")
 	if err != nil {
 		t.Fatalf("decode embedded JSON: %v", err)
 	}
@@ -35,8 +37,8 @@ func TestDecodeModelReviewOutputExtractsJSONFromText(t *testing.T) {
 	}
 }
 
-func TestDecodeModelReviewOutputEmptyContent(t *testing.T) {
-	output, err := decodeModelReviewOutput("  ")
+func TestDecodeLLMOutputEmptyContent(t *testing.T) {
+	output, err := DecodeOutput("  ")
 	if err != nil {
 		t.Fatalf("decode empty content: %v", err)
 	}
@@ -45,8 +47,8 @@ func TestDecodeModelReviewOutputEmptyContent(t *testing.T) {
 	}
 }
 
-func TestDecodeModelReviewOutputRedactsInvalidJSONError(t *testing.T) {
-	_, err := decodeModelReviewOutput(`{"findings":[{"evidence":"sk-invalidjson-1234567890abcdef"}`)
+func TestDecodeLLMOutputRedactsInvalidJSONError(t *testing.T) {
+	_, err := DecodeOutput(`{"findings":[{"evidence":"sk-invalidjson-1234567890abcdef"}`)
 	if err == nil {
 		t.Fatal("expected decode error")
 	}
@@ -56,7 +58,7 @@ func TestDecodeModelReviewOutputRedactsInvalidJSONError(t *testing.T) {
 }
 
 func TestModelReviewSystemPromptDefinesStrictContract(t *testing.T) {
-	req := modelReviewInputRequest(ModelReviewInput{})
+	req := InputRequest(Input{})
 	if len(req.Messages) == 0 {
 		t.Fatal("expected system prompt")
 	}
@@ -79,4 +81,13 @@ func TestModelReviewSystemPromptDefinesStrictContract(t *testing.T) {
 			t.Fatalf("system prompt missing %q:\n%s", want, prompt)
 		}
 	}
+}
+
+func hasRuleID(findings []review.Finding, ruleID string) bool {
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			return true
+		}
+	}
+	return false
 }

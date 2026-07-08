@@ -32,9 +32,9 @@
 | `base_ref` / `head_ref` | ✅ CLI `--base-ref` / `--head-ref`，进入 metadata/report/diagnostics/SQLite report/telemetry |
 | `parsed_files` / `parsed_hunks` | ✅ 由 parser 和 Skill 脚本处理 |
 
-## ModelReviewInput
+## llm.Input
 
-`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库。该输入会先封装成官方 `trpc-agent-go/model.Request`，通过官方 `model.Model.GenerateContent` 路线调用当前 provider，再解析回 `ModelReviewOutput`。默认 fake provider 不发送网络请求；显式启用 `--model-provider http` 时会把该结构作为 HTTP request 的 `input` 字段发送到配置的 endpoint；显式启用 `openai` / `openai-compatible` / `deepseek` 时会走官方 `trpc-agent-go/model/openai`。
+`fake-model` 模式会构造脱敏后的模型审查输入，但当前不单独落库。该输入会先封装成官方 `trpc-agent-go/model.Request`，通过官方 `model.Model.GenerateContent` 路线调用当前 provider，再解析回 `llm.Output`。默认 fake provider 不发送网络请求；显式启用 `--model-provider http` 时会把该结构作为 HTTP request 的 `input` 字段发送到配置的 endpoint；显式启用 `openai` / `openai-compatible` / `deepseek` 时会走官方 `trpc-agent-go/model/openai`。
 
 | 字段 | 当前状态 |
 |------|----------|
@@ -44,7 +44,7 @@
 | `sandbox_summary` | ✅ 复用 `SandboxSummary` |
 | `governance_summary` | ✅ 复用 `GovernanceSummary` |
 
-当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": ModelReviewInput }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。OpenAI-compatible / DeepSeek provider 使用官方 `trpc-agent-go/model/openai`；DeepSeek 默认 `model=deepseek-chat`、`variant=deepseek`、`api_key_env=DEEPSEEK_API_KEY`。`openai` / `openai-compatible` 默认读取 `OPENAI_API_KEY`，并在未配置 `base_url` 时读取 `OPENAI_BASE_URL`；DeepSeek 不继承 `OPENAI_BASE_URL`，除非 YAML/CLI 显式设置 base URL。推荐通过 `--model-api-key-env` 或 YAML `model.api_key_env` 指定环境变量名；本地 ignored YAML 也支持 `model.api_key`，仅用于 workstation smoke。空 key 不会影响默认 fake/rule-only 测试路径。Claude / Gemini SDK 绑定留到后续阶段。
+当前默认 fake provider 是 deterministic provider。可选 HTTP provider 使用 Go 标准库 `net/http`，请求体为 `{ "model": "...", "input": llm.Input }`，响应体解析为 `{ "findings": []review.Finding }` 或 Go JSON 等价字段名。OpenAI-compatible / DeepSeek provider 使用官方 `trpc-agent-go/model/openai`；DeepSeek 默认 `model=deepseek-chat`、`variant=deepseek`、`api_key_env=DEEPSEEK_API_KEY`。`openai` / `openai-compatible` 默认读取 `OPENAI_API_KEY`，并在未配置 `base_url` 时读取 `OPENAI_BASE_URL`；DeepSeek 不继承 `OPENAI_BASE_URL`，除非 YAML/CLI 显式设置 base URL。推荐通过 `--model-api-key-env` 或 YAML `model.api_key_env` 指定环境变量名；本地 ignored YAML 也支持 `model.api_key`，仅用于 workstation smoke。空 key 不会影响默认 fake/rule-only 测试路径。Claude / Gemini SDK 绑定留到后续阶段。
 
 ## InputMetadata
 

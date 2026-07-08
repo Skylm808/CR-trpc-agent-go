@@ -1,4 +1,4 @@
-package semantics
+package llm
 
 import (
 	"bytes"

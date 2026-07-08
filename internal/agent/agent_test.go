@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 	"go.opentelemetry.io/otel/attribute"
@@ -1436,14 +1437,14 @@ func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
 	t.Parallel()
 
 	rawSecret := "sk-officialmodel-1234567890"
-	var seenInput ModelReviewInput
-	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	var seenInput llm.Input
+	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
 		_ = ctx
 		seenInput = input
 		if strings.Contains(input.DiffSummary, rawSecret) {
 			t.Fatalf("official model adapter leaked raw input secret: %s", input.DiffSummary)
 		}
-		return ModelReviewOutput{Findings: []review.Finding{{
+		return llm.Output{Findings: []review.Finding{{
 			Severity:       "medium",
 			Category:       "logic",
 			File:           "main.go",
@@ -1456,12 +1457,12 @@ func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
 			RuleID:         "official-model-adapter",
 		}}}, nil
 	})
-	var official agentmodel.Model = reviewProviderModelAdapter{
-		name:     "cr-agent-test-model",
-		provider: provider,
+	var official agentmodel.Model = llm.ProviderModelAdapter{
+		Name:     "cr-agent-test-model",
+		Provider: provider,
 	}
 
-	ch, err := official.GenerateContent(context.Background(), modelReviewInputRequest(ModelReviewInput{
+	ch, err := official.GenerateContent(context.Background(), llm.InputRequest(llm.Input{
 		DiffSummary: "+ secret = \"" + rawSecret + "\"",
 		InputMetadata: review.InputMetadata{
 			ChangedGoFiles: []string{"main.go"},
@@ -1483,7 +1484,7 @@ func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
 	if responses[0].Model != "cr-agent-test-model" || responses[0].Object != agentmodel.ObjectTypeChatCompletion {
 		t.Fatalf("unexpected official model metadata: %+v", responses[0])
 	}
-	var output ModelReviewOutput
+	var output llm.Output
 	if err := json.Unmarshal([]byte(responses[0].Choices[0].Message.Content), &output); err != nil {
 		t.Fatalf("decode official model response content: %v", err)
 	}
@@ -1749,9 +1750,9 @@ func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
 	t.Parallel()
 
 	root := repoRoot(t)
-	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
 		_ = ctx
-		return ModelReviewOutput{Findings: []review.Finding{
+		return llm.Output{Findings: []review.Finding{
 			{
 				Severity:       "high",
 				Category:       "error_handling",
@@ -1829,10 +1830,10 @@ func TestLowConfidenceModelFindingPersistsAsHumanReviewEvidence(t *testing.T) {
 	root := repoRoot(t)
 	outDir := t.TempDir()
 	dbPath := filepath.Join(t.TempDir(), "review.db")
-	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
 		_ = ctx
 		_ = input
-		return ModelReviewOutput{Findings: []review.Finding{{
+		return llm.Output{Findings: []review.Finding{{
 			Severity:       "low",
 			Category:       "logic",
 			File:           "main.go",
@@ -1922,12 +1923,12 @@ func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
 	if err := os.WriteFile(diffPath, []byte(diff), 0o644); err != nil {
 		t.Fatalf("write diff: %v", err)
 	}
-	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
 		_ = ctx
 		if strings.Contains(input.DiffSummary, rawSecret) {
 			t.Fatalf("model input leaked raw secret: %s", input.DiffSummary)
 		}
-		return ModelReviewOutput{Findings: []review.Finding{{
+		return llm.Output{Findings: []review.Finding{{
 			Severity:       "medium",
 			Category:       "security",
 			File:           "secret.go",
@@ -1996,10 +1997,10 @@ func TestModelProviderFailureDoesNotAbortReview(t *testing.T) {
 	t.Parallel()
 
 	root := repoRoot(t)
-	provider := modelProviderFunc(func(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
 		_ = ctx
 		_ = input
-		return ModelReviewOutput{}, errors.New("provider failed with token=sk-modelboom-1234567890")
+		return llm.Output{}, errors.New("provider failed with token=sk-modelboom-1234567890")
 	})
 	ag, err := New(Config{
 		SkillsRoot:    filepath.Join(root, "skills"),
@@ -2062,9 +2063,9 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 			t.Fatalf("read provider request body: %v", err)
 		}
 		if !strings.Contains(string(rawBody), `"diff_summary"`) || strings.Contains(string(rawBody), `"DiffSummary"`) {
-			t.Fatalf("provider request should use snake_case ModelReviewInput JSON keys: %s", rawBody)
+			t.Fatalf("provider request should use snake_case llm.Input JSON keys: %s", rawBody)
 		}
-		var req httpModelReviewRequest
+		var req llm.HTTPReviewRequest
 		if err := json.Unmarshal(rawBody, &req); err != nil {
 			t.Fatalf("decode provider request: %v", err)
 		}
@@ -2080,7 +2081,7 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 		if !strings.Contains(req.Input.DiffSummary, "[REDACTED]") {
 			t.Fatalf("expected redacted diff summary, got %s", req.Input.DiffSummary)
 		}
-		return jsonHTTPResponse(t, http.StatusOK, ModelReviewOutput{Findings: []review.Finding{
+		return jsonHTTPResponse(t, http.StatusOK, llm.Output{Findings: []review.Finding{
 			{
 				Severity:       "high",
 				Category:       "error_handling",
@@ -2139,7 +2140,7 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
 		Timeout:    5 * time.Second,
-		ModelHTTP: HTTPModelProviderConfig{
+		ModelHTTP: llm.HTTPConfig{
 			Enabled:   true,
 			Endpoint:  "https://model.test/review",
 			APIKeyEnv: "CR_AGENT_TEST_MODEL_KEY",
@@ -2206,13 +2207,13 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 	cases := []struct {
 		name      string
 		secret    string
-		configure func() HTTPModelProviderConfig
+		configure func() llm.HTTPConfig
 	}{
 		{
 			name:   "transport-error",
 			secret: "sk-providertransport-1234567890",
-			configure: func() HTTPModelProviderConfig {
-				return HTTPModelProviderConfig{
+			configure: func() llm.HTTPConfig {
+				return llm.HTTPConfig{
 					Enabled:  true,
 					Endpoint: "https://model.test/review",
 					Model:    "review-test-model",
@@ -2227,8 +2228,8 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 		{
 			name:   "non-2xx",
 			secret: "sk-providerboom-1234567890",
-			configure: func() HTTPModelProviderConfig {
-				return HTTPModelProviderConfig{
+			configure: func() llm.HTTPConfig {
+				return llm.HTTPConfig{
 					Enabled:  true,
 					Endpoint: "https://model.test/review",
 					Model:    "review-test-model",
@@ -2243,8 +2244,8 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 		{
 			name:   "invalid-json",
 			secret: "sk-providerjson-1234567890",
-			configure: func() HTTPModelProviderConfig {
-				return HTTPModelProviderConfig{
+			configure: func() llm.HTTPConfig {
+				return llm.HTTPConfig{
 					Enabled:  true,
 					Endpoint: "https://model.test/review",
 					Model:    "review-test-model",
@@ -2259,8 +2260,8 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 		{
 			name:   "deadline",
 			secret: "sk-providerdeadline-1234567890",
-			configure: func() HTTPModelProviderConfig {
-				return HTTPModelProviderConfig{
+			configure: func() llm.HTTPConfig {
+				return llm.HTTPConfig{
 					Enabled:  true,
 					Endpoint: "https://model.test/review",
 					Model:    "review-test-model",
@@ -2846,11 +2847,11 @@ type countingModelProvider struct {
 	calls int
 }
 
-func (p *countingModelProvider) Review(ctx context.Context, input ModelReviewInput) (ModelReviewOutput, error) {
+func (p *countingModelProvider) Review(ctx context.Context, input llm.Input) (llm.Output, error) {
 	_ = ctx
 	_ = input
 	p.calls++
-	return ModelReviewOutput{}, nil
+	return llm.Output{}, nil
 }
 
 func hasFindingSource(findings []review.Finding, source string) bool {

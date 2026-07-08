@@ -1,4 +1,4 @@
-package agent
+package llm
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 func TestOpenAIModelProviderBuildsOfficialDeepSeekModel(t *testing.T) {
 	t.Setenv("CR_AGENT_TEST_DEEPSEEK_KEY", "test-deepseek-key")
 
-	model, err := newOpenAIModel(OpenAIModelProviderConfig{
+	model, err := NewOpenAIModel(OpenAIConfig{
 		Provider:  "deepseek",
 		Model:     "deepseek-chat",
 		APIKeyEnv: "CR_AGENT_TEST_DEEPSEEK_KEY",
@@ -28,7 +28,7 @@ func TestOpenAIModelProviderBuildsOfficialDeepSeekModel(t *testing.T) {
 }
 
 func TestOpenAIModelProviderRequiresAPIKeyBeforeNetworkCall(t *testing.T) {
-	_, err := newOpenAIReviewProvider(OpenAIModelProviderConfig{
+	_, err := NewOpenAIReviewProvider(OpenAIConfig{
 		Provider:  "deepseek",
 		Model:     "deepseek-chat",
 		APIKeyEnv: "CR_AGENT_TEST_MISSING_DEEPSEEK_KEY",
@@ -39,8 +39,8 @@ func TestOpenAIModelProviderRequiresAPIKeyBeforeNetworkCall(t *testing.T) {
 }
 
 func TestOpenAIModelProviderAcceptsLocalAPIKey(t *testing.T) {
-	model, err := newOpenAIModel(OpenAIModelProviderConfig{
-		Provider: modelProviderDeepSeek,
+	model, err := NewOpenAIModel(OpenAIConfig{
+		Provider: ProviderDeepSeek,
 		Model:    "deepseek-chat",
 		APIKey:   "sk-localyaml-1234567890abcdef",
 	})
@@ -55,23 +55,23 @@ func TestOpenAIModelProviderAcceptsLocalAPIKey(t *testing.T) {
 func TestOpenAIModelProviderDefaultsToOfficialEnv(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "https://openai-gateway.example.com/v1")
 
-	cfg := OpenAIModelProviderConfig{
-		Provider: modelProviderOpenAICompatible,
+	cfg := OpenAIConfig{
+		Provider: ProviderOpenAICompatible,
 		Model:    "gpt-4o-mini",
 	}
-	if got := modelAPIKeyEnv(cfg); got != defaultOpenAIAPIKeyEnv {
+	if got := ModelAPIKeyEnv(cfg); got != DefaultOpenAIAPIKeyEnv {
 		t.Fatalf("expected default OpenAI key env, got %q", got)
 	}
-	if got := openAIModelBaseURL(cfg); got != "https://openai-gateway.example.com/v1" {
+	if got := OpenAIModelBaseURL(cfg); got != "https://openai-gateway.example.com/v1" {
 		t.Fatalf("expected OPENAI_BASE_URL fallback, got %q", got)
 	}
 }
 
-func TestOpenAIModelProviderConfigBaseURLOverridesEnv(t *testing.T) {
+func TestOpenAIConfigBaseURLOverridesEnv(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "https://openai-gateway.example.com/v1")
 
-	got := openAIModelBaseURL(OpenAIModelProviderConfig{
-		Provider: modelProviderOpenAICompatible,
+	got := OpenAIModelBaseURL(OpenAIConfig{
+		Provider: ProviderOpenAICompatible,
 		Model:    "gpt-4o-mini",
 		BaseURL:  "https://yaml-gateway.example.com/v1",
 	})
@@ -83,8 +83,8 @@ func TestOpenAIModelProviderConfigBaseURLOverridesEnv(t *testing.T) {
 func TestDeepSeekModelProviderDoesNotInheritOpenAIBaseURL(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "https://openai-gateway.example.com/v1")
 
-	got := openAIModelBaseURL(OpenAIModelProviderConfig{
-		Provider: modelProviderDeepSeek,
+	got := OpenAIModelBaseURL(OpenAIConfig{
+		Provider: ProviderDeepSeek,
 		Model:    "deepseek-chat",
 	})
 	if got != "" {
