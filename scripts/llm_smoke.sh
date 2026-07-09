@@ -116,6 +116,10 @@ if [[ ! -f "$REPORT" ]]; then
   echo "[FAIL] missing review_report.json" >&2
   exit 1
 fi
+if [[ ! -f "$OUT/review_report.md" || ! -f "$OUT/review_report.zh.md" ]]; then
+  echo "[FAIL] missing Markdown review reports" >&2
+  exit 1
+fi
 DIAGNOSTICS="$OUT/review_diagnostics.json"
 if [[ ! -f "$DIAGNOSTICS" ]]; then
   echo "[FAIL] missing review_diagnostics.json" >&2

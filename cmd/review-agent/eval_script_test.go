@@ -137,7 +137,7 @@ func TestEvalScriptKeepsReportRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eval script failed: %v\n%s", err, out)
 	}
-	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+	for _, name := range []string{"review_report.json", "review_report.md", "review_report.zh.md", "review_diagnostics.json"} {
 		if _, err := os.Stat(filepath.Join(reportRoot, "secret.diff", name)); err != nil {
 			t.Fatalf("expected retained report %s: %v\noutput:\n%s", name, err, out)
 		}
@@ -172,7 +172,7 @@ func TestHiddenMatrixSmokeUsesExternalRootAndMatrix(t *testing.T) {
 		}
 	}
 	for _, fixture := range []string{"safe.diff", "secret.diff"} {
-		for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+		for _, name := range []string{"review_report.json", "review_report.md", "review_report.zh.md", "review_diagnostics.json"} {
 			if _, err := os.Stat(filepath.Join(reportRoot, fixture, name)); err != nil {
 				t.Fatalf("expected hidden-like report artifact %s/%s: %v\noutput:\n%s", fixture, name, err, out)
 			}
@@ -197,6 +197,7 @@ func TestRepoLLMSmokeScriptDocumentsPortableRepoEntry(t *testing.T) {
 		"--output-dir",
 		"model_provider",
 		"model_call_count=1",
+		"review_report.zh.md",
 		"no API key leakage",
 	} {
 		if !strings.Contains(output, want) {

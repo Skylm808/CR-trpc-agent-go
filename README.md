@@ -122,6 +122,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 - `review_report.json`
 - `review_report.md`
+- `review_report.zh.md`
 - `review_diagnostics.json`
 
 真实模型运行后，`metrics` 会记录非敏感审计字段：
@@ -144,6 +145,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 - [examples/review_report.json](examples/review_report.json)
 - [examples/review_report.md](examples/review_report.md)
+- [examples/review_report.zh.md](examples/review_report.zh.md)
 - [examples/review_diagnostics.json](examples/review_diagnostics.json)
 
 常用 CLI flags：
@@ -223,11 +225,26 @@ scripts/repo_llm_smoke.sh \
 脚本会从本仓库根目录运行 `go run ./cmd/review-agent`，并检查
 `model_call_count=1`、`model_provider` 存在和 API key 不泄漏。
 
-LLM 验证分三层：
+LLM 验证分四层：
 
 1. 无网络单测：prompt、decode、redaction、失败降级；
 2. deterministic fake-provider 集成测试：report/SQLite 行为；
-3. opt-in live smoke：DeepSeek/OpenAI-compatible 连通性。
+3. opt-in live smoke：DeepSeek/OpenAI-compatible 连通性；
+4. opt-in semantic eval：固定语义样本上记录真实模型实际发现项。
+
+真实 LLM 语义评测会保留每个 fixture 的 `review_report.json`、
+`review_report.md`、`review_report.zh.md` 和 `review_diagnostics.json`，并额外生成
+`llm_semantic_eval.md` 索引、`llm_semantic_eval.zh.md` 中文汇总和
+`llm_semantic_eval.en.md` 英文汇总。当 provider 返回高置信
+`source=model` 项时，模型 finding 会写入 `review_report.md` 的 Findings 段。
+如果提供 `testdata/holdout/expected.tsv`，summary 还会计算 fixture-level
+recall 和 safe-fixture false-positive 数；它是人工可复核证据，不是 CI 硬门禁。
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
+scripts/llm_semantic_eval.sh
+```
 
 ## Examples 迁移
 

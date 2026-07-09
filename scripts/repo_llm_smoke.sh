@@ -22,6 +22,7 @@ Options:
   -h, --help          Show this help.
 
 The script requires CR_AGENT_LLM_SMOKE=1 for live calls. It validates
+review_report.md, review_report.zh.md, review_report.json, review_diagnostics.json,
 model_call_count=1, a non-empty model_provider audit field, and no API key leakage
 in review_report.json or review_diagnostics.json.
 USAGE
@@ -202,7 +203,9 @@ fi
 
 REPORT="$OUT/review_report.json"
 DIAGNOSTICS="$OUT/review_diagnostics.json"
-if [[ ! -f "$REPORT" || ! -f "$DIAGNOSTICS" ]]; then
+MARKDOWN="$OUT/review_report.md"
+MARKDOWN_ZH="$OUT/review_report.zh.md"
+if [[ ! -f "$REPORT" || ! -f "$DIAGNOSTICS" || ! -f "$MARKDOWN" || ! -f "$MARKDOWN_ZH" ]]; then
   echo "[FAIL] missing review report artifacts in $OUT" >&2
   exit 1
 fi

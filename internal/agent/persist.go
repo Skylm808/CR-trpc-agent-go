@@ -9,7 +9,7 @@ import (
 )
 
 // persist 保存审计和报告数据。
-func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport, diagnosticsReport []byte) error {
+func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport, markdownChineseReport, diagnosticsReport []byte) error {
 	// 保存权限决策。
 	for _, decision := range decisions {
 		if decision.Command == "" && decision.Action == "" {
@@ -82,6 +82,10 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		if artifact.Name == "review_report.md" {
 			digest = digestBytes(markdownReport)
 			size = int64(len(markdownReport))
+		}
+		if artifact.Name == "review_report.zh.md" {
+			digest = digestBytes(markdownChineseReport)
+			size = int64(len(markdownChineseReport))
 		}
 		if artifact.Name == "review_diagnostics.json" {
 			digest = digestBytes(diagnosticsReport)

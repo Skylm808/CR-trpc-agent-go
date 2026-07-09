@@ -23,7 +23,7 @@ Then it runs:
   go run ./cmd/review-agent
 
 with cr-agent.example.yaml and verifies review_report.json,
-review_report.md, and review_diagnostics.json are produced.
+review_report.md, review_report.zh.md, and review_diagnostics.json are produced.
 USAGE
 }
 
@@ -89,6 +89,7 @@ for path in \
 	scripts/hidden_matrix_smoke.sh \
 	scripts/llm_smoke.sh \
 	scripts/repo_llm_smoke.sh \
+	scripts/llm_semantic_eval.sh \
 	docs/architecture.md \
 	docs/ci.md \
 	docs/data-contract.md \
@@ -112,7 +113,7 @@ cp "$ROOT/examples/cr-agent/sample.diff" "$EXAMPLE/sample.diff"
 		--output-dir "$OUT" >/dev/null
 )
 
-for name in review_report.json review_report.md review_diagnostics.json; do
+for name in review_report.json review_report.md review_report.zh.md review_diagnostics.json; do
   if [[ ! -f "$OUT/$name" ]]; then
     echo "[FAIL] missing $name in $OUT" >&2
     exit 1

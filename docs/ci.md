@@ -99,7 +99,7 @@ fixture_name	rule_id	severity	status	required
 
 ## 失败回放
 
-设置 `CR_AGENT_EVAL_REPORT_ROOT` 后，`scripts/eval.sh` 会保留每个 fixture 的 `review_report.json`、`review_report.md` 和 `review_diagnostics.json`，用于定位 false positive / false negative。
+设置 `CR_AGENT_EVAL_REPORT_ROOT` 后，`scripts/eval.sh` 会保留每个 fixture 的 `review_report.json`、`review_report.md`、`review_report.zh.md` 和 `review_diagnostics.json`，用于定位 false positive / false negative。
 
 CI 失败时优先查看：
 

@@ -35,6 +35,47 @@ func TestJSONAndMarkdownReportsIncludeFindings(t *testing.T) {
 	}
 }
 
+func TestChineseMarkdownReportIncludesLocalizedReviewFields(t *testing.T) {
+	rep := review.Result{
+		Summary: "1 findings, 0 warnings",
+		Findings: []review.Finding{{
+			Severity:       "high",
+			Category:       "security",
+			File:           "main.go",
+			Line:           10,
+			Title:          "Hardcoded secret",
+			Evidence:       "Line 10: password = [REDACTED]",
+			Recommendation: "Move the value to a secret manager.",
+			Confidence:     "high",
+			Source:         "skill_run",
+			RuleID:         "secret-leak",
+			Status:         "finding",
+		}},
+		Conclusion: review.Conclusion{
+			Status:  "fail",
+			Reason:  "blocking_findings",
+			Summary: "Critical or high severity findings require changes before merge.",
+		},
+	}
+
+	md := BuildMarkdownChinese(rep)
+	for _, want := range []string{
+		"# 代码审查报告",
+		"## 最终结论",
+		"状态: fail",
+		"审查发现: 1",
+		"[HIGH] main.go:10 Hardcoded secret",
+		"证据: Line 10: password = [REDACTED]",
+		"修复建议: Move the value to a secret manager.",
+		"来源: skill_run",
+		"规则: secret-leak",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("expected Chinese Markdown report to include %q, got %s", want, md)
+		}
+	}
+}
+
 func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testing.T) {
 	rep := review.Result{
 		TaskID: "task-contract",

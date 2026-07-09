@@ -122,6 +122,7 @@ Each run writes:
 
 - `review_report.json`
 - `review_report.md`
+- `review_report.zh.md`
 - `review_diagnostics.json`
 
 After a real model run, `metrics` includes non-sensitive audit fields:
@@ -144,6 +145,7 @@ Sample committed outputs:
 
 - [examples/review_report.json](examples/review_report.json)
 - [examples/review_report.md](examples/review_report.md)
+- [examples/review_report.zh.md](examples/review_report.zh.md)
 - [examples/review_diagnostics.json](examples/review_diagnostics.json)
 
 Common CLI flags:
@@ -208,7 +210,23 @@ Complete LLM verification is layered:
 
 1. no-network unit tests for prompt, decoding, redaction, and failure handling;
 2. deterministic fake-provider integration tests for report/SQLite behavior;
-3. opt-in live smoke for DeepSeek/OpenAI-compatible connectivity.
+3. opt-in live smoke for DeepSeek/OpenAI-compatible connectivity;
+4. opt-in semantic eval that records live model findings on fixed semantic fixtures.
+
+Live semantic eval preserves each fixture's `review_report.json`,
+`review_report.md`, `review_report.zh.md`, and `review_diagnostics.json`, then writes an
+`llm_semantic_eval.md` index plus separate `llm_semantic_eval.zh.md` and
+`llm_semantic_eval.en.md` summaries. When the provider returns high-confidence
+`source=model` items, those model findings are rendered in `review_report.md`.
+When `testdata/holdout/expected.tsv` is available, the summaries also compute
+fixture-level recall and safe-fixture false-positive counts as reviewable
+evidence, not as a hard CI gate.
+
+```bash
+CR_AGENT_LLM_SMOKE=1 \
+CR_AGENT_LLM_CONFIG=./cr-agent.yaml \
+scripts/llm_semantic_eval.sh
+```
 
 ## Examples Migration
 

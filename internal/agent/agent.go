@@ -320,7 +320,7 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 	a.emitReviewEvent(ctx, taskID, reviewEventReportWritten, "review_report.json")
 	if a.store != nil {
 		// 写入完整审计数据。
-		if err := a.persist(ctx, taskID, result, decisions, runs, reports.JSON, reports.Markdown, reports.Diagnostics); err != nil {
+		if err := a.persist(ctx, taskID, result, decisions, runs, reports.JSON, reports.Markdown, reports.MarkdownZH, reports.Diagnostics); err != nil {
 			return review.Result{}, err
 		}
 		// 最后标记任务完成。
@@ -474,7 +474,7 @@ func artifactMIMEType(name string) string {
 	switch name {
 	case "review_report.json", "review_diagnostics.json":
 		return "application/json"
-	case "review_report.md":
+	case "review_report.md", "review_report.zh.md":
 		return "text/markdown"
 	default:
 		return ""

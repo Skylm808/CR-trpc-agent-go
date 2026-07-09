@@ -39,7 +39,7 @@
 1. 保存 `sandbox_runs.status` 为 `failed` 或 `timed_out`。
 2. 增加 `metrics.exception_counts["sandbox_failed"]`。
 3. 在 conclusion 中进入 `needs_human_review`。
-4. 继续生成 `review_report.json`、`review_report.md` 和 `review_diagnostics.json`。
+4. 继续生成 `review_report.json`、`review_report.md`、`review_report.zh.md` 和 `review_diagnostics.json`。
 
 对应测试：
 

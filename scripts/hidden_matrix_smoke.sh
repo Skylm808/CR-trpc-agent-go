@@ -42,7 +42,7 @@ if [[ $STATUS -ne 0 ]]; then
 fi
 
 for fixture in safe.diff secret.diff; do
-  for artifact in review_report.json review_report.md review_diagnostics.json; do
+  for artifact in review_report.json review_report.md review_report.zh.md review_diagnostics.json; do
     if [[ ! -f "$REPORT_ROOT/$fixture/$artifact" ]]; then
       echo "[FAIL] missing retained artifact: $REPORT_ROOT/$fixture/$artifact" >&2
       echo "$OUTPUT" >&2

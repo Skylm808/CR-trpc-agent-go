@@ -23,6 +23,7 @@ type artifactPayload struct {
 type reportBundle struct {
 	JSON        []byte
 	Markdown    []byte
+	MarkdownZH  []byte
 	Diagnostics []byte
 }
 
@@ -79,6 +80,7 @@ func buildReportBundle(result review.Result) (reportBundle, error) {
 		return reportBundle{}, err
 	}
 	md := report.BuildMarkdown(result)
+	mdZH := report.BuildMarkdownChinese(result)
 	diagnosticsReport, err := buildDiagnostics(result)
 	if err != nil {
 		return reportBundle{}, err
@@ -86,6 +88,7 @@ func buildReportBundle(result review.Result) (reportBundle, error) {
 	return reportBundle{
 		JSON:        jsonReport,
 		Markdown:    []byte(md),
+		MarkdownZH:  []byte(mdZH),
 		Diagnostics: diagnosticsReport,
 	}, nil
 }
@@ -96,7 +99,7 @@ func (a *Agent) writeReviewArtifacts(ctx context.Context, taskID string, result 
 	if err := enforceArtifactLimits(a.cfg, payloads); err != nil {
 		return err
 	}
-	if err := writeReports(a.cfg.OutputDir, bundle.JSON, bundle.Markdown, bundle.Diagnostics); err != nil {
+	if err := writeReports(a.cfg.OutputDir, bundle.JSON, bundle.Markdown, bundle.MarkdownZH, bundle.Diagnostics); err != nil {
 		return err
 	}
 	if a.artifactService == nil {
@@ -106,11 +109,11 @@ func (a *Agent) writeReviewArtifacts(ctx context.Context, taskID string, result 
 }
 
 func (b reportBundle) payloads() []artifactPayload {
-	return reportPayloads(b.JSON, b.Markdown, b.Diagnostics)
+	return reportPayloads(b.JSON, b.Markdown, b.MarkdownZH, b.Diagnostics)
 }
 
 // writeReports 写入报告文件。
-func writeReports(dir string, jsonReport, markdownReport, diagnosticsReport []byte) error {
+func writeReports(dir string, jsonReport, markdownReport, markdownChineseReport, diagnosticsReport []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -120,14 +123,18 @@ func writeReports(dir string, jsonReport, markdownReport, diagnosticsReport []by
 	if err := os.WriteFile(filepath.Join(dir, "review_report.md"), markdownReport, 0o644); err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(dir, "review_report.zh.md"), markdownChineseReport, 0o644); err != nil {
+		return err
+	}
 	return os.WriteFile(filepath.Join(dir, "review_diagnostics.json"), diagnosticsReport, 0o644)
 }
 
 // reportPayloads 返回待写入产物。
-func reportPayloads(jsonReport, markdownReport, diagnosticsReport []byte) []artifactPayload {
+func reportPayloads(jsonReport, markdownReport, markdownChineseReport, diagnosticsReport []byte) []artifactPayload {
 	return []artifactPayload{
 		{Name: "review_report.json", Data: jsonReport},
 		{Name: "review_report.md", Data: markdownReport},
+		{Name: "review_report.zh.md", Data: markdownChineseReport},
 		{Name: "review_diagnostics.json", Data: diagnosticsReport},
 	}
 }
@@ -298,6 +305,7 @@ func reportArtifacts() []review.ArtifactSummary {
 	return []review.ArtifactSummary{
 		{Name: "review_report.json", Kind: "report", Path: "review_report.json"},
 		{Name: "review_report.md", Kind: "report", Path: "review_report.md"},
+		{Name: "review_report.zh.md", Kind: "report", Path: "review_report.zh.md"},
 		{Name: "review_diagnostics.json", Kind: "diagnostic", Path: "review_diagnostics.json"},
 	}
 }

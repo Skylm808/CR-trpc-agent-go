@@ -1,27 +1,27 @@
-# Review Report
+# 代码审查报告
 
 0 findings, 0 warnings
 
-## Conclusion
+## 最终结论
 
-- Status: pass
-- Reason: no_blocking_findings
-- Summary: No blocking findings were detected by the deterministic review chain.
+- 状态: pass
+- 原因: no_blocking_findings
+- 摘要: No blocking findings were detected by the deterministic review chain.
 
-Metrics: findings=0 total_ms=2306 sandbox_ms=2305 model_ms=0 tool_calls=2 model_calls=0 model_findings=0 model_exceptions=0 permission_blocks=0 redactions=0
+指标: findings=0 total_ms=2306 sandbox_ms=2305 model_ms=0 tool_calls=2 model_calls=0 model_findings=0 model_exceptions=0 permission_blocks=0 redactions=0
 
-Findings: 0
+审查发现: 0
 
 
-## Governance
+## 治理拦截
 
 - Permission allow: scripts/check.sh
 
-## Sandbox
+## 沙箱执行
 
 - scripts/check.sh via local-fallback: ok, timeout_ms=30000, output_limit_bytes=65536, duration_ms=2305
 
-## Artifacts
+## 产物
 
 - review_report.json (report): review_report.json
 - review_report.md (report): review_report.md

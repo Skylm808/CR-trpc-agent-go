@@ -141,7 +141,7 @@
 | 字段 | 当前状态 |
 |------|----------|
 | `task_id` | ✅ |
-| `name` | ✅ `review_report.json` / `review_report.md` / `review_diagnostics.json` |
+| `name` | ✅ `review_report.json` / `review_report.md` / `review_report.zh.md` / `review_diagnostics.json` |
 | `kind` | ✅ `report` / `diagnostic` |
 | `path` | ✅ 产物路径或 artifact key |
 | `digest` | ✅ 产物 SHA-256 摘要 |
@@ -175,7 +175,7 @@
 
 ## ReviewReport
 
-`review_report.json` 与 `review_report.md` 都由 `internal/report` 生成。
+`review_report.json`、`review_report.md` 与 `review_report.zh.md` 都由 `internal/report` 生成。
 
 | 字段 | 当前状态 |
 |------|----------|

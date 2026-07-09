@@ -126,7 +126,7 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	if runs[0].EnvWhitelist != sandboxEnvWhitelist {
 		t.Fatalf("expected env whitelist %q, got %+v", sandboxEnvWhitelist, runs[0])
 	}
-	if runs[0].FinishedAt.IsZero() || runs[0].ArtifactCount != 3 {
+	if runs[0].FinishedAt.IsZero() || runs[0].ArtifactCount != 4 {
 		t.Fatalf("expected sandbox audit completion fields, got %+v", runs[0])
 	}
 	filterDecisions, err := store.FilterDecisionsByTaskID(context.Background(), result.TaskID)
@@ -290,7 +290,7 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 		t.Fatalf("expected readable redacted evidence, got %+v", result.Findings)
 	}
 
-	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+	for _, name := range []string{"review_report.json", "review_report.md", "review_report.zh.md", "review_diagnostics.json"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
@@ -739,10 +739,10 @@ func TestReportArtifactsRemainStable(t *testing.T) {
 	t.Parallel()
 
 	arts := reportArtifacts()
-	if len(arts) != 3 {
-		t.Fatalf("expected 3 artifacts, got %+v", arts)
+	if len(arts) != 4 {
+		t.Fatalf("expected 4 artifacts, got %+v", arts)
 	}
-	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" || arts[2].Name != "review_diagnostics.json" {
+	if arts[0].Name != "review_report.json" || arts[1].Name != "review_report.md" || arts[2].Name != "review_report.zh.md" || arts[3].Name != "review_diagnostics.json" {
 		t.Fatalf("unexpected artifacts: %+v", arts)
 	}
 }
@@ -910,8 +910,11 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list artifact keys: %v", err)
 	}
-	if len(keys) != 3 {
-		t.Fatalf("expected 3 artifacts to be saved in official artifact service, got %+v", keys)
+	if len(keys) != 4 {
+		t.Fatalf("expected 4 artifacts to be saved in official artifact service, got %+v", keys)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "review_report.zh.md")); err != nil {
+		t.Fatalf("expected Chinese Markdown report artifact: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "review_diagnostics.json")); err != nil {
 		t.Fatalf("expected diagnostics artifact: %v", err)
@@ -935,7 +938,7 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load artifact records: %v", err)
 	}
-	if len(recs) != 3 {
+	if len(recs) != 4 {
 		t.Fatalf("expected persisted artifact records, got %+v", recs)
 	}
 	for _, rec := range recs {
@@ -1047,8 +1050,8 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	if attrs["cr_agent.finding_count"].AsInt64() != int64(len(result.Findings)) {
 		t.Fatalf("finding count attribute mismatch: %+v", attrs["cr_agent.finding_count"])
 	}
-	if attrs["cr_agent.artifact_count"].AsInt64() != 3 {
-		t.Fatalf("expected 3 artifact telemetry records, got %+v", attrs["cr_agent.artifact_count"])
+	if attrs["cr_agent.artifact_count"].AsInt64() != 4 {
+		t.Fatalf("expected 4 artifact telemetry records, got %+v", attrs["cr_agent.artifact_count"])
 	}
 	if attrs["cr_agent.permission_block_count"].AsInt64() != int64(result.Metrics.PermissionBlocks) {
 		t.Fatalf("permission block count attribute mismatch: %+v", attrs["cr_agent.permission_block_count"])
@@ -1972,7 +1975,7 @@ func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
 			t.Fatalf("result finding leaked raw model output secret: %+v", finding)
 		}
 	}
-	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+	for _, name := range []string{"review_report.json", "review_report.md", "review_report.zh.md", "review_diagnostics.json"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
@@ -2181,7 +2184,7 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 	}
 	assertNoSecretInResult(t, result, apiKey, "sk-modelsecret-1234567890")
 	assertNoRawSecretsInSpanAttributes(t, findAgentReviewSpan(t, recorder), apiKey, "sk-modelsecret-1234567890")
-	for _, name := range []string{"review_report.json", "review_report.md", "review_diagnostics.json"} {
+	for _, name := range []string{"review_report.json", "review_report.md", "review_report.zh.md", "review_diagnostics.json"} {
 		data, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
