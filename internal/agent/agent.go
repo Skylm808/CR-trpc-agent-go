@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/approval"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
@@ -113,6 +114,11 @@ type Request struct {
 	HeadRef string
 	// Mode 是执行模式。
 	Mode string
+}
+
+// defaultPermissionPolicy 返回代码审查命令的固定 allowlist。
+func defaultPermissionPolicy() tool.PermissionPolicy {
+	return approval.NewPermissionPolicy(defaultSkillCommand, approval.AllowedReviewCommands(true))
 }
 
 // Agent 持有工具、策略和存储。
