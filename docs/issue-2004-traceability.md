@@ -107,7 +107,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 | Issue 能力 | 当前实现 | 证据 |
 |------------|----------|------|
 | Skill 加载与执行 | `tool/skill` 的 `skill_load` / `skill_run` 执行 `skills/code-review/scripts/check.sh`；入口脚本分发到 `check_rules.py`，无 Python 时走 `check_fallback.go` | `internal/agent/skill_step.go`、`skills/code-review/SKILL.md`、`internal/review/skill_test.go` |
-| workspace Go 检查编排 | sandbox mode 下执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`，并记录 permission/sandbox run | `internal/agent/sandbox_step.go`、`internal/agent/runtime_adapter.go`、`internal/execution` |
+| workspace Go 检查编排 | sandbox mode 下执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...`，并记录 permission/sandbox run | `internal/agent/sandbox_step.go`、`internal/execution` |
 | workspace 级脚本 | `tool/workspaceexec` 执行 `go test ./...`、`go vet ./...`、可选 `staticcheck ./...` | `internal/execution`、`TestAgentRunContainerRuntimeExecutesGoChecks` |
 | CodeExecutor 沙箱 | 默认 `codeexecutor/container`，`local-fallback` 仅开发测试；`tool/codeexec` 是 Go checks fallback | `internal/execution`、README runtime 说明 |
 | Permission 治理 | 所有 `skill_run` / Go check 命令先过 `tool.PermissionPolicy`，非 allow 不执行 | `internal/approval`、`TestAgentRunDoesNotExecuteNonAllowPermission` |

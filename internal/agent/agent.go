@@ -150,7 +150,11 @@ func New(cfg Config) (*Agent, error) {
 		return nil, fmt.Errorf("load skill repository: %w", err)
 	}
 	// skill_run 和 codeexec 共用同一个执行器。
-	exec, err := newExecutor(cfg)
+	exec, err := execution.NewExecutor(execution.Config{
+		Runtime:               cfg.Runtime,
+		Timeout:               cfg.Timeout,
+		ContainerRepoHostPath: cfg.ContainerRepoHostPath,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +195,7 @@ func New(cfg Config) (*Agent, error) {
 	}, nil
 }
 
-// Run executes one review through the official Runner/Event route and returns the final result.
+// Run 通过官方 Runner/Event 路线执行一次审查，并返回最终结果。
 func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 	events, err := a.RunWithEvents(ctx, req)
 	if err != nil {

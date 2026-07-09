@@ -1,4 +1,4 @@
-// Package llm owns model review providers and merge policy.
+// Package llm 负责模型审查 Provider 和结果合并策略。
 package llm
 
 import (
@@ -22,12 +22,12 @@ const (
 	BackendOpenAI       = "trpc-agent-go/model/openai"
 )
 
-// Provider is the semantic review provider boundary.
+// Provider 是语义审查 Provider 边界。
 type Provider interface {
 	Review(context.Context, Input) (Output, error)
 }
 
-// Input is the redacted payload sent to semantic review providers.
+// Input 是发送给语义审查 Provider 的脱敏载荷。
 type Input struct {
 	DiffSummary       string                   `json:"diff_summary"`
 	InputMetadata     review.InputMetadata     `json:"input_metadata"`
@@ -36,19 +36,19 @@ type Input struct {
 	GovernanceSummary review.GovernanceSummary `json:"governance_summary"`
 }
 
-// Output is the provider's incremental review result.
+// Output 是 Provider 返回的增量审查结果。
 type Output struct {
 	Findings []review.Finding `json:"findings"`
 }
 
-// ProviderFunc adapts a function to Provider.
+// ProviderFunc 把函数适配为 Provider。
 type ProviderFunc func(context.Context, Input) (Output, error)
 
 func (f ProviderFunc) Review(ctx context.Context, input Input) (Output, error) {
 	return f(ctx, input)
 }
 
-// RunSummary records model review audit metrics.
+// RunSummary 记录模型审查审计指标。
 type RunSummary struct {
 	CallCount      int
 	FindingCount   int
@@ -59,14 +59,14 @@ type RunSummary struct {
 	Backend        string
 }
 
-// Audit records non-sensitive provider identity.
+// Audit 记录不含敏感信息的 Provider 身份。
 type Audit struct {
 	Provider string
 	Name     string
 	Backend  string
 }
 
-// ProviderSelectionConfig selects the provider for fake-model mode.
+// ProviderSelectionConfig 为 fake-model 模式选择 Provider。
 type ProviderSelectionConfig struct {
 	ModeFakeModel string
 	Mode          string
@@ -75,7 +75,7 @@ type ProviderSelectionConfig struct {
 	OpenAI        OpenAIConfig
 }
 
-// ConfiguredProvider chooses the semantic review provider for the active mode.
+// ConfiguredProvider 为当前模式选择语义审查 Provider。
 func ConfiguredProvider(cfg ProviderSelectionConfig) (Provider, Audit) {
 	if cfg.Mode != cfg.ModeFakeModel {
 		return nil, Audit{}
@@ -130,7 +130,7 @@ func ProviderName(name string) string {
 	return name
 }
 
-// RunReview calls a semantic provider and merges its incremental findings.
+// RunReview 调用语义 Provider，并合并它返回的增量 findings。
 func RunReview(ctx context.Context, taskID string, provider Provider, audit Audit, result review.Result, diff []byte, inputMeta review.InputMetadata) (review.Result, RunSummary) {
 	summary := RunSummary{
 		CallCount: 1,
@@ -160,7 +160,7 @@ func RunReview(ctx context.Context, taskID string, provider Provider, audit Audi
 	return result, summary
 }
 
-// SanitizedFindingSnapshot returns redacted, deduped existing findings.
+// SanitizedFindingSnapshot 返回已脱敏、去重的现有 findings 快照。
 func SanitizedFindingSnapshot(findings, warnings []review.Finding) []review.Finding {
 	out := make([]review.Finding, 0, len(findings)+len(warnings))
 	for _, finding := range append(append([]review.Finding(nil), findings...), warnings...) {
@@ -169,7 +169,7 @@ func SanitizedFindingSnapshot(findings, warnings []review.Finding) []review.Find
 	return review.DedupeFindings(out)
 }
 
-// MergeFindings merges provider findings without duplicating rule findings.
+// MergeFindings 合并 Provider findings，并避免重复规则 findings。
 func MergeFindings(result review.Result, modelFindings []review.Finding) review.Result {
 	existing := map[string]struct{}{}
 	for _, finding := range append(append([]review.Finding(nil), result.Findings...), result.Warnings...) {
@@ -194,7 +194,7 @@ func MergeFindings(result review.Result, modelFindings []review.Finding) review.
 	return result
 }
 
-// NormalizeFinding applies defaults and source normalization.
+// NormalizeFinding 填充默认值并归一化 source。
 func NormalizeFinding(f review.Finding) review.Finding {
 	f = SanitizeFinding(f)
 	f.Source = NormalizeSource(f.Source)
@@ -216,7 +216,7 @@ func NormalizeFinding(f review.Finding) review.Finding {
 	return f
 }
 
-// SanitizeFinding redacts evidence before provider output enters reports/storage.
+// SanitizeFinding 在 Provider 输出进入报告和存储前脱敏 evidence。
 func SanitizeFinding(f review.Finding) review.Finding {
 	f.Evidence = review.RedactSecrets(f.Evidence)
 	if f.Status == "" {
@@ -235,7 +235,7 @@ func NormalizeSource(source string) string {
 	}
 }
 
-// ResultWithModelError converts provider failure to human review evidence.
+// ResultWithModelError 把 Provider 失败转换成人工复核证据。
 func ResultWithModelError(result review.Result, taskID string, err error) review.Result {
 	if result.Metrics.ExceptionCounts == nil {
 		result.Metrics.ExceptionCounts = map[string]int{}
@@ -255,7 +255,7 @@ func ResultWithModelError(result review.Result, taskID string, err error) review
 	return result
 }
 
-// CountModelSourceFindings counts fake and real model findings.
+// CountModelSourceFindings 统计 fake 和真实模型来源的 findings。
 func CountModelSourceFindings(findings []review.Finding) int {
 	count := 0
 	for _, finding := range findings {
@@ -266,7 +266,7 @@ func CountModelSourceFindings(findings []review.Finding) int {
 	return count
 }
 
-// FakeProvider gives fake-model mode a deterministic no-network provider.
+// FakeProvider 为 fake-model 模式提供确定性的无网络 Provider。
 type FakeProvider struct{}
 
 func (FakeProvider) Review(ctx context.Context, input Input) (Output, error) {

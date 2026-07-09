@@ -12,7 +12,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// runGoSandboxChecks executes Go project checks in the configured runtime.
+// runGoSandboxChecks 在配置的 runtime 中执行 Go 工程检查。
 func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath string) ([]storage.DecisionRecord, []storage.SandboxRunRecord) {
 	commands := approval.AllowedReviewCommands(a.cfg.EnableStaticcheck)
 	decisions := make([]storage.DecisionRecord, 0, len(commands))
@@ -25,14 +25,14 @@ func (a *Agent) runGoSandboxChecks(ctx context.Context, taskID string, repoPath 
 	return decisions, runs
 }
 
-// runGoSandboxCommand executes one approved Go check command.
+// runGoSandboxCommand 执行一条已审批的 Go 检查命令。
 func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath string, command string) (storage.DecisionRecord, storage.SandboxRunRecord) {
-	execCommand := goSandboxExecCommand(a.cfg.Runtime, command)
-	workspaceArgs, _ := execution.WorkspaceArgs(execCommand, a.cfg.Timeout, goSandboxEnv(a.cfg.Runtime))
+	execCommand := execution.SandboxExecCommand(a.cfg.Runtime, command)
+	workspaceArgs, _ := execution.WorkspaceArgs(execCommand, a.cfg.Timeout, execution.SandboxEnv(a.cfg.Runtime))
 	legacyArgs, _ := json.Marshal(map[string]any{
 		"code_blocks": []map[string]string{{
 			"language": "bash",
-			"code":     goSandboxCode(a.cfg.Runtime, repoPath, execCommand),
+			"code":     execution.SandboxCode(a.cfg.Runtime, repoPath, execCommand),
 		}},
 		"execution_id": taskID + "-" + strings.ReplaceAll(command, " ", "-"),
 	})
@@ -67,7 +67,7 @@ func (a *Agent) runGoSandboxCommand(ctx context.Context, taskID string, repoPath
 	}
 
 	start := time.Now()
-	raw, err := a.runWorkspaceGoChecks(ctx, repoPath, execCommand)
+	raw, err := execution.RunWorkspaceCommand(ctx, a.exec, repoPath, execCommand, a.cfg.Timeout, execution.SandboxEnv(a.cfg.Runtime))
 	if err != nil {
 		raw, err = a.checkTool.Call(ctx, legacyArgs)
 	}

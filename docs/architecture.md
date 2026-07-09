@@ -43,12 +43,14 @@
 | `internal/execution` | `container` / `local-fallback` / `e2b unsupported` executor 创建、测试专用 `fake-execution` seam、workspace Go check args、只读 repo mount、sandbox env allowlist、legacy codeexec fallback command 构造 |
 | `internal/approval` | `scripts/check.sh`、`go test ./...`、`go vet ./...`、可选 `staticcheck ./...` 的统一 allowlist 和 PermissionPolicy |
 | `internal/llm` | fake/http/OpenAI-compatible/DeepSeek provider、official `model.Model` adapter、semantic marker、model finding normalize/merge/error fallback |
-| `internal/rules` | TODO/FIXME、panic、missing-test、goroutine/context/resource/db lifecycle、secret 等 deterministic rule engine |
-| `internal/review` | 公共 review types、unified diff parser、dedupe、redaction，以及 `AnalyzeDiff` / `BuildReport` 兼容 facade |
+| `internal/review` | 公共 review types、unified diff parser、dedupe、redaction；不再反向依赖 deterministic rule engine |
+| `internal/rules` | 直接消费 `review.ParsedDiff` 并输出 `review.Finding`，负责 TODO/FIXME、panic、missing-test、goroutine/context/resource/db lifecycle、secret 等 deterministic rule engine |
 | `internal/storage` / `internal/storage/sqlite` | 真实 SQLite 审计 store；不降级为 JSON-backed store |
 | `internal/report` | JSON / Markdown report rendering |
 
-`internal/agent/input_adapter.go` 只保留兼容测试用的薄 adapter；主流程直接调用 `internal/input`。`internal/review.AnalyzeDiff` 继续作为外部 facade，但 deterministic 规则执行已经委托给 `internal/rules`，避免把 parser/types 和规则策略混在同一个包里。
+`internal/agent/input_adapter.go` 只保留兼容测试用的薄 adapter；主流程直接调用 `internal/input`。deterministic 规则执行由 `internal/rules` 承担，`internal/review` 只提供 parser/types/dedupe/redaction，避免规则策略和公共数据模型双向依赖。
+
+`internal/agent` 不再保留 runtime 转发 wrapper；执行器创建、workspace command、沙箱路径、env allowlist 和 legacy codeexec fallback command 都直接来自 `internal/execution`。这样 `agent` 只负责“何时调用、如何审计”，`execution` 负责“在哪里运行、用什么边界运行”。
 
 `fake-execution` 只存在于 `internal/execution` 的测试 seam，不作为 CLI/生产 fallback；默认生产 runtime 仍是 `container`，开发 fallback 仍必须显式使用 `local-fallback`。
 

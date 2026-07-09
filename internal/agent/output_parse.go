@@ -11,7 +11,7 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// decodeSkillRunOutput converts trpc-agent-go skill_run output into a local summary.
+// decodeSkillRunOutput 把 trpc-agent-go skill_run 输出转换成本地摘要。
 func decodeSkillRunOutput(raw any) (skillRunOutput, error) {
 	b, err := json.Marshal(raw)
 	if err != nil {
@@ -32,7 +32,7 @@ type skillRunOutput struct {
 	DurationMS int64  `json:"duration_ms"`
 }
 
-// parseSkillFindings parses structured findings from the Skill stdout contract.
+// parseSkillFindings 从 Skill stdout 契约中解析结构化 findings。
 func parseSkillFindings(stdout string) (review.Result, error) {
 	var payload struct {
 		Findings []review.Finding `json:"findings"`

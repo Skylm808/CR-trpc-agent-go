@@ -6,7 +6,7 @@
 
 | 边界 | 当前策略 | 证据 |
 |------|----------|------|
-| 默认 runtime | `container`，基于官方 `codeexecutor/container` | `internal/agent.newExecutor` |
+| 默认 runtime | `container`，基于官方 `codeexecutor/container` | `internal/execution.NewExecutor` |
 | 本地 fallback | 只能显式选择 `local-fallback`，用于开发和测试 | `TestLocalFallbackExecutorsUseIsolatedWorkDirs`、README |
 | Skill 执行 | 只允许 `skills/code-review/scripts/check.sh` | `toolskill.WithAllowedCommands`、`internal/approval.NewPermissionPolicy` |
 | Go 检查 | 只允许 `go test ./...`、`go vet ./...`、显式 `staticcheck ./...` | `internal/approval.AllowedReviewCommands`、sandbox mode tests |

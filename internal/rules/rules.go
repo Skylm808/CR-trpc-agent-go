@@ -1,63 +1,26 @@
-// Package rules contains deterministic code-review rules over parsed diff data.
+// Package rules 在 review.ParsedDiff 上执行确定性代码审查规则。
 package rules
 
 import (
 	"regexp"
 	"strings"
+
+	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// ParsedDiff is the rules package input shape.
-type ParsedDiff struct {
-	Files []ParsedFile
-}
-
-// ParsedFile describes a changed file for rules.
-type ParsedFile struct {
-	Path       string
-	IsTestFile bool
-	Hunks      []Hunk
-}
-
-// Hunk is a parsed diff hunk.
-type Hunk struct {
-	Lines []Line
-}
-
-// Line is a parsed diff line.
-type Line struct {
-	NewLine int
-	Kind    string
-	Text    string
-}
-
-// Finding is a deterministic rule output.
-type Finding struct {
-	Severity       string
-	Category       string
-	File           string
-	Line           int
-	Title          string
-	Evidence       string
-	Recommendation string
-	Confidence     string
-	Source         string
-	RuleID         string
-	Status         string
-}
-
-// Analysis is the deterministic rule execution result.
+// Analysis 是确定性规则执行结果。
 type Analysis struct {
-	Findings []Finding
-	Warnings []Finding
+	Findings []review.Finding
+	Warnings []review.Finding
 }
 
-// Options configures deterministic rule execution.
+// Options 配置确定性规则执行。
 type Options struct {
 	Redact func(string) string
 }
 
-// Run executes deterministic review rules.
-func Run(diff ParsedDiff, opts Options) Analysis {
+// Run 执行确定性审查规则。
+func Run(diff review.ParsedDiff, opts Options) Analysis {
 	redact := opts.Redact
 	if redact == nil {
 		redact = func(s string) string { return s }
@@ -78,7 +41,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					continue
 				}
 				if strings.Contains(text, "TODO(") || strings.Contains(text, "FIXME") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "maintainability",
 						File:           file.Path,
@@ -93,7 +56,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if strings.Contains(text, "panic(") && !hasRuleInFile(out.Findings, file.Path, "panic-direct") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "error_handling",
 						File:           file.Path,
@@ -108,7 +71,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsHTTPBodyLeak(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "http-body-close") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "resource",
 						File:           file.Path,
@@ -123,7 +86,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsSQLStringConcat(text) && !hasRuleInFile(out.Findings, file.Path, "sql-string-concat") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "critical",
 						Category:       "security",
 						File:           file.Path,
@@ -138,7 +101,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsCommandInjection(text) && !hasRuleInFile(out.Findings, file.Path, "command-injection") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "critical",
 						Category:       "security",
 						File:           file.Path,
@@ -153,7 +116,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsContextBackgroundMisuse(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "context-background-misuse") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "lifecycle",
 						File:           file.Path,
@@ -168,7 +131,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsMutexUnlockMissing(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "mutex-unlock-missing") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "concurrency",
 						File:           file.Path,
@@ -183,7 +146,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsDeferInLoop(text, hunkBefore) && !hasRuleInFile(out.Findings, file.Path, "defer-in-loop") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "resource",
 						File:           file.Path,
@@ -198,7 +161,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsBareReturnErr(text) && !hasRuleInFile(out.Findings, file.Path, "bare-return-err") {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "error_handling",
 						File:           file.Path,
@@ -213,7 +176,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if reportsStringConcatLoop(text, hunkBefore, hunkText) && !hasRuleInFile(out.Warnings, file.Path, "string-concat-loop") {
-					out.Warnings = append(out.Warnings, Finding{
+					out.Warnings = append(out.Warnings, review.Finding{
 						Severity:       "low",
 						Category:       "performance",
 						File:           file.Path,
@@ -231,7 +194,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					continue
 				}
 				if strings.HasPrefix(text, "func ") && !strings.Contains(text, "error") {
-					out.Warnings = append(out.Warnings, Finding{
+					out.Warnings = append(out.Warnings, review.Finding{
 						Severity:       "low",
 						Category:       "testing",
 						File:           file.Path,
@@ -247,7 +210,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 				}
 				if strings.Contains(text, "go func") || strings.HasPrefix(text, "go ") {
 					if !containsAny(localHunkText, "WaitGroup", "ctx.Done", "errgroup", "done", "sync.") {
-						out.Findings = append(out.Findings, Finding{
+						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "concurrency",
 							File:           file.Path,
@@ -266,7 +229,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					strings.Contains(text, "context.WithTimeout") ||
 					strings.Contains(text, "context.WithDeadline") {
 					if !containsAny(localHunkText, "defer cancel()", "ctx.Done", "cancel()") {
-						out.Findings = append(out.Findings, Finding{
+						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "lifecycle",
 							File:           file.Path,
@@ -283,7 +246,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 				}
 				if strings.Contains(text, "os.Open") || strings.Contains(text, "os.OpenFile") || strings.Contains(text, "os.Create") {
 					if !containsAny(localHunkText, "defer", "Close()") {
-						out.Findings = append(out.Findings, Finding{
+						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "resource",
 							File:           file.Path,
@@ -300,7 +263,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 				}
 				if strings.Contains(text, "sql.Open") || strings.Contains(text, ".BeginTx") || strings.Contains(text, ".Begin(") {
 					if !containsAny(localHunkText, "Rollback()", "Close()") {
-						out.Findings = append(out.Findings, Finding{
+						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "database",
 							File:           file.Path,
@@ -316,7 +279,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 					}
 				}
 				if shouldReportSecret(text) {
-					out.Findings = append(out.Findings, Finding{
+					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "critical",
 						Category:       "security",
 						File:           file.Path,
@@ -336,7 +299,7 @@ func Run(diff ParsedDiff, opts Options) Analysis {
 	return out
 }
 
-func hunkJoinedText(hunk Hunk) string {
+func hunkJoinedText(hunk review.Hunk) string {
 	var b strings.Builder
 	for _, line := range hunk.Lines {
 		b.WriteString(line.Text)
@@ -345,7 +308,7 @@ func hunkJoinedText(hunk Hunk) string {
 	return b.String()
 }
 
-func hunkTextBefore(hunk Hunk, lineIndex int) string {
+func hunkTextBefore(hunk review.Hunk, lineIndex int) string {
 	var b strings.Builder
 	for i := 0; i < lineIndex && i < len(hunk.Lines); i++ {
 		b.WriteString(hunk.Lines[i].Text)
@@ -363,7 +326,7 @@ func containsAny(text string, needles ...string) bool {
 	return false
 }
 
-func hasRuleInFile(findings []Finding, file string, ruleID string) bool {
+func hasRuleInFile(findings []review.Finding, file string, ruleID string) bool {
 	for _, finding := range findings {
 		if finding.File == file && finding.RuleID == ruleID {
 			return true

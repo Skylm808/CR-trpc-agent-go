@@ -1,5 +1,4 @@
-// Package input turns supported review inputs into unified diff bytes and
-// extracts minimal Go project metadata from that diff.
+// Package input 把支持的审查输入收敛成 unified diff，并提取最小 Go 工程元数据。
 package input
 
 import (
@@ -14,29 +13,29 @@ import (
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
 
-// Config holds input loader settings.
+// Config 保存输入加载配置。
 type Config struct {
-	// FixturesRoot is the controlled fixture directory.
+	// FixturesRoot 是受控 fixture 目录。
 	FixturesRoot string
 }
 
-// Request describes one review input source.
+// Request 描述一次审查输入来源。
 type Request struct {
-	// DiffFile is an external unified diff.
+	// DiffFile 是外部 unified diff 文件。
 	DiffFile string
-	// FileList is a newline-delimited changed file list.
+	// FileList 是按行分隔的变更文件列表。
 	FileList string
-	// RepoPath is a local Git workspace or plain directory.
+	// RepoPath 是本地 Git 工作区或普通目录。
 	RepoPath string
-	// Fixture is a fixture name under Config.FixturesRoot.
+	// Fixture 是 Config.FixturesRoot 下的 fixture 名称。
 	Fixture string
-	// BaseRef is the base git ref for repo diffs.
+	// BaseRef 是 repo diff 的基础 git ref。
 	BaseRef string
-	// HeadRef is the head git ref for repo diffs.
+	// HeadRef 是 repo diff 的目标 git ref。
 	HeadRef string
 }
 
-// Read reads or generates unified diff input.
+// Read 读取或生成 unified diff 输入。
 func Read(cfg Config, req Request) ([]byte, string, error) {
 	if req.DiffFile != "" {
 		b, err := os.ReadFile(req.DiffFile)
@@ -185,7 +184,7 @@ func nonEmptyLineCount(lines []string) int {
 	return count
 }
 
-// Metadata extracts minimal Go project metadata from diff input.
+// Metadata 从 diff 输入中提取最小 Go 工程元数据。
 func Metadata(diff []byte, repoPath string) review.InputMetadata {
 	parsed, err := review.ParseUnifiedDiff(string(diff))
 	if err != nil {
@@ -219,7 +218,7 @@ func Metadata(diff []byte, repoPath string) review.InputMetadata {
 	}
 }
 
-// MetadataForRequest extracts metadata and includes request git refs.
+// MetadataForRequest 提取元数据，并补充请求中的 git refs。
 func MetadataForRequest(diff []byte, req Request) review.InputMetadata {
 	meta := Metadata(diff, req.RepoPath)
 	meta.BaseRef = strings.TrimSpace(req.BaseRef)

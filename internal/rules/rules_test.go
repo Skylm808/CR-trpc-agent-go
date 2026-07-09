@@ -1,17 +1,22 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+)
 
 func TestRunFindsDeterministicRules(t *testing.T) {
 	t.Parallel()
 
-	result := Run(ParsedDiff{
-		Files: []ParsedFile{
+	result := Run(review.ParsedDiff{
+		Files: []review.ParsedFile{
 			{
 				Path: "worker.go",
-				Hunks: []Hunk{
+				Hunks: []review.Hunk{
 					{
-						Lines: []Line{
+						Lines: []review.Line{
 							{Kind: "context", Text: "package worker"},
 							{Kind: "add", NewLine: 3, Text: "func Start() {"},
 							{Kind: "add", NewLine: 4, Text: "\tgo func() {}"},
@@ -37,12 +42,12 @@ func TestRunFindsDeterministicRules(t *testing.T) {
 func TestRunFindsExpandedGoReviewRules(t *testing.T) {
 	t.Parallel()
 
-	result := Run(ParsedDiff{
-		Files: []ParsedFile{
+	result := Run(review.ParsedDiff{
+		Files: []review.ParsedFile{
 			{
 				Path: "service.go",
-				Hunks: []Hunk{
-					{Lines: []Line{
+				Hunks: []review.Hunk{
+					{Lines: []review.Line{
 						{Kind: "context", Text: "func Serve(ctx context.Context, name string, mu *sync.Mutex, db *sql.DB) error {"},
 						{Kind: "add", NewLine: 10, Text: `resp, err := http.Get("https://example.com")`},
 						{Kind: "add", NewLine: 11, Text: `query := "SELECT * FROM users WHERE name = '" + name + "'"`},
@@ -73,12 +78,12 @@ func TestRunFindsExpandedGoReviewRules(t *testing.T) {
 func TestRunDoesNotFlagGuardedExpandedGoPatterns(t *testing.T) {
 	t.Parallel()
 
-	result := Run(ParsedDiff{
-		Files: []ParsedFile{
+	result := Run(review.ParsedDiff{
+		Files: []review.ParsedFile{
 			{
 				Path: "safe.go",
-				Hunks: []Hunk{
-					{Lines: []Line{
+				Hunks: []review.Hunk{
+					{Lines: []review.Line{
 						{Kind: "context", Text: "func Safe(ctx context.Context, mu *sync.Mutex, db *sql.DB) error {"},
 						{Kind: "add", NewLine: 10, Text: `resp, err := http.Get("https://example.com")`},
 						{Kind: "add", NewLine: 11, Text: `if err != nil { return fmt.Errorf("fetch: %w", err) }`},
@@ -112,7 +117,85 @@ func TestRunDoesNotFlagGuardedExpandedGoPatterns(t *testing.T) {
 	assertNoRule(t, result.Warnings, "string-concat-loop")
 }
 
-func assertRule(t *testing.T, findings []Finding, ruleID, severity, status string) {
+func TestRunParsedUnifiedDiffFindsRulesAndWarnings(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/worker.go b/worker.go\n"+
+		"index 1111111..2222222 100644\n"+
+		"--- a/worker.go\n"+
+		"+++ b/worker.go\n"+
+		"@@ -1,2 +1,8 @@\n"+
+		" package worker\n"+
+		"+func Start() {\n"+
+		"+\tgo func() {}\n"+
+		"+}\n"+
+		"+const apiKey = \"sk-1234567890abcdef\"\n")
+
+	assertRule(t, result.Findings, "goroutine-leak", "high", "finding")
+	assertRule(t, result.Findings, "secret-leak", "critical", "finding")
+	assertRule(t, result.Warnings, "missing-test-hint", "low", "warning")
+	for _, finding := range result.Findings {
+		if finding.RuleID == "secret-leak" && strings.Contains(finding.Evidence, "sk-1234567890abcdef") {
+			t.Fatalf("secret evidence was not redacted: %+v", finding)
+		}
+	}
+}
+
+func TestRunParsedUnifiedDiffFindsSecretShapesAndSuppressesPlaceholders(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/config.go b/config.go\n"+
+		"index 1111111..2222222 100644\n"+
+		"--- a/config.go\n"+
+		"+++ b/config.go\n"+
+		"@@ -1,2 +1,9 @@\n"+
+		" package foo\n"+
+		"+const llmkey = \"llm-live-1234567890abcdef\"\n"+
+		"+const openaiKey = \"sk-proj-1234567890abcdef\"\n"+
+		"+const client_secret = \"github_pat_1234567890abcdef1234567890abcdef\"\n"+
+		"+const tokenPlaceholder = \"dummy\"\n"+
+		"+const retryTokenTimeoutSeconds = 30\n")
+
+	if got := countRule(result.Findings, "secret-leak"); got != 3 {
+		t.Fatalf("expected three high-confidence secret findings, got %d: %+v", got, result.Findings)
+	}
+	for _, finding := range result.Findings {
+		if finding.RuleID == "secret-leak" && containsRawSecretEvidence(finding.Evidence) {
+			t.Fatalf("secret evidence was not redacted: %+v", finding)
+		}
+	}
+}
+
+func TestRunDedupesRepeatedFindingsThroughReviewDedupe(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/dedupe.go b/dedupe.go\n"+
+		"index 1111111..2222222 100644\n"+
+		"--- a/dedupe.go\n"+
+		"+++ b/dedupe.go\n"+
+		"@@ -1,2 +1,5 @@\n"+
+		" package foo\n"+
+		"+func Crash() { panic(\"boom\") }\n"+
+		"+func CrashAgain() { panic(\"boom\") }\n")
+
+	if got := countRule(review.DedupeFindings(result.Findings), "panic-direct"); got != 1 {
+		t.Fatalf("expected exactly one panic-direct finding after dedupe, got %d", got)
+	}
+}
+
+func runUnifiedDiff(t *testing.T, diff string) Analysis {
+	t.Helper()
+	parsed, err := review.ParseUnifiedDiff(diff)
+	if err != nil {
+		t.Fatalf("ParseUnifiedDiff returned error: %v", err)
+	}
+	return Run(parsed, Options{Redact: review.RedactSecrets})
+}
+
+func assertRule(t *testing.T, findings []review.Finding, ruleID, severity, status string) {
 	t.Helper()
 	for _, finding := range findings {
 		if finding.RuleID == ruleID && finding.Severity == severity && finding.Status == status {
@@ -122,11 +205,35 @@ func assertRule(t *testing.T, findings []Finding, ruleID, severity, status strin
 	t.Fatalf("missing rule_id=%q severity=%q status=%q in %+v", ruleID, severity, status, findings)
 }
 
-func assertNoRule(t *testing.T, findings []Finding, ruleID string) {
+func assertNoRule(t *testing.T, findings []review.Finding, ruleID string) {
 	t.Helper()
 	for _, finding := range findings {
 		if finding.RuleID == ruleID {
 			t.Fatalf("unexpected rule_id=%q in %+v", ruleID, findings)
 		}
 	}
+}
+
+func countRule(findings []review.Finding, ruleID string) int {
+	total := 0
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			total++
+		}
+	}
+	return total
+}
+
+func containsRawSecretEvidence(text string) bool {
+	for _, raw := range []string{
+		"llm-live-1234567890abcdef",
+		"sk-proj-1234567890abcdef",
+		"github_pat_1234567890abcdef1234567890abcdef",
+		"dummy",
+	} {
+		if strings.Contains(text, raw) {
+			return true
+		}
+	}
+	return false
 }

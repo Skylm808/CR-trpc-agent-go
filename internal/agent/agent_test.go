@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
@@ -151,13 +152,13 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 func TestLocalFallbackExecutorsUseIsolatedWorkDirs(t *testing.T) {
 	t.Parallel()
 
-	first, err := newExecutor(Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	first, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
 	if err != nil {
-		t.Fatalf("newExecutor first returned error: %v", err)
+		t.Fatalf("execution.NewExecutor first returned error: %v", err)
 	}
-	second, err := newExecutor(Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	second, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
 	if err != nil {
-		t.Fatalf("newExecutor second returned error: %v", err)
+		t.Fatalf("execution.NewExecutor second returned error: %v", err)
 	}
 	firstLocal, ok := first.(*localexec.CodeExecutor)
 	if !ok {
@@ -1668,16 +1669,16 @@ func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
 	}
 }
 
-// TestE2BExecutorIsExplicitUnsupportedAdapter documents the current adapter
-// boundary: e2b must not silently fall back to local/container execution.
+// TestE2BExecutorIsExplicitUnsupportedAdapter 固定当前 adapter 边界：
+// e2b 不能静默回退到 local/container execution。
 func TestE2BExecutorIsExplicitUnsupportedAdapter(t *testing.T) {
 	t.Parallel()
 
-	exec, err := newExecutor(Config{Runtime: RuntimeE2B})
+	exec, err := execution.NewExecutor(execution.Config{Runtime: RuntimeE2B})
 	if err != nil {
-		t.Fatalf("newExecutor returned error: %v", err)
+		t.Fatalf("execution.NewExecutor returned error: %v", err)
 	}
-	if _, ok := exec.(unsupportedExecutor); !ok {
+	if _, ok := exec.(execution.UnsupportedExecutor); !ok {
 		t.Fatalf("expected e2b to use unsupported adapter until real workspace staging exists, got %T", exec)
 	}
 	_, err = exec.ExecuteCode(context.Background(), codeexecutor.CodeExecutionInput{
@@ -2671,11 +2672,11 @@ func TestSandboxRepoPathForRuntime(t *testing.T) {
 	t.Parallel()
 
 	hostRepo := filepath.Join(t.TempDir(), "repo")
-	localPath := sandboxRepoPathForRuntime(RuntimeLocalFallback, hostRepo)
+	localPath := execution.SandboxRepoPathForRuntime(RuntimeLocalFallback, hostRepo)
 	if localPath != hostRepo {
 		t.Fatalf("local fallback path = %q, want %q", localPath, hostRepo)
 	}
-	containerPath := sandboxRepoPathForRuntime(RuntimeContainer, hostRepo)
+	containerPath := execution.SandboxRepoPathForRuntime(RuntimeContainer, hostRepo)
 	if containerPath != containerRepoMountPath {
 		t.Fatalf("container path = %q, want %q", containerPath, containerRepoMountPath)
 	}
@@ -2685,11 +2686,11 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 	t.Parallel()
 
 	hostRepo := filepath.Join(t.TempDir(), "repo")
-	code := goSandboxCode(RuntimeContainer, hostRepo, "go test ./...")
-	if !strings.Contains(code, "cd "+shellQuote(containerRepoMountPath)) {
+	code := execution.SandboxCode(RuntimeContainer, hostRepo, "go test ./...")
+	if !strings.Contains(code, "cd "+execution.ShellQuote(containerRepoMountPath)) {
 		t.Fatalf("container command should cd into mount path, got %q", code)
 	}
-	if !strings.Contains(code, "GOCACHE="+shellQuote(goSandboxCacheDir)) {
+	if !strings.Contains(code, "GOCACHE="+execution.ShellQuote(goSandboxCacheDir)) {
 		t.Fatalf("container command should set sandbox Go cache, got %q", code)
 	}
 	if strings.Contains(code, hostRepo) {
@@ -2700,7 +2701,7 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 func TestGoSandboxEnvIncludesContainerGoPath(t *testing.T) {
 	t.Parallel()
 
-	env := goSandboxEnv(RuntimeContainer)
+	env := execution.SandboxEnv(RuntimeContainer)
 	if env["GOCACHE"] != goSandboxCacheDir {
 		t.Fatalf("GOCACHE = %q, want %q", env["GOCACHE"], goSandboxCacheDir)
 	}
@@ -2715,15 +2716,15 @@ func TestGoSandboxEnvIncludesContainerGoPath(t *testing.T) {
 func TestGoSandboxExecCommandUsesContainerGoBinary(t *testing.T) {
 	t.Parallel()
 
-	containerCommand := goSandboxExecCommand(RuntimeContainer, "go test ./...")
+	containerCommand := execution.SandboxExecCommand(RuntimeContainer, "go test ./...")
 	if containerCommand != goSandboxBinary+" test ./..." {
 		t.Fatalf("container go command = %q, want absolute go binary", containerCommand)
 	}
-	localCommand := goSandboxExecCommand(RuntimeLocalFallback, "go test ./...")
+	localCommand := execution.SandboxExecCommand(RuntimeLocalFallback, "go test ./...")
 	if localCommand != "go test ./..." {
 		t.Fatalf("local fallback command = %q, want original command", localCommand)
 	}
-	staticcheckCommand := goSandboxExecCommand(RuntimeContainer, "staticcheck ./...")
+	staticcheckCommand := execution.SandboxExecCommand(RuntimeContainer, "staticcheck ./...")
 	if staticcheckCommand != "staticcheck ./..." {
 		t.Fatalf("staticcheck command = %q, want original command", staticcheckCommand)
 	}
