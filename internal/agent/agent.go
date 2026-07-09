@@ -118,7 +118,11 @@ type Request struct {
 
 // defaultPermissionPolicy 返回代码审查命令的固定 allowlist。
 func defaultPermissionPolicy() tool.PermissionPolicy {
-	return approval.NewPermissionPolicy(defaultSkillCommand, approval.AllowedReviewCommands(true))
+	commands := approval.AllowedReviewCommands(true)
+	for _, command := range approval.AllowedReviewCommands(true) {
+		commands = append(commands, execution.SandboxExecCommand(RuntimeContainer, command))
+	}
+	return approval.NewPermissionPolicy(defaultSkillCommand, commands)
 }
 
 // Agent 持有工具、策略和存储。

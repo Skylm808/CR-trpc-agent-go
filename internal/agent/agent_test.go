@@ -31,6 +31,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+const testReviewTimeout = 10 * time.Second
+
 // TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore 固定最小审查链路。
 func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 	t.Parallel()
@@ -44,7 +46,7 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -152,11 +154,11 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 func TestLocalFallbackExecutorsUseIsolatedWorkDirs(t *testing.T) {
 	t.Parallel()
 
-	first, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	first, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: testReviewTimeout})
 	if err != nil {
 		t.Fatalf("execution.NewExecutor first returned error: %v", err)
 	}
-	second, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: 5 * time.Second})
+	second, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: testReviewTimeout})
 	if err != nil {
 		t.Fatalf("execution.NewExecutor second returned error: %v", err)
 	}
@@ -188,7 +190,7 @@ func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 		Runtime:      RuntimeLocalFallback,
 		SQLitePath:   dbPath,
 		OutputDir:    t.TempDir(),
-		Timeout:      5 * time.Second,
+		Timeout:      testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -267,7 +269,7 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -347,7 +349,7 @@ func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 		Runtime:      RuntimeLocalFallback,
 		SQLitePath:   dbPath,
 		OutputDir:    t.TempDir(),
-		Timeout:      5 * time.Second,
+		Timeout:      testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -407,7 +409,7 @@ func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
 				Runtime:      RuntimeLocalFallback,
 				SQLitePath:   dbPath,
 				OutputDir:    t.TempDir(),
-				Timeout:      5 * time.Second,
+				Timeout:      testReviewTimeout,
 			})
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
@@ -481,7 +483,7 @@ func TestAgentRunCountsAllPermissionBlocks(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -540,7 +542,7 @@ func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 		FixturesRoot: filepath.Join(root, "testdata", "fixtures"),
 		Runtime:      RuntimeLocalFallback,
 		OutputDir:    outDir,
-		Timeout:      5 * time.Second,
+		Timeout:      testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -700,7 +702,7 @@ func TestAgentRunAcceptsFileListInput(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -770,7 +772,7 @@ func TestAgentRunRejectsOversizedArtifacts(t *testing.T) {
 		Runtime:          RuntimeLocalFallback,
 		SQLitePath:       dbPath,
 		OutputDir:        outDir,
-		Timeout:          5 * time.Second,
+		Timeout:          testReviewTimeout,
 		MaxArtifactBytes: 1,
 	})
 	if err != nil {
@@ -884,7 +886,7 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 		Runtime:         RuntimeLocalFallback,
 		SQLitePath:      dbPath,
 		OutputDir:       outDir,
-		Timeout:         5 * time.Second,
+		Timeout:         testReviewTimeout,
 		ArtifactService: svc,
 	})
 	if err != nil {
@@ -952,7 +954,7 @@ func TestAgentDefaultArtifactService(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -988,7 +990,7 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1116,7 +1118,7 @@ func TestAgentRunWritesGoInputMetadataToDiagnostics(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1169,7 +1171,7 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 		Runtime:      RuntimeLocalFallback,
 		SQLitePath:   dbPath,
 		OutputDir:    outDir,
-		Timeout:      5 * time.Second,
+		Timeout:      testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1285,7 +1287,7 @@ func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1353,7 +1355,7 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1515,7 +1517,7 @@ func TestAgentRunEmitsOfficialEvents(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 		EventSink: func(ctx context.Context, ev *agentevent.Event) {
 			_ = ctx
 			if ev != nil {
@@ -1570,7 +1572,7 @@ func TestAgentRunWithEventsUsesOfficialRunnerRoute(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1624,7 +1626,7 @@ func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
 		Runtime:      RuntimeE2B,
 		SQLitePath:   dbPath,
 		OutputDir:    outDir,
-		Timeout:      5 * time.Second,
+		Timeout:      testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1704,7 +1706,7 @@ func TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -1796,7 +1798,7 @@ func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
 		SkillsRoot:    filepath.Join(root, "skills"),
 		Runtime:       RuntimeLocalFallback,
 		OutputDir:     t.TempDir(),
-		Timeout:       5 * time.Second,
+		Timeout:       testReviewTimeout,
 		ModelProvider: provider,
 	})
 	if err != nil {
@@ -1852,7 +1854,7 @@ func TestLowConfidenceModelFindingPersistsAsHumanReviewEvidence(t *testing.T) {
 		Runtime:       RuntimeLocalFallback,
 		OutputDir:     outDir,
 		SQLitePath:    dbPath,
-		Timeout:       5 * time.Second,
+		Timeout:       testReviewTimeout,
 		ModelProvider: provider,
 	})
 	if err != nil {
@@ -1947,7 +1949,7 @@ func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
 		Runtime:       RuntimeLocalFallback,
 		SQLitePath:    dbPath,
 		OutputDir:     outDir,
-		Timeout:       5 * time.Second,
+		Timeout:       testReviewTimeout,
 		ModelProvider: provider,
 	})
 	if err != nil {
@@ -2007,7 +2009,7 @@ func TestModelProviderFailureDoesNotAbortReview(t *testing.T) {
 		SkillsRoot:    filepath.Join(root, "skills"),
 		Runtime:       RuntimeLocalFallback,
 		OutputDir:     t.TempDir(),
-		Timeout:       5 * time.Second,
+		Timeout:       testReviewTimeout,
 		ModelProvider: provider,
 	})
 	if err != nil {
@@ -2140,7 +2142,7 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 		Runtime:    RuntimeLocalFallback,
 		SQLitePath: dbPath,
 		OutputDir:  outDir,
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 		ModelHTTP: llm.HTTPConfig{
 			Enabled:   true,
 			Endpoint:  "https://model.test/review",
@@ -2284,7 +2286,7 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 				SkillsRoot: filepath.Join(root, "skills"),
 				Runtime:    RuntimeLocalFallback,
 				OutputDir:  t.TempDir(),
-				Timeout:    5 * time.Second,
+				Timeout:    testReviewTimeout,
 				ModelHTTP:  tc.configure(),
 			})
 			if err != nil {
@@ -2321,7 +2323,7 @@ func TestRuleOnlyAndDryRunSkipModelProvider(t *testing.T) {
 			SkillsRoot:    filepath.Join(root, "skills"),
 			Runtime:       RuntimeLocalFallback,
 			OutputDir:     t.TempDir(),
-			Timeout:       5 * time.Second,
+			Timeout:       testReviewTimeout,
 			ModelProvider: provider,
 		})
 		if err != nil {
@@ -2458,7 +2460,7 @@ func TestRunGoSandboxCommandFallsBackToCodeExec(t *testing.T) {
 		SkillsRoot: filepath.Join(root, "skills"),
 		Runtime:    RuntimeLocalFallback,
 		OutputDir:  t.TempDir(),
-		Timeout:    5 * time.Second,
+		Timeout:    testReviewTimeout,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)

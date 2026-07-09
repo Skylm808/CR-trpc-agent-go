@@ -252,12 +252,11 @@ container 模式下 Go 检查先经过 `tool.PermissionPolicy`，再通过 `inte
 
 1. 扩充 `testdata/holdout/` 的 adversarial fixture，尤其是 public matrix 之外的 false-positive guardrail 和模型语义增量样本。
 2. 保持 `skills/code-review` 的规则契约、脚本和报告字段稳定，必要时再把脚本拆成更小 helper。
-3. 如果 reviewer/CI 提供私有 hidden fixtures，通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 额外运行并记录指标；不把私有 hidden 作为本仓库必须提交的 blocker。
+3. 继续用仓库自造 holdout/adversarial fixtures 和 hidden-like smoke 校准指标；需要扩展样本时，通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 额外运行并记录指标。
 4. 将 E2B/Cube、官方 Session/Memory、metric exporter/OTLP dashboard 保持为部署或远端沙箱扩展，不阻塞当前 Issue 主线验收。
 
 ## 相关文档
 
-- [implementation-plan.md](implementation-plan.md)
 - [data-contract.md](data-contract.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
 - [sandbox-safety.md](sandbox-safety.md)

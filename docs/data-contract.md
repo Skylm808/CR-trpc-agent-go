@@ -235,6 +235,5 @@ type Store interface {
 ## 相关文档
 
 - [architecture.md](architecture.md)
-- [implementation-plan.md](implementation-plan.md)
 - [issue-2004-traceability.md](issue-2004-traceability.md)
 - [sandbox-safety.md](sandbox-safety.md)

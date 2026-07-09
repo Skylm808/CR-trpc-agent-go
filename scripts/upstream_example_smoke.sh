@@ -90,8 +90,8 @@ for path in \
 	scripts/llm_smoke.sh \
 	scripts/repo_llm_smoke.sh \
 	docs/architecture.md \
+	docs/ci.md \
 	docs/data-contract.md \
-	docs/eval-matrix.md \
 	docs/issue-2004-traceability.md \
 	docs/sandbox-safety.md \
 	docs/upstream-example-migration.md; do

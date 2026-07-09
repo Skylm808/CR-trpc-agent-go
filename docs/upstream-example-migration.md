@@ -32,13 +32,13 @@ examples/cr-agent/
 | `skills/code-review/` | CR Skill、规则文档和脚本 |
 | `testdata/fixtures/` | 公开 diff 样本 |
 | `scripts/acceptance.sh`、`scripts/eval.sh`、`scripts/holdout_eval.sh`、`scripts/hidden_matrix_smoke.sh`、`scripts/llm_smoke.sh`、`scripts/repo_llm_smoke.sh`、`scripts/upstream_example_smoke.sh` | repo-neutral 验收、公开样本评测、holdout/adversarial 评测、hidden-like matrix smoke、opt-in LLM smoke、任意 repo LLM smoke 和 examples 迁移演练 |
-| `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/eval-matrix.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
+| `docs/architecture.md`、`docs/data-contract.md`、`docs/issue-2004-traceability.md`、`docs/ci.md`、`docs/sandbox-safety.md` | 只迁移会被 reviewer 用到的 contract 文档 |
 
 ## 不应迁移的内容
 
 - 仓库级 `.github/workflows`，官方仓库是否接 CI 由维护者决定。
 - 个人机器路径、临时数据库、`/private/tmp` 输出。
-- hidden fixture 本体；只保留 external TSV / env var 接入契约。
+- 大量本地扩展 fixture 本体；只保留 external TSV / env var 接入契约和最小 smoke 样本。
 - 独立仓库私有历史、实验性 prompt、未被 README 链接的本地草稿。
 - 本地 `cr-agent.yaml`、`examples/review.db` 和任何真实 API key。
 - 过长的阶段性 implementation plan；官方 PR 描述里保留当前状态和缺口即可。

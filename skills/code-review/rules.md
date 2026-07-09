@@ -25,9 +25,9 @@ This catalog defines deterministic rules emitted by `scripts/check.sh`. The mode
 
 Public fixtures live in `testdata/fixtures/` and are exact-match evaluated by `scripts/eval.sh`.
 
-Holdout/adversarial fixtures live in `testdata/holdout/` and are evaluated by `scripts/holdout_eval.sh`. They are committed local acceptance cases, not private hidden data.
+Holdout/adversarial fixtures live in `testdata/holdout/` and are evaluated by `scripts/holdout_eval.sh`. They are committed local acceptance cases.
 
-External hidden or reviewer-provided fixtures can still be injected with:
+Additional local external fixtures can still be injected with:
 
 ```bash
 CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/fixtures \

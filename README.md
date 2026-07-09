@@ -24,6 +24,10 @@ Issue #2004 主链路保持显式：
 
 更完整的架构和验收矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。
 
+## 方案设计说明
+
+本 Agent 面向 Go 项目代码评审场景，把 Issue #2004 要求拆成可验证的执行链路：CLI 先把 `--diff-file`、`--repo-path`、`--file-list` 或 fixture 归一化为 unified diff，并提取 Go 文件、package、测试触达和 base/head metadata；随后通过 `tool/skill` 加载 `skills/code-review`，由固定入口 `scripts/check.sh` 执行 deterministic 规则，覆盖 secret、goroutine/context、资源关闭、错误处理、测试缺失和数据库生命周期等风险。沙箱检查只在 `sandbox` 模式执行，默认使用 `codeexecutor/container`，本地 `local-fallback` 必须显式选择；`go test`、`go vet` 和可选 `staticcheck` 在进入 workspace/codeexec 前都要经过 `PermissionPolicy` 精确 allowlist。Agent 会对 findings 做去重、置信度分流和脱敏，高置信项进入 findings，低置信或治理异常进入 warnings / needs_human_review。报告同时写出 JSON、Markdown 和 diagnostics，并通过 SQLite 保存 task、permission/filter decision、sandbox run、finding、artifact、metrics 和 final report。安全边界包含 timeout、output limit、env whitelist、artifact size cap、失败不崩溃和明文密钥脱敏；监控字段记录总耗时、沙箱耗时、工具调用、权限拦截、severity 分布和异常分布。fake-model / rule-only / dry-run 保证无真实 API key 时也能完整测试链路。
+
 ## 快速开始
 
 运行完整测试：
@@ -150,6 +154,8 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 --staticcheck    sandbox mode 中追加 staticcheck ./...
 ```
 
+`container` 是默认生产沙箱路径；`local-fallback` 仅用于本地开发；`e2b` 当前是显式 unsupported audit 入口，不会静默回退到本地执行。Issue 主线由默认 `codeexecutor/container` 满足。
+
 ## 测试
 
 Reviewer 最短复现路径：
@@ -236,7 +242,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ## Issue #2004 仍缺什么
 
 - 继续用 self-contained holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险；
-- reviewer 未提供私有 hidden 样本时不作为 blocker；仓库用 holdout matrix 和 hidden-like external smoke 提供可复现替代证据，若未来有私有样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加外部验收。
+- hidden 类验收采用仓库自造的 holdout matrix 和 hidden-like external smoke；如需扩展更多本地样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加评测。
 
 非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。Issue 主线允许 `codeexecutor/container` 或 E2B workspace runtime；当前默认生产路径已经是 container，且具备 timeout、output limit、permission gate、failure record 和 SQLite 审计，所以 E2B 不是当前 blocker。
 

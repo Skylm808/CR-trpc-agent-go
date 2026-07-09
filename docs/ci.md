@@ -58,30 +58,44 @@ GitHub Actions 可按需使用下面的宿主仓库片段：
     scripts/acceptance.sh
 ```
 
-## Hidden Sample 接入
+## Hidden-like Sample 接入
 
-隐藏样本不建议提交到公开仓库。CI 可以通过私有 artifact、临时挂载目录或内部 checkout 提供：
+隐藏类验收由本仓库自造 holdout/adversarial fixtures 和 hidden-like external smoke 覆盖。需要扩展样本时，可以通过临时挂载目录或内部 checkout 提供：
 
-- hidden fixture 根目录
+- fixture 根目录
 - expected TSV
 - 可选报告保存目录
 
 示例：
 
 ```bash
-CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/hidden-fixtures \
-CR_AGENT_EVAL_FIXTURES="hidden-001.diff hidden-002.diff" \
+CR_AGENT_EVAL_FIXTURES_ROOT=/path/to/local-fixtures \
+CR_AGENT_EVAL_FIXTURES="case-001.diff case-002.diff" \
 CR_AGENT_EVAL_MATRIX=/path/to/expected.tsv \
-CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-hidden-reports \
+CR_AGENT_EVAL_REPORT_ROOT=/tmp/cr-agent-eval-reports \
 GOCACHE=/private/tmp/cr-agent-gocache \
 scripts/eval.sh
 ```
 
-expected TSV 格式见 [eval-matrix.md](eval-matrix.md)。脚本会输出 `recall`、`precision` 和 `false_positive_rate`；验收口径是：
+expected TSV 每行四列或五列。四列旧格式默认 `required=true`：
+
+```text
+fixture_name	rule_id	severity	status
+```
+
+五列格式可以显式声明该项是否必须检出：
+
+```text
+fixture_name	rule_id	severity	status	required
+```
+
+`required` 可取 `true` / `required` / `yes` / `1` / `must`，或 `false` / `optional` / `no` / `0`。optional 项命中时不算误报，未命中也不算漏报，适合记录低置信或允许人工判断的信号。
+
+脚本会输出 `fixtures`、`expected`、`true_positive`、`false_positive`、`false_negative`、`recall`、`precision`、`false_positive_rate`、`missing_findings`、`unexpected_findings`、`duration_ms` 和 `matrix_source`。验收口径是：
 
 - `recall >= 0.800`
 - `false_positive_rate <= 0.150`
-- `missing_findings=0` 和 `unexpected_findings=0` 对公开样本必须满足；隐藏样本可用 optional 行表达允许人工判断的低置信信号。
+- `missing_findings=0` 和 `unexpected_findings=0` 对公开样本必须满足；hidden-like 扩展样本可用 optional 行表达允许人工判断的低置信信号。
 
 ## 失败回放
 

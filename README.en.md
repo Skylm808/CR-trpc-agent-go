@@ -154,6 +154,10 @@ Common CLI flags:
 --staticcheck    include staticcheck ./... in sandbox mode
 ```
 
+`container` is the default production sandbox path. `local-fallback` is for
+explicit local development, and `e2b` is currently an explicit unsupported audit
+entrypoint that never silently falls back to local execution.
+
 ## Tests
 
 Public fixture evaluation:
@@ -219,7 +223,7 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ## What Is Still Missing For Issue #2004
 
 - more holdout/adversarial fixtures, especially semantic risks a real model can add;
-- optional external hidden evaluation when reviewer/CI provides `CR_AGENT_EVAL_FIXTURES_ROOT` and `CR_AGENT_EVAL_MATRIX`.
+- hidden-style acceptance is covered by repository-owned holdout fixtures and hidden-like external smoke; more local samples can be added through `CR_AGENT_EVAL_FIXTURES_ROOT` and `CR_AGENT_EVAL_MATRIX`.
 
 Non-blocking extensions: real E2B/Cube adapter, cross-PR Session/Memory, metric exporter / OTLP dashboard integration, and extra production runtime hardening.
 
