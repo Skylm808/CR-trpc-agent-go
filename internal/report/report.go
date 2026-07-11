@@ -113,6 +113,7 @@ func BuildMarkdownChinese(result review.Result) string {
 	for _, f := range findings {
 		fmt.Fprintf(&b, "- [%s] %s:%d %s\n", strings.ToUpper(f.Severity), f.File, f.Line, f.Title)
 		writeFindingMetadataChinese(&b, f)
+		writeLocalizedRuleTextChinese(&b, f)
 		if f.Evidence != "" {
 			fmt.Fprintf(&b, "  - 证据: %s\n", f.Evidence)
 		}
@@ -215,6 +216,7 @@ func writeHumanReviewChinese(b *strings.Builder, items []review.Finding) {
 	for _, item := range items {
 		fmt.Fprintf(b, "- [%s] %s\n", strings.ToUpper(item.Severity), item.Title)
 		writeFindingMetadataChinese(b, item)
+		writeLocalizedRuleTextChinese(b, item)
 		if item.Recommendation != "" {
 			fmt.Fprintf(b, "  - 修复建议: %s\n", item.Recommendation)
 		}
@@ -307,6 +309,107 @@ func writeArtifacts(b *strings.Builder, artifacts []review.ArtifactSummary) {
 			fmt.Fprintf(b, ": %s", artifact.Path)
 		}
 		b.WriteString("\n")
+	}
+}
+
+type localizedRuleText struct {
+	Title          string
+	Recommendation string
+}
+
+var deterministicRuleChineseText = map[string]localizedRuleText{
+	"secret-leak": {
+		Title:          "新增代码疑似包含敏感信息",
+		Recommendation: "不要把 API key、token 或 password 写入代码；改用环境变量、密钥管理服务或安全配置注入。",
+	},
+	"panic-direct": {
+		Title:          "新增代码直接调用 panic",
+		Recommendation: "返回带上下文的 error，或在调用方显式处理失败路径，避免服务进程被异常终止。",
+	},
+	"goroutine-leak": {
+		Title:          "新增 goroutine 缺少生命周期控制",
+		Recommendation: "用 context、WaitGroup、errgroup 或明确的 done signal 绑定 goroutine 生命周期。",
+	},
+	"context-leak": {
+		Title:          "派生 context 后没有释放 cancel",
+		Recommendation: "在创建 WithCancel、WithTimeout 或 WithDeadline 后，在同一作用域 defer cancel()。",
+	},
+	"resource-leak": {
+		Title:          "打开的资源缺少关闭路径",
+		Recommendation: "资源成功打开后立即安排 Close，通常是在错误检查后 defer Close()。",
+	},
+	"db-lifecycle": {
+		Title:          "数据库连接或事务缺少生命周期收尾",
+		Recommendation: "连接句柄需要 Close，事务路径需要 Commit/Rollback，并确保失败路径也会释放资源。",
+	},
+	"http-body-close": {
+		Title:          "HTTP 响应体未关闭",
+		Recommendation: "请求成功且 response 非空后 defer resp.Body.Close()，避免连接泄漏。",
+	},
+	"sql-string-concat": {
+		Title:          "SQL 查询通过字符串拼接构造",
+		Recommendation: "使用参数化查询或占位符，不要拼接用户可控输入。",
+	},
+	"command-injection": {
+		Title:          "命令执行使用 shell 或动态参数",
+		Recommendation: "避免 shell -c，使用 exec.CommandContext 传入经过校验的字面量参数。",
+	},
+	"context-background-misuse": {
+		Title:          "已支持 context 的函数中重新使用 context.Background",
+		Recommendation: "继续传递已有 ctx，保留取消、超时和 trace 上下文。",
+	},
+	"mutex-unlock-missing": {
+		Title:          "Mutex 加锁后缺少可见解锁路径",
+		Recommendation: "Lock 成功后立即 defer Unlock，避免早返回或异常路径导致死锁。",
+	},
+	"defer-in-loop": {
+		Title:          "循环中使用 defer 可能延迟释放资源",
+		Recommendation: "把循环体抽成 helper，或在进入下一轮前显式关闭资源。",
+	},
+	"bare-return-err": {
+		Title:          "直接返回 error，缺少操作上下文",
+		Recommendation: "使用 fmt.Errorf(\"operation: %w\", err) 或等价方式补充失败位置和操作语义。",
+	},
+	"string-concat-loop": {
+		Title:          "循环中字符串拼接可能造成重复分配",
+		Recommendation: "对重复拼接使用 strings.Builder 或 bytes.Buffer；低置信度项需要人工判断实际热点。",
+	},
+	"todo-marker": {
+		Title:          "新增代码包含 TODO 或 FIXME 标记",
+		Recommendation: "合入前删除临时标记，或转成有 owner 的跟踪 issue。",
+	},
+	"missing-test-hint": {
+		Title:          "新增函数可能缺少针对性测试",
+		Recommendation: "为新增路径补充单元测试，至少覆盖正常路径和关键失败路径。",
+	},
+}
+
+func writeLocalizedRuleTextChinese(b *strings.Builder, f review.Finding) {
+	if !isDeterministicFindingSource(f.Source) {
+		return
+	}
+	localized, ok := deterministicRuleChineseText[f.RuleID]
+	if !ok {
+		return
+	}
+	fmt.Fprintf(b, "  - 中文标题: %s\n", localized.Title)
+	if f.Title != "" {
+		fmt.Fprintf(b, "  - 原始标题: %s\n", f.Title)
+	}
+	if localized.Recommendation != "" {
+		fmt.Fprintf(b, "  - 中文建议: %s\n", localized.Recommendation)
+	}
+	if f.Recommendation != "" {
+		fmt.Fprintf(b, "  - 原始建议: %s\n", f.Recommendation)
+	}
+}
+
+func isDeterministicFindingSource(source string) bool {
+	switch source {
+	case "rule", "skill_run":
+		return true
+	default:
+		return false
 	}
 }
 

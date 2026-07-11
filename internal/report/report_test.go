@@ -76,6 +76,41 @@ func TestChineseMarkdownReportIncludesLocalizedReviewFields(t *testing.T) {
 	}
 }
 
+func TestChineseMarkdownReportAddsRuleLocalizedTextWithoutDroppingAuditFields(t *testing.T) {
+	rep := review.Result{
+		Findings: []review.Finding{{
+			Severity:       "critical",
+			Category:       "security",
+			File:           "config.go",
+			Line:           3,
+			Title:          "Potential secret appears in added code",
+			Evidence:       "const apiKey=[REDACTED]",
+			Recommendation: "Replace the literal with a secret manager or environment lookup.",
+			Confidence:     "high",
+			Source:         "skill_run",
+			RuleID:         "secret-leak",
+			Status:         "finding",
+		}},
+	}
+
+	md := BuildMarkdownChinese(rep)
+	for _, want := range []string{
+		"中文标题: 新增代码疑似包含敏感信息",
+		"中文建议: 不要把 API key、token 或 password 写入代码；改用环境变量、密钥管理服务或安全配置注入。",
+		"原始标题: Potential secret appears in added code",
+		"原始建议: Replace the literal with a secret manager or environment lookup.",
+		"来源: skill_run",
+		"规则: secret-leak",
+		"类别: security",
+		"置信度: high",
+		"状态: finding",
+	} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("expected localized Chinese report to include %q, got %s", want, md)
+		}
+	}
+}
+
 func TestReportsIncludeGovernanceSandboxArtifactsAndHumanReviewContract(t *testing.T) {
 	rep := review.Result{
 		TaskID: "task-contract",

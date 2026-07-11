@@ -25,6 +25,9 @@ It keeps the Issue #2004 path explicit:
 - optional LLM review uses the official `model.Model` path; DeepSeek/OpenAI-compatible providers use `trpc-agent-go/model/openai`.
 
 Longer architecture and acceptance details live in [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md).
+Reviewers can start with [docs/reviewer-guide.md](docs/reviewer-guide.md) for
+the review surface, safety boundaries, Testing Matrix, live LLM evidence, and
+Not-tested limits.
 
 ## Quick Start
 
@@ -160,7 +163,7 @@ Common CLI flags:
 explicit local development, and `e2b` is currently an explicit unsupported audit
 entrypoint that never silently falls back to local execution.
 
-## Tests
+## Testing Matrix
 
 Public fixture evaluation:
 
@@ -170,6 +173,10 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
+
+This matrix covers unit/integration behavior, public fixtures, holdout fixtures,
+hidden-like matrix input, and example migration. The reviewer-oriented checklist
+is in [docs/reviewer-guide.md](docs/reviewer-guide.md).
 
 Docker container sandbox test:
 
@@ -206,7 +213,7 @@ scripts/repo_llm_smoke.sh \
 The script runs `go run ./cmd/review-agent` from this repository root and checks
 `model_call_count=1`, a present `model_provider`, and no API key leakage.
 
-Complete LLM verification is layered:
+live LLM evidence is layered:
 
 1. no-network unit tests for prompt, decoding, redaction, and failure handling;
 2. deterministic fake-provider integration tests for report/SQLite behavior;
@@ -221,6 +228,8 @@ Live semantic eval preserves each fixture's `review_report.json`,
 When `testdata/holdout/expected.tsv` is available, the summaries also compute
 fixture-level recall and safe-fixture false-positive counts as reviewable
 evidence, not as a hard CI gate.
+Live model output can vary by provider, model version, network state, and prompt
+behavior, so semantic eval is reviewable evidence, not a hard CI gate.
 
 ```bash
 CR_AGENT_LLM_SMOKE=1 \
@@ -238,10 +247,14 @@ Local migration rehearsal:
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
-## What Is Still Missing For Issue #2004
+## Not-tested / What Is Still Missing For Issue #2004
 
-- more holdout/adversarial fixtures, especially semantic risks a real model can add;
-- hidden-style acceptance is covered by repository-owned holdout fixtures and hidden-like external smoke; more local samples can be added through `CR_AGENT_EVAL_FIXTURES_ROOT` and `CR_AGENT_EVAL_MATRIX`.
+- Real E2B workspace runtime remains an explicit unsupported audit path; the current production-shaped path is `codeexecutor/container`.
+- Live model output can vary; live semantic eval is evidence, not a deterministic CI hard gate.
+- Chinese reports add localized text for deterministic rule findings; model findings preserve provider wording.
+- The SQLite `reports` table stores JSON and English Markdown bodies. `review_report.zh.md` is persisted as an artifact reference with digest/size without extending the schema.
+- More holdout/adversarial fixtures can continue improving false-positive boundaries, especially semantic risks a real model can add.
+- Hidden-style acceptance is covered by repository-owned holdout fixtures and hidden-like external smoke; more local samples can be added through `CR_AGENT_EVAL_FIXTURES_ROOT` and `CR_AGENT_EVAL_MATRIX`.
 
 Non-blocking extensions: real E2B/Cube adapter, cross-PR Session/Memory, metric exporter / OTLP dashboard integration, and extra production runtime hardening.
 

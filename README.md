@@ -23,6 +23,7 @@ Issue #2004 主链路保持显式：
 - 可选 LLM review 走官方 `model.Model`；DeepSeek/OpenAI-compatible 使用 `trpc-agent-go/model/openai`。
 
 更完整的架构和验收矩阵见 [docs/issue-2004-traceability.md](docs/issue-2004-traceability.md)。
+Reviewer 可以先看 [docs/reviewer-guide.md](docs/reviewer-guide.md)，里面按 review surface、安全边界、Testing Matrix、live LLM evidence 和 Not-tested 限制列出审查入口。
 
 ## 方案设计说明
 
@@ -158,7 +159,7 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 `container` 是默认生产沙箱路径；`local-fallback` 仅用于本地开发；`e2b` 当前是显式 unsupported audit 入口，不会静默回退到本地执行。Issue 主线由默认 `codeexecutor/container` 满足。
 
-## 测试
+## Testing Matrix
 
 Reviewer 最短复现路径：
 
@@ -169,6 +170,10 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh
 CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 ```
+
+这组命令覆盖 unit/integration、公开 fixtures、holdout matrix、hidden-like
+smoke、examples 迁移和本地验收。更完整的 reviewer 视角见
+[docs/reviewer-guide.md](docs/reviewer-guide.md)。
 
 如果只想快速看报告产物和 SQLite 审计，可运行：
 
@@ -225,7 +230,7 @@ scripts/repo_llm_smoke.sh \
 脚本会从本仓库根目录运行 `go run ./cmd/review-agent`，并检查
 `model_call_count=1`、`model_provider` 存在和 API key 不泄漏。
 
-LLM 验证分四层：
+live LLM evidence 分四层：
 
 1. 无网络单测：prompt、decode、redaction、失败降级；
 2. deterministic fake-provider 集成测试：report/SQLite 行为；
@@ -239,6 +244,8 @@ LLM 验证分四层：
 `source=model` 项时，模型 finding 会写入 `review_report.md` 的 Findings 段。
 如果提供 `testdata/holdout/expected.tsv`，summary 还会计算 fixture-level
 recall 和 safe-fixture false-positive 数；它是人工可复核证据，不是 CI 硬门禁。
+真实模型输出可能随 provider、模型版本、网络和 prompt 行为波动，因此 semantic
+eval 是 reviewable evidence, not a hard CI gate。
 
 ```bash
 CR_AGENT_LLM_SMOKE=1 \
@@ -256,9 +263,13 @@ scripts/llm_semantic_eval.sh
 GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh
 ```
 
-## Issue #2004 仍缺什么
+## Not-tested / Issue #2004 仍缺什么
 
-- 继续用 self-contained holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险；
+- 真实 E2B workspace runtime 仍是显式 unsupported audit path；当前生产形态路径是 `codeexecutor/container`。
+- 真实模型输出会波动；live semantic eval 是人工证据，不作为 deterministic CI hard gate。
+- 中文报告已经对 deterministic rule findings 增加中文补充；model findings 保留模型原始措辞。
+- SQLite `reports` 表保存 JSON 和英文 Markdown 正文；`review_report.zh.md` 通过 artifact 引用保存 digest/size，不额外扩 schema。
+- 继续用 self-contained holdout/adversarial 样本校准误报边界，尤其是真实模型能发现的语义风险。
 - hidden 类验收采用仓库自造的 holdout matrix 和 hidden-like external smoke；如需扩展更多本地样本，可通过 `CR_AGENT_EVAL_FIXTURES_ROOT` / `CR_AGENT_EVAL_MATRIX` 追加评测。
 
 非阻塞扩展项：E2B/Cube 真实 adapter、跨 PR Session/Memory、metric exporter / OTLP dashboard、生产部署层额外 runtime 加固。Issue 主线允许 `codeexecutor/container` 或 E2B workspace runtime；当前默认生产路径已经是 container，且具备 timeout、output limit、permission gate、failure record 和 SQLite 审计，所以 E2B 不是当前 blocker。

@@ -48,3 +48,60 @@ func TestReadmeHasChineseDefaultAndEnglishVersion(t *testing.T) {
 		t.Fatalf("README.en.md should keep the English entrypoint")
 	}
 }
+
+func TestReviewerGuideDocumentsReviewSurfaceAndLimits(t *testing.T) {
+	data, err := os.ReadFile("docs/reviewer-guide.md")
+	if err != nil {
+		t.Fatalf("read reviewer guide: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"## Review Surface",
+		"cmd/review-agent",
+		"internal/agent/reports.go",
+		"internal/report/report.go",
+		"scripts/llm_semantic_eval.sh",
+		"## Safety Boundaries",
+		"tool.PermissionPolicy",
+		"timeout",
+		"output limit",
+		"env whitelist",
+		"redaction",
+		"artifact size cap",
+		"## Testing Matrix",
+		"go test -p 1 ./...",
+		"scripts/eval.sh",
+		"scripts/holdout_eval.sh",
+		"scripts/llm_semantic_eval.sh",
+		"scripts/repo_llm_smoke.sh",
+		"## Not Tested / Known Limits",
+		"real E2B",
+		"model output can vary",
+		"SQLite reports table",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("reviewer guide should mention %q", want)
+		}
+	}
+}
+
+func TestReadmesPointReviewersToEvidenceAndLimits(t *testing.T) {
+	for _, path := range []string{"README.md", "README.en.md"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(data)
+		for _, want := range []string{
+			"docs/reviewer-guide.md",
+			"Testing Matrix",
+			"live LLM evidence",
+			"Not-tested",
+			"not a hard CI gate",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s should mention %q", path, want)
+			}
+		}
+	}
+}

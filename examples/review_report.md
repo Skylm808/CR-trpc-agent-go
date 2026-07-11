@@ -8,7 +8,7 @@
 - Reason: no_blocking_findings
 - Summary: No blocking findings were detected by the deterministic review chain.
 
-Metrics: findings=0 total_ms=2306 sandbox_ms=2305 model_ms=0 tool_calls=2 model_calls=0 model_findings=0 model_exceptions=0 permission_blocks=0 redactions=0
+Metrics: findings=0 total_ms=2265 sandbox_ms=2264 model_ms=0 tool_calls=2 model_calls=0 model_findings=0 model_exceptions=0 permission_blocks=0 redactions=0
 
 Findings: 0
 
@@ -19,7 +19,7 @@ Findings: 0
 
 ## Sandbox
 
-- scripts/check.sh via local-fallback: ok, timeout_ms=30000, output_limit_bytes=65536, duration_ms=2305
+- scripts/check.sh via local-fallback: ok, timeout_ms=30000, output_limit_bytes=65536, duration_ms=2264
 
 ## Artifacts
 
