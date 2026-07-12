@@ -10,6 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 )
 
 // Store 持有 SQLite 连接。
@@ -17,116 +18,16 @@ type Store struct {
 	db *sql.DB
 }
 
-// Task 是审查任务记录。
-type Task struct {
-	ID          string
-	InputType   string
-	InputRef    string
-	InputDigest string
-	RepoPath    string
-	Status      string
-	Mode        string
-	CreatedAt   time.Time
-	StartedAt   time.Time
-	FinishedAt  time.Time
-}
-
-// Report 保存报告内容。
-type Report struct {
-	JSON      []byte
-	Markdown  []byte
-	CreatedAt time.Time
-}
-
-// DecisionRecord 保存权限决策。
-type DecisionRecord struct {
-	TaskID  string
-	Command string
-	Action  string
-	Reason  string
-	At      time.Time
-}
-
-// SandboxRunRecord 保存沙箱运行。
-type SandboxRunRecord struct {
-	TaskID           string
-	Command          string
-	Runtime          string
-	Status           string
-	TimeoutMS        int64
-	OutputLimitBytes int
-	EnvWhitelist     string
-	ExitCode         int
-	StdoutDigest     string
-	StderrDigest     string
-	DurationMS       int64
-	Output           string
-	At               time.Time
-	FinishedAt       time.Time
-	ArtifactCount    int
-}
-
-// FilterDecisionRecord 保存过滤决策。
-type FilterDecisionRecord struct {
-	TaskID string
-	Target string
-	Action string
-	Reason string
-	At     time.Time
-}
-
-// ArtifactRecord 保存产物引用。
-type ArtifactRecord struct {
-	TaskID string
-	Name   string
-	Kind   string
-	Path   string
-	Digest string
-	Size   int64
-	At     time.Time
-}
-
-// MetricsRecord 保存聚合指标。
-type MetricsRecord struct {
-	TaskID               string
-	TotalDurationMS      int64
-	SandboxDurationMS    int64
-	ModelDurationMS      int64
-	ToolCallCount        int
-	ModelCallCount       int
-	ModelProvider        string
-	ModelName            string
-	ModelBackend         string
-	PermissionBlockCount int
-	FindingCount         int
-	ModelFindingCount    int
-	ModelExceptionCount  int
-	SeverityCountsJSON   string
-	ExceptionCountsJSON  string
-	RedactionCount       int
-	At                   time.Time
-}
-
-// MetricsSummary 是指标查询结果。
-type MetricsSummary struct {
-	TaskID               string
-	TotalDurationMS      int64
-	SandboxDurationMS    int64
-	ModelDurationMS      int64
-	ToolCallCount        int
-	ModelCallCount       int
-	ModelProvider        string
-	ModelName            string
-	ModelBackend         string
-	PermissionBlockCount int
-	FindingCount         int
-	ModelFindingCount    int
-	ModelExceptionCount  int
-	SeverityCountsJSON   string
-	ExceptionCountsJSON  string
-	RedactionCount       int
-	At                   time.Time
-}
+// Compatibility aliases keep existing SQLite callers source-compatible while
+// record ownership remains in the storage domain package.
+type Task = storage.Task
+type Report = storage.ReportRecord
+type DecisionRecord = storage.DecisionRecord
+type FilterDecisionRecord = storage.FilterDecisionRecord
+type SandboxRunRecord = storage.SandboxRunRecord
+type ArtifactRecord = storage.ArtifactRecord
+type MetricsRecord = storage.MetricsRecord
+type MetricsSummary = storage.MetricsRecord
 
 // Open 打开 SQLite 数据库。
 func Open(path string) (*Store, error) {
@@ -134,6 +35,9 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// SQLite PRAGMA settings are connection-local. A single connection keeps
+	// foreign-key enforcement consistent for all Store operations.
+	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
 	if err := s.Init(context.Background()); err != nil {
 		_ = db.Close()
@@ -172,13 +76,15 @@ CREATE TABLE IF NOT EXISTS findings (
   source TEXT NOT NULL,
   rule_id TEXT NOT NULL,
   dedupe_key TEXT NOT NULL,
-  status TEXT NOT NULL
+  status TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS reports (
   task_id TEXT PRIMARY KEY,
   json_report BLOB NOT NULL,
   markdown_report BLOB NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS permission_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,7 +92,8 @@ CREATE TABLE IF NOT EXISTS permission_decisions (
   command TEXT NOT NULL,
   action TEXT NOT NULL,
   reason TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS filter_decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,7 +101,8 @@ CREATE TABLE IF NOT EXISTS filter_decisions (
   target TEXT NOT NULL,
   action TEXT NOT NULL,
   reason TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS sandbox_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,7 +120,8 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
   output TEXT,
   created_at TEXT NOT NULL,
   finished_at TEXT,
-  artifact_count INTEGER NOT NULL DEFAULT 0
+  artifact_count INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS artifacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,10 +131,16 @@ CREATE TABLE IF NOT EXISTS artifacts (
   path TEXT,
   digest TEXT,
   size_bytes INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS metrics (
   task_id TEXT PRIMARY KEY,
+	mode TEXT,
+	sandbox_requested INTEGER,
+	sandbox_executed INTEGER,
+	model_requested INTEGER,
+	model_executed INTEGER,
   total_duration_ms INTEGER NOT NULL,
   sandbox_duration_ms INTEGER NOT NULL,
   model_duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -241,8 +156,14 @@ CREATE TABLE IF NOT EXISTS metrics (
   severity_counts_json TEXT NOT NULL,
   exception_counts_json TEXT NOT NULL,
   redaction_count INTEGER NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(task_id) REFERENCES review_tasks(task_id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_findings_task_file_line ON findings(task_id, file, line);
+CREATE INDEX IF NOT EXISTS idx_permission_decisions_task ON permission_decisions(task_id);
+CREATE INDEX IF NOT EXISTS idx_filter_decisions_task ON filter_decisions(task_id);
+CREATE INDEX IF NOT EXISTS idx_sandbox_runs_task ON sandbox_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
 `)
 	if err != nil {
 		return err
@@ -263,6 +184,11 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE metrics ADD COLUMN model_backend TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE metrics ADD COLUMN model_finding_count INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE metrics ADD COLUMN model_exception_count INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN mode TEXT`,
+		`ALTER TABLE metrics ADD COLUMN sandbox_requested INTEGER`,
+		`ALTER TABLE metrics ADD COLUMN sandbox_executed INTEGER`,
+		`ALTER TABLE metrics ADD COLUMN model_requested INTEGER`,
+		`ALTER TABLE metrics ADD COLUMN model_executed INTEGER`,
 	} {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumnError(err) {
 			return err
@@ -310,9 +236,98 @@ func (s *Store) SaveFinding(ctx context.Context, taskID string, finding review.F
 INSERT INTO findings(finding_id, task_id, severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, dedupe_key, status)
 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `,
-		finding.DedupeKey(), taskID, finding.Severity, finding.Category, finding.File, finding.Line, finding.Title,
+		taskID+":"+finding.DedupeKey(), taskID, finding.Severity, finding.Category, finding.File, finding.Line, finding.Title,
 		finding.Evidence, finding.Recommendation, finding.Confidence, finding.Source, finding.RuleID, finding.DedupeKey(), finding.Status)
 	return err
+}
+
+// SaveReview 在一个事务中保存完整审查。任何子记录失败都会回滚任务及已写记录。
+func (s *Store) SaveReview(ctx context.Context, rec storage.ReviewRecord) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx, `
+INSERT INTO review_tasks(task_id, input_type, input_ref, input_digest, repo_path, status, mode, created_at, started_at, finished_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET input_type=excluded.input_type, input_ref=excluded.input_ref,
+input_digest=excluded.input_digest, repo_path=excluded.repo_path, status=excluded.status, mode=excluded.mode,
+created_at=excluded.created_at, started_at=excluded.started_at, finished_at=excluded.finished_at
+`, rec.Task.ID, rec.Task.InputType, rec.Task.InputRef, rec.Task.InputDigest, rec.Task.RepoPath, rec.Task.Status, rec.Task.Mode,
+		rec.Task.CreatedAt.UTC().Format(time.RFC3339Nano), nullableTime(rec.Task.StartedAt), nullableTime(rec.Task.FinishedAt)); err != nil {
+		return err
+	}
+	for _, item := range rec.Decisions {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO permission_decisions(task_id, command, action, reason, created_at) VALUES(?, ?, ?, ?, ?)`,
+			item.TaskID, item.Command, item.Action, item.Reason, item.At.UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+	}
+	for _, item := range rec.FilterDecisions {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO filter_decisions(task_id, target, action, reason, created_at) VALUES(?, ?, ?, ?, ?)`,
+			item.TaskID, item.Target, item.Action, item.Reason, item.At.UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+	}
+	for _, item := range rec.SandboxRuns {
+		if _, err = tx.ExecContext(ctx, `
+INSERT INTO sandbox_runs(task_id, command, runtime, status, timeout_ms, output_limit_bytes, env_whitelist, exit_code, stdout_digest, stderr_digest, duration_ms, output, created_at, finished_at, artifact_count)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item.TaskID, item.Command, item.Runtime, item.Status,
+			item.TimeoutMS, item.OutputLimitBytes, item.EnvWhitelist, item.ExitCode, item.StdoutDigest, item.StderrDigest,
+			item.DurationMS, item.Output, item.At.UTC().Format(time.RFC3339Nano), nullableTime(item.FinishedAt), item.ArtifactCount); err != nil {
+			return err
+		}
+	}
+	for _, item := range rec.Findings {
+		key := item.DedupeKey()
+		if _, err = tx.ExecContext(ctx, `
+INSERT INTO findings(finding_id, task_id, severity, category, file, line, title, evidence, recommendation, confidence, source, rule_id, dedupe_key, status)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, rec.Task.ID+":"+key, rec.Task.ID, item.Severity, item.Category,
+			item.File, item.Line, item.Title, item.Evidence, item.Recommendation, item.Confidence, item.Source, item.RuleID, key, item.Status); err != nil {
+			return err
+		}
+	}
+	m := rec.Metrics
+	if _, err = tx.ExecContext(ctx, `
+INSERT INTO metrics(task_id, mode, sandbox_requested, sandbox_executed, model_requested, model_executed, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, model_provider, model_name, model_backend, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET total_duration_ms=excluded.total_duration_ms, sandbox_duration_ms=excluded.sandbox_duration_ms,
+mode=excluded.mode, sandbox_requested=excluded.sandbox_requested, sandbox_executed=excluded.sandbox_executed,
+model_requested=excluded.model_requested, model_executed=excluded.model_executed,
+model_duration_ms=excluded.model_duration_ms, tool_call_count=excluded.tool_call_count, model_call_count=excluded.model_call_count,
+model_provider=excluded.model_provider, model_name=excluded.model_name, model_backend=excluded.model_backend,
+permission_block_count=excluded.permission_block_count, finding_count=excluded.finding_count,
+model_finding_count=excluded.model_finding_count, model_exception_count=excluded.model_exception_count,
+severity_counts_json=excluded.severity_counts_json, exception_counts_json=excluded.exception_counts_json,
+redaction_count=excluded.redaction_count, created_at=excluded.created_at`, m.TaskID, m.Mode, m.SandboxRequested, m.SandboxExecuted, m.ModelRequested, m.ModelExecuted, m.TotalDurationMS, m.SandboxDurationMS,
+		m.ModelDurationMS, m.ToolCallCount, m.ModelCallCount, m.ModelProvider, m.ModelName, m.ModelBackend,
+		m.PermissionBlockCount, m.FindingCount, m.ModelFindingCount, m.ModelExceptionCount, m.SeverityCountsJSON,
+		m.ExceptionCountsJSON, m.RedactionCount, m.At.UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	for _, item := range rec.Artifacts {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO artifacts(task_id, name, kind, path, digest, size_bytes, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			item.TaskID, item.Name, item.Kind, item.Path, item.Digest, item.Size, item.At.UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+	}
+	reportAt := rec.Report.CreatedAt
+	if reportAt.IsZero() {
+		reportAt = time.Now()
+	}
+	if _, err = tx.ExecContext(ctx, `
+INSERT INTO reports(task_id, json_report, markdown_report, created_at) VALUES(?, ?, ?, ?)
+ON CONFLICT(task_id) DO UPDATE SET json_report=excluded.json_report, markdown_report=excluded.markdown_report, created_at=excluded.created_at`,
+		rec.Task.ID, rec.Report.JSON, rec.Report.Markdown, reportAt.UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SaveReport 写入最终报告。
@@ -527,9 +542,14 @@ ORDER BY id
 // SaveMetrics 保存指标。
 func (s *Store) SaveMetrics(ctx context.Context, rec MetricsRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO metrics(task_id, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, model_provider, model_name, model_backend, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO metrics(task_id, mode, sandbox_requested, sandbox_executed, model_requested, model_executed, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, model_provider, model_name, model_backend, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(task_id) DO UPDATE SET
+mode=excluded.mode,
+sandbox_requested=excluded.sandbox_requested,
+sandbox_executed=excluded.sandbox_executed,
+model_requested=excluded.model_requested,
+model_executed=excluded.model_executed,
 total_duration_ms=excluded.total_duration_ms,
 sandbox_duration_ms=excluded.sandbox_duration_ms,
 model_duration_ms=excluded.model_duration_ms,
@@ -546,7 +566,7 @@ severity_counts_json=excluded.severity_counts_json,
 exception_counts_json=excluded.exception_counts_json,
 redaction_count=excluded.redaction_count,
 created_at=excluded.created_at
-`, rec.TaskID, rec.TotalDurationMS, rec.SandboxDurationMS, rec.ModelDurationMS, rec.ToolCallCount, rec.ModelCallCount, rec.ModelProvider, rec.ModelName, rec.ModelBackend, rec.PermissionBlockCount, rec.FindingCount, rec.ModelFindingCount, rec.ModelExceptionCount, rec.SeverityCountsJSON, rec.ExceptionCountsJSON, rec.RedactionCount, rec.At.UTC().Format(time.RFC3339Nano))
+`, rec.TaskID, rec.Mode, rec.SandboxRequested, rec.SandboxExecuted, rec.ModelRequested, rec.ModelExecuted, rec.TotalDurationMS, rec.SandboxDurationMS, rec.ModelDurationMS, rec.ToolCallCount, rec.ModelCallCount, rec.ModelProvider, rec.ModelName, rec.ModelBackend, rec.PermissionBlockCount, rec.FindingCount, rec.ModelFindingCount, rec.ModelExceptionCount, rec.SeverityCountsJSON, rec.ExceptionCountsJSON, rec.RedactionCount, rec.At.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -554,15 +574,36 @@ created_at=excluded.created_at
 func (s *Store) MetricsByTaskID(ctx context.Context, taskID string) (MetricsSummary, error) {
 	var out MetricsSummary
 	var createdAt string
+	var mode sql.NullString
+	var sandboxRequested, sandboxExecuted, modelRequested, modelExecuted sql.NullBool
 	err := s.db.QueryRowContext(ctx, `
-SELECT task_id, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, model_provider, model_name, model_backend, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at
+SELECT task_id, mode, sandbox_requested, sandbox_executed, model_requested, model_executed, total_duration_ms, sandbox_duration_ms, model_duration_ms, tool_call_count, model_call_count, model_provider, model_name, model_backend, permission_block_count, finding_count, model_finding_count, model_exception_count, severity_counts_json, exception_counts_json, redaction_count, created_at
 FROM metrics WHERE task_id=?
-`, taskID).Scan(&out.TaskID, &out.TotalDurationMS, &out.SandboxDurationMS, &out.ModelDurationMS, &out.ToolCallCount, &out.ModelCallCount, &out.ModelProvider, &out.ModelName, &out.ModelBackend, &out.PermissionBlockCount, &out.FindingCount, &out.ModelFindingCount, &out.ModelExceptionCount, &out.SeverityCountsJSON, &out.ExceptionCountsJSON, &out.RedactionCount, &createdAt)
+`, taskID).Scan(&out.TaskID, &mode, &sandboxRequested, &sandboxExecuted, &modelRequested, &modelExecuted, &out.TotalDurationMS, &out.SandboxDurationMS, &out.ModelDurationMS, &out.ToolCallCount, &out.ModelCallCount, &out.ModelProvider, &out.ModelName, &out.ModelBackend, &out.PermissionBlockCount, &out.FindingCount, &out.ModelFindingCount, &out.ModelExceptionCount, &out.SeverityCountsJSON, &out.ExceptionCountsJSON, &out.RedactionCount, &createdAt)
 	if err != nil {
 		return MetricsSummary{}, err
 	}
 	out.At, _ = time.Parse(time.RFC3339Nano, createdAt)
+	out.Mode = nullableStringPointer(mode)
+	out.SandboxRequested = nullableBoolPointer(sandboxRequested)
+	out.SandboxExecuted = nullableBoolPointer(sandboxExecuted)
+	out.ModelRequested = nullableBoolPointer(modelRequested)
+	out.ModelExecuted = nullableBoolPointer(modelExecuted)
 	return out, nil
+}
+
+func nullableStringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
+}
+
+func nullableBoolPointer(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Bool
 }
 
 // nullableTime 转换可选时间。

@@ -35,6 +35,35 @@ func TestJSONAndMarkdownReportsIncludeFindings(t *testing.T) {
 	}
 }
 
+func TestReportsAlwaysExposeCanonicalCapabilityAudit(t *testing.T) {
+	rep := review.Result{Metrics: review.Metrics{
+		Mode:             "review",
+		SandboxRequested: false,
+		SandboxExecuted:  false,
+		ModelRequested:   true,
+		ModelExecuted:    true,
+	}}
+	j, err := BuildJSON(rep)
+	if err != nil {
+		t.Fatalf("BuildJSON: %v", err)
+	}
+	for _, want := range []string{
+		`"mode": "review"`,
+		`"sandbox_requested": false`,
+		`"sandbox_executed": false`,
+		`"model_requested": true`,
+		`"model_executed": true`,
+	} {
+		if !strings.Contains(string(j), want) {
+			t.Fatalf("JSON missing %q: %s", want, j)
+		}
+	}
+	md := BuildMarkdown(rep)
+	if !strings.Contains(md, "Capabilities: mode=review sandbox=requested:false/executed:false model=requested:true/executed:true") {
+		t.Fatalf("Markdown missing capability audit: %s", md)
+	}
+}
+
 func TestChineseMarkdownReportIncludesLocalizedReviewFields(t *testing.T) {
 	rep := review.Result{
 		Summary: "1 findings, 0 warnings",

@@ -1,15 +1,17 @@
-mode: rule-only
-runtime: local-fallback
+mode: review
+runtime: container
 output_dir: .cr-agent/reports
 skills_root: skills
 fixtures_root: testdata/fixtures
-staticcheck: false
+sandbox:
+  enabled: true
+  staticcheck: false
 
 # Enable a real model only when you intentionally want live LLM review.
 # api_key_env is an environment variable name, not the API key value.
 #
-# mode: fake-model
 # model:
+#   enabled: true
 #   provider: deepseek
 #   name: deepseek-chat
 #   api_key_env: DEEPSEEK_API_KEY
@@ -17,6 +19,7 @@ staticcheck: false
 # OpenAI-compatible gateways:
 #
 # model:
+#   enabled: true
 #   provider: openai-compatible
 #   name: gpt-4o-mini
 #   api_key_env: OPENAI_API_KEY

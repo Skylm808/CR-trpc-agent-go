@@ -21,7 +21,10 @@ type Options struct {
 	HeadRef        string
 	OutputDir      string
 	Mode           string
+	SandboxEnabled *bool
+	ModelEnabled   *bool
 	SQLitePath     string
+	NoPersist      bool
 	RunChecks      bool
 	Runtime        string
 	SkillsRoot     string
@@ -46,6 +49,20 @@ func Run(opts Options) error {
 		return err
 	}
 	opts = withInferredInput(opts)
+	req := cragent.Request{
+		DiffFile:       opts.DiffFile,
+		FileList:       opts.FileList,
+		RepoPath:       opts.RepoPath,
+		Fixture:        opts.Fixture,
+		BaseRef:        opts.BaseRef,
+		HeadRef:        opts.HeadRef,
+		Mode:           opts.Mode,
+		SandboxEnabled: opts.SandboxEnabled,
+		ModelEnabled:   opts.ModelEnabled,
+	}
+	if err := cragent.ValidateRequest(req); err != nil {
+		return err
+	}
 	cfg := cragent.Config{
 		SkillsRoot:            opts.SkillsRoot,
 		Runtime:               opts.Runtime,
@@ -56,7 +73,7 @@ func Run(opts Options) error {
 		EnableStaticcheck:     opts.Staticcheck,
 	}
 	switch opts.ModelProvider {
-	case "":
+	case "", "fake":
 	case "http":
 		cfg.ModelHTTP = llm.HTTPConfig{
 			Enabled:   true,
@@ -94,15 +111,7 @@ func Run(opts Options) error {
 	_ = opts.RunChecks
 	// Streaming 兼容官方 examples/runner 的 -streaming 参数；当前报告仍一次性生成。
 	_ = opts.Streaming
-	_, err = ag.Run(context.Background(), cragent.Request{
-		DiffFile: opts.DiffFile,
-		FileList: opts.FileList,
-		RepoPath: opts.RepoPath,
-		Fixture:  opts.Fixture,
-		BaseRef:  opts.BaseRef,
-		HeadRef:  opts.HeadRef,
-		Mode:     opts.Mode,
-	})
+	_, err = ag.Run(context.Background(), req)
 	return err
 }
 

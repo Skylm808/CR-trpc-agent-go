@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -106,10 +108,13 @@ func TestRunUsesGeneratedRepoFixtureWithBaseAndHeadRefs(t *testing.T) {
 	if err := json.Unmarshal(reportBytes, &report); err != nil {
 		t.Fatalf("unmarshal report: %v", err)
 	}
-	for _, ruleID := range []string{"secret-leak", "panic-direct", "goroutine-leak", "context-leak", "resource-leak", "db-lifecycle", "missing-test-hint"} {
+	for _, ruleID := range []string{"secret-leak", "panic-direct", "context-leak", "resource-leak", "db-lifecycle", "missing-test-hint"} {
 		if !reportHasRuleID(report, ruleID) {
 			t.Fatalf("expected %s from generated git repo, findings=%+v warnings=%+v", ruleID, report.Findings, report.Warnings)
 		}
+	}
+	if reportHasRuleID(report, "goroutine-leak") {
+		t.Fatalf("goroutine waiting on ctx.Done must not be reported as unguarded: %+v", report.Findings)
 	}
 	if !strings.Contains(string(report.InputMetadata), `"module_path": "example.com/risky-service"`) ||
 		!strings.Contains(string(report.InputMetadata), `"service.go"`) ||

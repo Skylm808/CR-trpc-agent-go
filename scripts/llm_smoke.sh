@@ -97,7 +97,8 @@ args=(
   --repo-path "$REPO"
   --skills-root "$ROOT/skills"
   --runtime local-fallback
-  --mode fake-model
+  --mode review
+  --model-enabled
   --output-dir "$OUT"
 )
 if [[ "$USE_CONFIG" == "1" ]]; then

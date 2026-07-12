@@ -67,6 +67,19 @@ func TestRunRejectsUnknownModelProvider(t *testing.T) {
 	}
 }
 
+func TestParseOptionsTracksExplicitFalseCapabilities(t *testing.T) {
+	opts, err := parseOptions([]string{"--sandbox=false", "--model-enabled=false"})
+	if err != nil {
+		t.Fatalf("parse options: %v", err)
+	}
+	if opts.SandboxEnabled == nil || *opts.SandboxEnabled || opts.ModelEnabled == nil || *opts.ModelEnabled {
+		t.Fatalf("explicit false capabilities were not retained: sandbox=%v model=%v", opts.SandboxEnabled, opts.ModelEnabled)
+	}
+	if !opts.ExplicitFlags["sandbox"] || !opts.ExplicitFlags["model-enabled"] {
+		t.Fatalf("explicit capability flags not tracked: %+v", opts.ExplicitFlags)
+	}
+}
+
 func TestRunCanUseFileListForDiffGeneration(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package foo\n\nfunc Bad() { panic(\"boom\") }\n"), 0o644); err != nil {

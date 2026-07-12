@@ -1,3 +1,5 @@
+//go:build integration
+
 package agent
 
 import (
@@ -13,10 +15,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/llm"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 	"github.com/Skylm808/CR-trpc-agent-go/internal/storage/sqlite"
 	"go.opentelemetry.io/otel/attribute"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
@@ -35,7 +39,6 @@ const testReviewTimeout = 10 * time.Second
 
 // TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore 固定最小审查链路。
 func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -152,7 +155,6 @@ func TestAgentRunUsesFrameworkSkillPermissionExecutorAndStore(t *testing.T) {
 
 // TestLocalFallbackExecutorsUseIsolatedWorkDirs 固定并发评测时本地执行目录隔离。
 func TestLocalFallbackExecutorsUseIsolatedWorkDirs(t *testing.T) {
-	t.Parallel()
 
 	first, err := execution.NewExecutor(execution.Config{Runtime: RuntimeLocalFallback, Timeout: testReviewTimeout})
 	if err != nil {
@@ -180,7 +182,6 @@ func TestLocalFallbackExecutorsUseIsolatedWorkDirs(t *testing.T) {
 
 // TestAgentRunDoesNotPersistRawSecretsInSQLite 固定明文密钥不落库。
 func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -223,7 +224,6 @@ func TestAgentRunDoesNotPersistRawSecretsInSQLite(t *testing.T) {
 
 // TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite 固定常见密钥不会进入报告和数据库。
 func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -318,7 +318,6 @@ func TestAgentRunRedactsCommonSecretShapesInReportsAndSQLite(t *testing.T) {
 
 // TestParseSkillFindingsDedupesAndRedactsSecretFindings 固定脚本输出进入 Agent 的安全边界。
 func TestParseSkillFindingsDedupesAndRedactsSecretFindings(t *testing.T) {
-	t.Parallel()
 
 	stdout := `{"findings":[` +
 		`{"severity":"critical","category":"security","file":"config.go","line":7,"title":"Potential secret appears in added code","evidence":"const llmkey = \"llm-live-1234567890abcdef\"","recommendation":"Replace the literal with a secret manager or environment lookup.","confidence":"high","source":"skill_run","rule_id":"secret-leak","status":"finding"},` +
@@ -339,7 +338,6 @@ func TestParseSkillFindingsDedupesAndRedactsSecretFindings(t *testing.T) {
 
 // TestAgentRunPersistsWarningsForReplay 固定 warning 可回放。
 func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -387,7 +385,6 @@ func TestAgentRunPersistsWarningsForReplay(t *testing.T) {
 
 // TestAgentRunDoesNotExecuteNonAllowPermission 固定非 allow 不执行。
 func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
-	t.Parallel()
 
 	cases := []struct {
 		name     string
@@ -466,7 +463,6 @@ func TestAgentRunDoesNotExecuteNonAllowPermission(t *testing.T) {
 
 // TestAgentRunCountsAllPermissionBlocks 固定所有非 allow 决策都会计数。
 func TestAgentRunCountsAllPermissionBlocks(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -533,7 +529,6 @@ func TestAgentRunCountsAllPermissionBlocks(t *testing.T) {
 
 // TestAgentRunAcceptsFixtureInput 固定 fixture 输入路径。
 func TestAgentRunAcceptsFixtureInput(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -566,7 +561,6 @@ func TestAgentRunAcceptsFixtureInput(t *testing.T) {
 
 // TestReadInputFromRepoReturnsRepoPath 固定仓库输入仍按 repo path 读取。
 func TestReadInputFromRepoReturnsRepoPath(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	diff, ref, err := readInput(Config{}, Request{
@@ -585,7 +579,6 @@ func TestReadInputFromRepoReturnsRepoPath(t *testing.T) {
 
 // TestReadInputFromRepoReadsWorkingTreeDiff 固定仓库输入按工作区 diff 读取。
 func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
-	t.Parallel()
 
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package demo\n"), 0o644); err != nil {
@@ -605,7 +598,6 @@ func TestReadInputFromRepoReadsWorkingTreeDiff(t *testing.T) {
 
 // TestInputMetadataFromRepoPathDiff 固定 repo-path 输入的 Go 元数据。
 func TestInputMetadataFromRepoPathDiff(t *testing.T) {
-	t.Parallel()
 
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/repometa\n\ngo 1.25.0\n"), 0o644); err != nil {
@@ -636,7 +628,6 @@ func TestInputMetadataFromRepoPathDiff(t *testing.T) {
 
 // TestReadInputFromFileListBuildsDiff 固定文件路径列表输入。
 func TestReadInputFromFileListBuildsDiff(t *testing.T) {
-	t.Parallel()
 
 	repo := t.TempDir()
 	src := filepath.Join(repo, "foo.go")
@@ -664,7 +655,6 @@ func TestReadInputFromFileListBuildsDiff(t *testing.T) {
 
 // TestReadInputFromFileListRejectsRepoEscape 固定路径列表不能跳出 repo。
 func TestReadInputFromFileListRejectsRepoEscape(t *testing.T) {
-	t.Parallel()
 
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
@@ -686,7 +676,6 @@ func TestReadInputFromFileListRejectsRepoEscape(t *testing.T) {
 
 // TestAgentRunAcceptsFileListInput 固定路径列表进入完整审查链路。
 func TestAgentRunAcceptsFileListInput(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -727,7 +716,6 @@ func TestAgentRunAcceptsFileListInput(t *testing.T) {
 
 // TestRequestInputKindRecognizesFileList 固定路径列表 telemetry 类型。
 func TestRequestInputKindRecognizesFileList(t *testing.T) {
-	t.Parallel()
 
 	if got := requestInputKind(Request{FileList: "files.txt"}); got != "file_list" {
 		t.Fatalf("input kind = %q, want file_list", got)
@@ -736,7 +724,6 @@ func TestRequestInputKindRecognizesFileList(t *testing.T) {
 
 // TestReportArtifactsRemainStable 固定报告和诊断产物语义不变。
 func TestReportArtifactsRemainStable(t *testing.T) {
-	t.Parallel()
 
 	arts := reportArtifacts()
 	if len(arts) != 4 {
@@ -749,7 +736,6 @@ func TestReportArtifactsRemainStable(t *testing.T) {
 
 // TestEnforceArtifactLimitsBlocksOversizedReports 固定产物大小边界。
 func TestEnforceArtifactLimitsBlocksOversizedReports(t *testing.T) {
-	t.Parallel()
 
 	err := enforceArtifactLimits(Config{MaxArtifactBytes: 4}, []artifactPayload{{
 		Name: "review_report.json",
@@ -760,9 +746,29 @@ func TestEnforceArtifactLimitsBlocksOversizedReports(t *testing.T) {
 	}
 }
 
+func TestEnforceArtifactLimitsRejectsUnknownNamesCountAndTotalBytes(t *testing.T) {
+
+	base := Config{MaxArtifactBytes: 8, MaxArtifactTotalBytes: 8, MaxArtifactCount: 1}
+	for _, tc := range []struct {
+		name      string
+		artifacts []artifactPayload
+		contains  string
+	}{
+		{name: "unknown name", artifacts: []artifactPayload{{Name: "../secret.txt", Data: []byte("x")}}, contains: "not allowed"},
+		{name: "count", artifacts: []artifactPayload{{Name: "review_report.json", Data: []byte("x")}, {Name: "review_report.md", Data: []byte("x")}}, contains: "count limit"},
+		{name: "total", artifacts: []artifactPayload{{Name: "review_report.json", Data: []byte("123456789")}}, contains: "total size limit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := enforceArtifactLimits(base, tc.artifacts)
+			if err == nil || !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("enforceArtifactLimits error = %v, want %q", err, tc.contains)
+			}
+		})
+	}
+}
+
 // TestAgentRunRejectsOversizedArtifacts 固定超大产物不落盘。
 func TestAgentRunRejectsOversizedArtifacts(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -827,7 +833,6 @@ func TestAgentRunRejectsOversizedArtifacts(t *testing.T) {
 
 // TestConclusionStatuses 固定最终结论规则。
 func TestConclusionStatuses(t *testing.T) {
-	t.Parallel()
 
 	cases := []struct {
 		name   string
@@ -875,7 +880,6 @@ func TestConclusionStatuses(t *testing.T) {
 
 // TestArtifactServiceReportsCanBeSavedAsArtifacts 固定报告和诊断可进入官方 artifact service。
 func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	svc := inmemory.NewService()
@@ -950,7 +954,6 @@ func TestArtifactServiceReportsCanBeSavedAsArtifacts(t *testing.T) {
 
 // TestAgentDefaultArtifactService 保存默认官方产物边界。
 func TestAgentDefaultArtifactService(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	ag, err := New(Config{
@@ -1014,6 +1017,10 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 		"cr_agent.task_id",
 		"cr_agent.runtime",
 		"cr_agent.mode",
+		"cr_agent.sandbox_requested",
+		"cr_agent.sandbox_executed",
+		"cr_agent.model_requested",
+		"cr_agent.model_executed",
 		"cr_agent.input_type",
 		"cr_agent.finding_count",
 		"cr_agent.artifact_count",
@@ -1041,8 +1048,11 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 	if attrs["cr_agent.runtime"].AsString() != RuntimeLocalFallback {
 		t.Fatalf("runtime attribute mismatch: %+v", attrs["cr_agent.runtime"])
 	}
-	if attrs["cr_agent.mode"].AsString() != ModeRuleOnly {
+	if attrs["cr_agent.mode"].AsString() != ModeReview {
 		t.Fatalf("mode attribute mismatch: %+v", attrs["cr_agent.mode"])
+	}
+	if attrs["cr_agent.sandbox_requested"].AsBool() || attrs["cr_agent.sandbox_executed"].AsBool() || attrs["cr_agent.model_requested"].AsBool() || attrs["cr_agent.model_executed"].AsBool() {
+		t.Fatalf("legacy rule-only must normalize to disabled capabilities: %+v", attrs)
 	}
 	if attrs["cr_agent.input_type"].AsString() != "diff_file" {
 		t.Fatalf("input type attribute mismatch: %+v", attrs["cr_agent.input_type"])
@@ -1099,7 +1109,6 @@ func TestAgentRunRecordsTelemetryAttributes(t *testing.T) {
 
 // TestAgentRunWritesGoInputMetadataToDiagnostics 固定 Go 输入元数据进入诊断产物。
 func TestAgentRunWritesGoInputMetadataToDiagnostics(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -1163,7 +1172,6 @@ func TestAgentRunWritesGoInputMetadataToDiagnostics(t *testing.T) {
 
 // TestAgentRunRecordsSandboxFailureWithoutCrashing 固定失败不崩溃。
 func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -1228,7 +1236,6 @@ func TestAgentRunRecordsSandboxFailureWithoutCrashing(t *testing.T) {
 
 // TestAgentRunRecordsSandboxTimeoutWithoutCrashing 固定超时可审计。
 func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -1281,7 +1288,6 @@ func TestAgentRunRecordsSandboxTimeoutWithoutCrashing(t *testing.T) {
 
 // TestAgentRunDryRunRecordsSkippedSandbox 固定 dry-run 审计记录。
 func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -1334,7 +1340,6 @@ func TestAgentRunDryRunRecordsSkippedSandbox(t *testing.T) {
 
 // TestAgentRunFakeModelUsesProviderBoundary 固定 fake-model 经过模型审查边界。
 func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -1440,7 +1445,6 @@ func TestAgentRunFakeModelUsesProviderBoundary(t *testing.T) {
 
 // TestReviewProviderModelAdapterImplementsOfficialModel 固定模型 provider 可走官方 model.Model 接口。
 func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
-	t.Parallel()
 
 	rawSecret := "sk-officialmodel-1234567890"
 	var seenInput llm.Input
@@ -1512,7 +1516,6 @@ func TestReviewProviderModelAdapterImplementsOfficialModel(t *testing.T) {
 
 // TestAgentRunEmitsOfficialEvents 固定 CLI 编排阶段通过官方 event.Event 暴露。
 func TestAgentRunEmitsOfficialEvents(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	var events []*agentevent.Event
@@ -1568,7 +1571,6 @@ func TestAgentRunEmitsOfficialEvents(t *testing.T) {
 
 // TestAgentRunWithEventsUsesOfficialRunnerRoute 固定一次 review 可以通过官方 Runner/Event 路线消费事件流。
 func TestAgentRunWithEventsUsesOfficialRunnerRoute(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	ag, err := New(Config{
@@ -1618,7 +1620,6 @@ func TestAgentRunWithEventsUsesOfficialRunnerRoute(t *testing.T) {
 
 // TestAgentRunE2BRuntimeRecordsUnsupportedAudit 固定 E2B 入口是显式 unsupported，而不是静默 fallback。
 func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -1677,7 +1678,6 @@ func TestAgentRunE2BRuntimeRecordsUnsupportedAudit(t *testing.T) {
 // TestE2BExecutorIsExplicitUnsupportedAdapter 固定当前 adapter 边界：
 // e2b 不能静默回退到 local/container execution。
 func TestE2BExecutorIsExplicitUnsupportedAdapter(t *testing.T) {
-	t.Parallel()
 
 	exec, err := execution.NewExecutor(execution.Config{Runtime: RuntimeE2B})
 	if err != nil {
@@ -1699,7 +1699,6 @@ func TestE2BExecutorIsExplicitUnsupportedAdapter(t *testing.T) {
 
 // TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite 固定 base/head 作为审计上下文贯穿报告和落库。
 func TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	dbPath := filepath.Join(t.TempDir(), "review.db")
@@ -1753,7 +1752,6 @@ func TestAgentRunCarriesBaseHeadRefsToArtifactsAndSQLite(t *testing.T) {
 
 // TestModelProviderMergesFindingsByConfidenceAndDedupe 固定模型增量合并规则。
 func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
@@ -1831,7 +1829,6 @@ func TestModelProviderMergesFindingsByConfidenceAndDedupe(t *testing.T) {
 }
 
 func TestLowConfidenceModelFindingPersistsAsHumanReviewEvidence(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -1909,7 +1906,6 @@ func TestLowConfidenceModelFindingPersistsAsHumanReviewEvidence(t *testing.T) {
 
 // TestModelProviderRedactsInputOutputReportsAndSQLite 固定模型输入输出都经过脱敏边界。
 func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	outDir := t.TempDir()
@@ -2000,7 +1996,6 @@ func TestModelProviderRedactsInputOutputReportsAndSQLite(t *testing.T) {
 
 // TestModelProviderFailureDoesNotAbortReview 固定模型失败降级为人工复核和指标异常。
 func TestModelProviderFailureDoesNotAbortReview(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	provider := llm.ProviderFunc(func(ctx context.Context, input llm.Input) (llm.Output, error) {
@@ -2207,7 +2202,6 @@ func TestHTTPModelProviderCallsServerAndMergesFindings(t *testing.T) {
 
 // TestHTTPModelProviderFailureDoesNotAbortReview 固定 HTTP provider 失败降级。
 func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	cases := []struct {
@@ -2317,7 +2311,6 @@ func TestHTTPModelProviderFailureDoesNotAbortReview(t *testing.T) {
 
 // TestRuleOnlyAndDryRunSkipModelProvider 固定兼容模式不调用模型边界。
 func TestRuleOnlyAndDryRunSkipModelProvider(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	provider := &countingModelProvider{}
@@ -2351,7 +2344,6 @@ func TestRuleOnlyAndDryRunSkipModelProvider(t *testing.T) {
 
 // TestAgentRunSandboxModeExecutesGoChecks 固定 sandbox Go 检查。
 func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -2405,9 +2397,45 @@ func TestAgentRunSandboxModeExecutesGoChecks(t *testing.T) {
 	assertRunForCommand(t, runs, "go vet ./...")
 }
 
+func TestReviewCanCombineSandboxAndModel(t *testing.T) {
+	root := repoRoot(t)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/combined\n\ngo 1.25.0\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "foo.go"), []byte("package combined\n\nfunc Add(a, b int) int { return a + b }\n"), 0o644); err != nil {
+		t.Fatalf("write foo.go: %v", err)
+	}
+	var modelInput llm.Input
+	provider := llm.ProviderFunc(func(_ context.Context, input llm.Input) (llm.Output, error) {
+		modelInput = input
+		return llm.Output{}, nil
+	})
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"), Runtime: RuntimeLocalFallback,
+		OutputDir: t.TempDir(), Timeout: 10 * time.Second, ModelProvider: provider,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	enabled := true
+	result, err := ag.Run(context.Background(), Request{
+		RepoPath: repo, Mode: ModeReview, SandboxEnabled: &enabled, ModelEnabled: &enabled,
+	})
+	if err != nil {
+		t.Fatalf("combined review: %v", err)
+	}
+	if !result.Metrics.SandboxRequested || !result.Metrics.SandboxExecuted || !result.Metrics.ModelRequested || !result.Metrics.ModelExecuted {
+		t.Fatalf("combined capability audit: %+v", result.Metrics)
+	}
+	if len(modelInput.SandboxSummary.Runs) < 3 {
+		t.Fatalf("model must receive Skill and Go-check summaries: %+v", modelInput.SandboxSummary)
+	}
+}
+
 // TestRunGoSandboxCommandPrefersWorkspaceExec 固定 workspaceexec 成功时不触发 codeexec 兜底。
 func TestRunGoSandboxCommandPrefersWorkspaceExec(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -2441,9 +2469,9 @@ func TestRunGoSandboxCommandPrefersWorkspaceExec(t *testing.T) {
 	}
 	ag.checkTool = fallback
 
-	decision, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-primary", repo, "go test ./...")
-	if decision.Action != "allow" {
-		t.Fatalf("expected allow decision, got %+v", decision)
+	decisions, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-primary", repo, "go test ./...")
+	if len(decisions) != 1 || decisions[0].Action != "allow" {
+		t.Fatalf("expected one allow decision, got %+v", decisions)
 	}
 	if run.Status != "ok" {
 		t.Fatalf("expected workspaceexec go test to succeed, got %+v", run)
@@ -2455,7 +2483,6 @@ func TestRunGoSandboxCommandPrefersWorkspaceExec(t *testing.T) {
 
 // TestRunGoSandboxCommandFallsBackToCodeExec 固定 workspaceexec 不可用时保留 codeexec 兜底。
 func TestRunGoSandboxCommandFallsBackToCodeExec(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -2482,9 +2509,14 @@ func TestRunGoSandboxCommandFallsBackToCodeExec(t *testing.T) {
 	}
 	ag.checkTool = fallback
 
-	decision, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-fallback", repo, "go vet ./...")
-	if decision.Action != "allow" {
-		t.Fatalf("expected allow decision, got %+v", decision)
+	decisions, run := ag.runGoSandboxCommand(context.Background(), "task-workspace-fallback", repo, "go vet ./...")
+	if len(decisions) != 2 {
+		t.Fatalf("expected workspace and codeexec decisions, got %+v", decisions)
+	}
+	for _, decision := range decisions {
+		if decision.Action != "allow" {
+			t.Fatalf("expected allow decision, got %+v", decision)
+		}
 	}
 	if fallback.calls != 1 {
 		t.Fatalf("expected exactly one codeexec fallback call, got %d", fallback.calls)
@@ -2494,9 +2526,70 @@ func TestRunGoSandboxCommandFallsBackToCodeExec(t *testing.T) {
 	}
 }
 
+func TestRunGoSandboxCommandDoesNotCallFallbackWhenSecondDecisionAsks(t *testing.T) {
+
+	root := repoRoot(t)
+	ag, err := New(Config{
+		SkillsRoot: filepath.Join(root, "skills"),
+		Runtime:    RuntimeLocalFallback,
+		OutputDir:  t.TempDir(),
+		Timeout:    testReviewTimeout,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer ag.Close()
+	ag.exec = nil
+	fallback := &recordingTool{name: "execute_code", call: func(context.Context, []byte) (any, error) {
+		t.Fatal("fallback must not execute after ask")
+		return nil, nil
+	}}
+	ag.checkTool = fallback
+	checks := 0
+	ag.policy = tool.PermissionPolicyFunc(func(_ context.Context, req *tool.PermissionRequest) (tool.PermissionDecision, error) {
+		checks++
+		if req.ToolName == "workspace_exec" {
+			return tool.AllowPermission(), nil
+		}
+		return tool.AskPermission("human approval required"), nil
+	})
+
+	decisions, run := ag.runGoSandboxCommand(context.Background(), "task-fallback-ask", t.TempDir(), "go vet ./...")
+	if checks != 2 || len(decisions) != 2 {
+		t.Fatalf("permission checks=%d decisions=%+v, want two", checks, decisions)
+	}
+	if decisions[1].Action != "ask" || run.Status != "ask" || fallback.calls != 0 {
+		t.Fatalf("fallback ask boundary violated: decisions=%+v run=%+v calls=%d", decisions, run, fallback.calls)
+	}
+}
+
+func TestSandboxRunOutputKeepsValidUTF8AtByteLimit(t *testing.T) {
+
+	got := sandboxRunOutput("ab界cd", 4)
+	if !utf8.ValidString(got) {
+		t.Fatalf("sandbox output is invalid UTF-8: %q", got)
+	}
+	if len(got) > 4 {
+		t.Fatalf("sandbox output exceeded byte limit: %d > 4", len(got))
+	}
+}
+
+func TestFinalizeReviewResultDoesNotDoubleCountSandboxFailures(t *testing.T) {
+
+	ctx := reviewResultContext{
+		TaskID:    "task-finalize",
+		StartedAt: time.Now(),
+		Runs:      []storage.SandboxRunRecord{{Command: "go test ./...", Status: "failed"}},
+	}
+	result := finalizeReviewResult(review.Result{}, ctx)
+	result = finalizeReviewResult(result, ctx)
+	if got := result.Metrics.ExceptionCounts["sandbox_failed"]; got != 1 {
+		t.Fatalf("sandbox_failed count = %d, want 1", got)
+	}
+}
+
 // TestAgentRunSandboxModeRecordsGoCheckFailure 固定 Go 检查失败可审计。
 func TestAgentRunSandboxModeRecordsGoCheckFailure(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -2565,7 +2658,6 @@ func TestAgentRunSandboxModeRecordsGoCheckFailure(t *testing.T) {
 
 // TestAgentRunSandboxModeOptionallyExecutesStaticcheck 固定 staticcheck 显式开启。
 func TestAgentRunSandboxModeOptionallyExecutesStaticcheck(t *testing.T) {
-	t.Parallel()
 
 	root := repoRoot(t)
 	repo := t.TempDir()
@@ -2648,11 +2740,15 @@ func TestAgentRunContainerRuntimeExecutesGoChecks(t *testing.T) {
 	defer ag.Close()
 
 	result, err := ag.Run(context.Background(), Request{
+		DiffFile: filepath.Join(root, "testdata", "fixtures", "secret.diff"),
 		RepoPath: repo,
 		Mode:     ModeSandbox,
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+	if len(result.Findings) == 0 || result.Findings[0].RuleID != "secret-leak" {
+		t.Fatalf("container Skill must produce the fixture finding, got %+v warnings=%+v", result.Findings, result.Warnings)
 	}
 
 	store, err := sqlite.Open(dbPath)
@@ -2674,7 +2770,6 @@ func TestAgentRunContainerRuntimeExecutesGoChecks(t *testing.T) {
 }
 
 func TestSandboxRepoPathForRuntime(t *testing.T) {
-	t.Parallel()
 
 	hostRepo := filepath.Join(t.TempDir(), "repo")
 	localPath := execution.SandboxRepoPathForRuntime(RuntimeLocalFallback, hostRepo)
@@ -2688,7 +2783,6 @@ func TestSandboxRepoPathForRuntime(t *testing.T) {
 }
 
 func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
-	t.Parallel()
 
 	hostRepo := filepath.Join(t.TempDir(), "repo")
 	code := execution.SandboxCode(RuntimeContainer, hostRepo, "go test ./...")
@@ -2704,7 +2798,6 @@ func TestGoSandboxCodeUsesRuntimeRepoPath(t *testing.T) {
 }
 
 func TestGoSandboxEnvIncludesContainerGoPath(t *testing.T) {
-	t.Parallel()
 
 	env := execution.SandboxEnv(RuntimeContainer)
 	if env["GOCACHE"] != goSandboxCacheDir {
@@ -2719,7 +2812,6 @@ func TestGoSandboxEnvIncludesContainerGoPath(t *testing.T) {
 }
 
 func TestGoSandboxExecCommandUsesContainerGoBinary(t *testing.T) {
-	t.Parallel()
 
 	containerCommand := execution.SandboxExecCommand(RuntimeContainer, "go test ./...")
 	if containerCommand != goSandboxBinary+" test ./..." {

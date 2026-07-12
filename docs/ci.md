@@ -10,7 +10,9 @@ GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh
 
 默认执行：
 
-- `go test ./...`
+- `go test ./...` (fast unit layer)
+- `go vet ./...`
+- `go test -tags=integration -p 1 ./internal/agent ./cmd/review-agent ./scripts` (representative end-to-end layer)
 - `scripts/eval.sh`
 - `scripts/holdout_eval.sh`
 - `git diff --check`

@@ -114,6 +114,50 @@ func TestSkillCheckScriptDetectsSecretShapes(t *testing.T) {
 	}
 }
 
+func TestSkillRulesKeepDifferentLinesAndHonorFollowingCleanup(t *testing.T) {
+	t.Parallel()
+
+	skillRoot, err := SkillRoot()
+	if err != nil {
+		t.Fatalf("SkillRoot returned error: %v", err)
+	}
+	diff := "diff --git a/sample.go b/sample.go\n--- a/sample.go\n+++ b/sample.go\n@@ -1 +1,12 @@\n package sample\n" +
+		"+func sample(ctx context.Context) {\n" +
+		"+  _, stop := context.WithCancel(ctx)\n" +
+		"+  defer stop()\n" +
+		"+  first, _ := os.Open(\"first\")\n" +
+		"+  defer first.Close()\n" +
+		"+  second, _ := os.Open(\"second\")\n" +
+		"+  panic(\"one\")\n" +
+		"+  panic(\"two\")\n" +
+		"+  exec.Command(\"git\", args...)\n" +
+		"+  exec.Command(\"git\", \"branch-\"+args[0])\n" +
+		"+}\n"
+	cmd := exec.Command(mustLookPath(t, "bash"), filepath.Join(skillRoot, "scripts", "check.sh"))
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("check.sh failed: %v\n%s", err, out)
+	}
+	var payload struct {
+		Findings []Finding `json:"findings"`
+	}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\n%s", err, out)
+	}
+	if got := countSkillRule(payload.Findings, "panic-direct"); got != 2 {
+		t.Fatalf("expected two panic findings, got %d: %+v", got, payload.Findings)
+	}
+	if got := countSkillRule(payload.Findings, "resource-leak"); got != 1 {
+		t.Fatalf("expected only second file to leak, got %d: %+v", got, payload.Findings)
+	}
+	for _, ruleID := range []string{"context-leak", "command-injection"} {
+		if got := countSkillRule(payload.Findings, ruleID); got != 0 {
+			t.Fatalf("unexpected %s finding: %+v", ruleID, payload.Findings)
+		}
+	}
+}
+
 func countSkillRule(findings []Finding, ruleID string) int {
 	total := 0
 	for _, finding := range findings {

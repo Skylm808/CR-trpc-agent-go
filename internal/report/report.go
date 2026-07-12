@@ -26,6 +26,9 @@ func BuildMarkdown(result review.Result) string {
 		b.WriteString("\n\n")
 	}
 	writeConclusion(&b, result.Conclusion)
+	fmt.Fprintf(&b, "Capabilities: mode=%s sandbox=requested:%t/executed:%t model=requested:%t/executed:%t\n\n",
+		result.Metrics.Mode, result.Metrics.SandboxRequested, result.Metrics.SandboxExecuted,
+		result.Metrics.ModelRequested, result.Metrics.ModelExecuted)
 	if result.Metrics.FindingCount > 0 || result.Metrics.TotalDurationMS > 0 {
 		fmt.Fprintf(&b, "Metrics: findings=%d total_ms=%d sandbox_ms=%d model_ms=%d tool_calls=%d model_calls=%d model_findings=%d model_exceptions=%d permission_blocks=%d redactions=%d\n\n",
 			result.Metrics.FindingCount,
@@ -81,6 +84,9 @@ func BuildMarkdownChinese(result review.Result) string {
 		b.WriteString("\n\n")
 	}
 	writeConclusionChinese(&b, result.Conclusion)
+	fmt.Fprintf(&b, "能力: mode=%s sandbox=requested:%t/executed:%t model=requested:%t/executed:%t\n\n",
+		result.Metrics.Mode, result.Metrics.SandboxRequested, result.Metrics.SandboxExecuted,
+		result.Metrics.ModelRequested, result.Metrics.ModelExecuted)
 	if result.Metrics.FindingCount > 0 || result.Metrics.TotalDurationMS > 0 {
 		fmt.Fprintf(&b, "指标: findings=%d total_ms=%d sandbox_ms=%d model_ms=%d tool_calls=%d model_calls=%d model_findings=%d model_exceptions=%d permission_blocks=%d redactions=%d\n\n",
 			result.Metrics.FindingCount,

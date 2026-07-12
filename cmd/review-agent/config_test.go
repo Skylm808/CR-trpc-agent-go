@@ -226,7 +226,7 @@ func TestCommittedDefaultConfigParses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse committed cr-agent.example.yaml: %v", err)
 	}
-	if opts.Mode != cragent.ModeRuleOnly {
+	if opts.Mode != cragent.ModeReview {
 		t.Fatalf("expected committed config to keep safe default mode, got %q", opts.Mode)
 	}
 	if opts.ModelProvider != "" {
@@ -242,11 +242,87 @@ func TestCommittedExampleConfigParses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse examples/cr-agent/cr-agent.example.yaml: %v", err)
 	}
-	if opts.Mode != cragent.ModeRuleOnly || opts.Runtime != cragent.RuntimeLocalFallback {
-		t.Fatalf("expected example config to stay safe/local, mode=%q runtime=%q", opts.Mode, opts.Runtime)
+	if opts.Mode != cragent.ModeReview || opts.Runtime != cragent.RuntimeContainer || opts.SandboxEnabled == nil || !*opts.SandboxEnabled {
+		t.Fatalf("expected example config to use production-shaped sandbox/container, mode=%q runtime=%q", opts.Mode, opts.Runtime)
 	}
 	if opts.ModelProvider != "" || opts.ModelAPIKey != "" || opts.ModelAPIKeyEnv != "" {
 		t.Fatalf("expected example config to avoid real model by default, provider=%q key=%q key_env=%q", opts.ModelProvider, opts.ModelAPIKey, opts.ModelAPIKeyEnv)
+	}
+}
+
+func TestOptionDefaultsEnableOutputScopedPersistence(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{OutputDir: filepath.Join("tmp", "reports")}
+	applyOptionDefaults(&opts)
+	want := filepath.Join("tmp", "reports", "review.db")
+	if opts.SQLitePath != want {
+		t.Fatalf("default sqlite path = %q, want %q", opts.SQLitePath, want)
+	}
+}
+
+func TestNoPersistSuppressesDefaultSQLitePath(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{OutputDir: "reports", NoPersist: true}
+	applyOptionDefaults(&opts)
+	if opts.SQLitePath != "" {
+		t.Fatalf("no-persist sqlite path = %q, want empty", opts.SQLitePath)
+	}
+}
+
+func TestCapabilityConfigPreservesExplicitFalseAndCLIOverrides(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cr-agent.yaml")
+	writeFile(t, configPath, ""+
+		"mode: sandbox\n"+
+		"staticcheck: true\n"+
+		"sandbox:\n"+
+		"  enabled: true\n"+
+		"  staticcheck: true\n"+
+		"model:\n"+
+		"  enabled: true\n"+
+		"  provider: fake\n")
+
+	cli, err := parseOptions([]string{
+		"--config", configPath,
+		"--mode", cragent.ModeReview,
+		"--sandbox=false",
+		"--model-enabled=false",
+		"--staticcheck=false",
+	})
+	if err != nil {
+		t.Fatalf("parse options: %v", err)
+	}
+	opts, err := resolveOptions(cli)
+	if err != nil {
+		t.Fatalf("resolve options: %v", err)
+	}
+	if opts.Mode != cragent.ModeReview {
+		t.Fatalf("mode = %q, want review", opts.Mode)
+	}
+	if opts.SandboxEnabled == nil || *opts.SandboxEnabled {
+		t.Fatalf("sandbox enabled = %v, want explicit false", opts.SandboxEnabled)
+	}
+	if opts.ModelEnabled == nil || *opts.ModelEnabled {
+		t.Fatalf("model enabled = %v, want explicit false", opts.ModelEnabled)
+	}
+	if opts.Staticcheck {
+		t.Fatal("CLI explicit staticcheck=false must override both YAML forms")
+	}
+	if opts.ModelProvider != "fake" {
+		t.Fatalf("provider = %q, want fake", opts.ModelProvider)
+	}
+}
+
+func TestNestedSandboxStaticcheckOverridesLegacyTopLevel(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "cr-agent.yaml")
+	writeFile(t, configPath, "staticcheck: true\nsandbox:\n  staticcheck: false\n")
+	opts, err := optionsFromConfig(configPath)
+	if err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if opts.Staticcheck {
+		t.Fatal("nested sandbox.staticcheck=false must override top-level true")
 	}
 }
 

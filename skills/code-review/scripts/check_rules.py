@@ -98,7 +98,10 @@ def should_report_secret(text: str) -> bool:
 def reports_http_body_leak(text: str, hunk_text: str) -> bool:
     if not contains_any(text, "http.Get(", "http.Post(", "http.Head(", "http.DefaultClient.Do(", ".Do("):
         return False
-    return not contains_any(hunk_text, "Body.Close()", "defer resp.Body.Close()", "defer response.Body.Close()")
+    name = assigned_variable(text)
+    if name:
+        return f"{name}.Body.Close()" not in hunk_text
+    return "Body.Close()" not in hunk_text
 
 
 def reports_sql_string_concat(text: str) -> bool:
@@ -113,7 +116,7 @@ def is_quoted_literal(text: str) -> bool:
     return (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")) or (text.startswith("`") and text.endswith("`"))
 
 
-def command_call_has_dynamic_arg(text: str) -> bool:
+def command_call_has_dynamic_executable(text: str) -> bool:
     start = text.find("exec.Command")
     if start < 0:
         return False
@@ -123,14 +126,8 @@ def command_call_has_dynamic_arg(text: str) -> bool:
         return False
     args = [arg.strip() for arg in text[open_index + 1:close_index].split(",")]
     is_context = text[start:].startswith("exec.CommandContext")
-    for index, arg in enumerate(args):
-        if not arg:
-            continue
-        if is_context and index == 0:
-            continue
-        if not is_quoted_literal(arg):
-            return True
-    return False
+    executable_index = 1 if is_context else 0
+    return executable_index >= len(args) or not is_quoted_literal(args[executable_index])
 
 
 def reports_command_injection(text: str) -> bool:
@@ -138,9 +135,7 @@ def reports_command_injection(text: str) -> bool:
         return False
     if '"-c"' in text or "'-c'" in text:
         return True
-    if "+" in text:
-        return True
-    return command_call_has_dynamic_arg(text)
+    return command_call_has_dynamic_executable(text)
 
 
 def reports_context_background_misuse(text: str, hunk_text: str) -> bool:
@@ -150,7 +145,35 @@ def reports_context_background_misuse(text: str, hunk_text: str) -> bool:
 def reports_mutex_unlock_missing(text: str, hunk_text: str) -> bool:
     if ".Lock()" not in text or ".RLock()" in text:
         return False
-    return not contains_any(hunk_text, ".Unlock()", "defer mu.Unlock()", "defer mutex.Unlock()")
+    receiver = text.strip()[:-len(".Lock()")].strip()
+    return not receiver or f"{receiver}.Unlock()" not in hunk_text
+
+
+assignment_variable_pattern = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*[A-Za-z_][A-Za-z0-9_]*)?\s*:=")
+context_cancel_pattern = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_]*|_)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*context\.With(?:Cancel|Timeout|Deadline)")
+
+
+def assigned_variable(text: str) -> str:
+    match = assignment_variable_pattern.search(text)
+    return match.group(1) if match else ""
+
+
+def context_has_cancel_cleanup(text: str, hunk_text: str) -> bool:
+    match = context_cancel_pattern.search(text)
+    return bool(match and f"{match.group(1)}()" in hunk_text)
+
+
+def resource_has_cleanup(text: str, hunk_text: str) -> bool:
+    name = assigned_variable(text)
+    return bool(name and f"{name}.Close()" in hunk_text)
+
+
+def database_has_cleanup(text: str, hunk_text: str) -> bool:
+    name = assigned_variable(text)
+    if not name:
+        return False
+    cleanup = "Close" if "sql.Open" in text else "Rollback"
+    return f"{name}.{cleanup}()" in hunk_text
 
 
 def reports_defer_in_loop(text: str, hunk_before: str) -> bool:
@@ -187,7 +210,7 @@ def reports_string_concat_loop(text: str, hunk_before: str, hunk_text: str) -> b
 
 
 def add_finding(severity, category, file, line, title, evidence, recommendation, rule_id, status="finding", confidence="high"):
-    key = (file, line, category, rule_id) if rule_id == "secret-leak" else (file, rule_id)
+    key = (file, line, category, rule_id)
     if key in emitted_findings:
         return
     emitted_findings.add(key)
@@ -207,7 +230,7 @@ def add_finding(severity, category, file, line, title, evidence, recommendation,
 
 
 def add_warning(severity, category, file, line, title, evidence, recommendation, rule_id, status="warning", confidence="medium"):
-    key = (file, line, category, rule_id) if rule_id == "secret-leak" else (file, rule_id)
+    key = (file, line, category, rule_id)
     if key in emitted_warnings:
         return
     emitted_warnings.add(key)
@@ -246,7 +269,6 @@ with open(path, "r", encoding="utf-8", errors="replace") as f:
             hunk_before = "\n".join(current_hunk)
             current_hunk.append(text)
             hunk_text = hunk_texts.get(index, "\n".join(current_hunk))
-            local_hunk_text = hunk_before + "\n" + text
             if "TODO(" in text or "FIXME" in text:
                 add_finding("medium", "maintainability", current_file, new_line,
                             "New code contains a TODO or FIXME marker", text,
@@ -302,22 +324,22 @@ with open(path, "r", encoding="utf-8", errors="replace") as f:
                             "New function may need a focused test", text,
                             "Add a unit test that exercises the new path.",
                             "missing-test-hint")
-            if ("go func" in text or text.startswith("go ")) and not contains_any(local_hunk_text, "WaitGroup", "ctx.Done", "errgroup", "done", "sync."):
+            if ("go func" in text or text.startswith("go ")) and not contains_any(hunk_text, "WaitGroup", ".Done()", "errgroup", "done", "sync."):
                 add_finding("high", "concurrency", current_file, new_line,
                             "New goroutine has no visible lifecycle guard", text,
                             "Bind the goroutine to a context, wait group, or explicit completion signal.",
                             "goroutine-leak")
-            if contains_any(text, "context.WithCancel", "context.WithTimeout", "context.WithDeadline") and not contains_any(local_hunk_text, "defer cancel()", "ctx.Done", "cancel()"):
+            if contains_any(text, "context.WithCancel", "context.WithTimeout", "context.WithDeadline") and not context_has_cancel_cleanup(text, hunk_text):
                 add_finding("high", "lifecycle", current_file, new_line,
                             "Derived context is not canceled", text,
                             "Store the cancel function and defer cancel() in the same scope.",
                             "context-leak")
-            if contains_any(text, "os.Open", "os.OpenFile", "os.Create") and not contains_any(local_hunk_text, "defer", "Close()"):
+            if contains_any(text, "os.Open", "os.OpenFile", "os.Create") and not resource_has_cleanup(text, hunk_text):
                 add_finding("high", "resource", current_file, new_line,
                             "Opened resource has no close path", text,
                             "Defer Close() immediately after the resource is opened.",
                             "resource-leak")
-            if contains_any(text, "sql.Open", ".BeginTx", ".Begin(") and not contains_any(local_hunk_text, "Rollback()", "Close()"):
+            if contains_any(text, "sql.Open", ".BeginTx", ".Begin(") and not database_has_cleanup(text, hunk_text):
                 add_finding("high", "database", current_file, new_line,
                             "Database handle or transaction has no cleanup path", text,
                             "Defer Close() for handles and Rollback() for transactions in the same scope.",

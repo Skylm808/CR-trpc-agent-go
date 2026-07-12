@@ -24,8 +24,12 @@ run_step() {
 cd "$ROOT"
 
 run_step "go test ./..." env GOCACHE="$GOCACHE" go test ./...
+run_step "go vet ./..." env GOCACHE="$GOCACHE" go vet ./...
+run_step "integration tests" env GOCACHE="$GOCACHE" go test -tags=integration -p 1 \
+  ./internal/agent ./cmd/review-agent ./scripts
 run_step "scripts/eval.sh" env GOCACHE="$GOCACHE" scripts/eval.sh
 run_step "scripts/holdout_eval.sh" env GOCACHE="$GOCACHE" scripts/holdout_eval.sh
+run_step "scripts/hidden_matrix_smoke.sh" env GOCACHE="$GOCACHE" bash scripts/hidden_matrix_smoke.sh
 run_step "git diff --check" git diff --check
 
 case "$DOCKER_MODE" in
@@ -34,12 +38,12 @@ case "$DOCKER_MODE" in
     ;;
   always|1|true)
     run_step "container E2E" env CR_AGENT_RUN_CONTAINER_TESTS=1 GOCACHE="$GOCACHE" \
-      go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
+      go test -tags=integration ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
     ;;
   auto|"")
     if docker info >/dev/null 2>&1; then
       run_step "container E2E" env CR_AGENT_RUN_CONTAINER_TESTS=1 GOCACHE="$GOCACHE" \
-        go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
+        go test -tags=integration ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
     else
       skip "container E2E requires Docker daemon; set CR_AGENT_ACCEPTANCE_DOCKER=always to require it"
     fi

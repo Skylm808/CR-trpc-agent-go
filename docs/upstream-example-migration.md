@@ -1,6 +1,6 @@
 # 迁移到官方 examples 的准备说明
 
-本文档用于后续把当前仓库迁移到 `trpc-group/trpc-agent-go` 官方仓库的 `examples` 目录。当前阶段不做大搬家，也不在官方仓库直接改代码；先保持独立仓库提交，等验收链路稳定后再发 PR。当前分层也不会照抄 upstream PR #2121 的 `inputsource` / `sandboxrun` / `safetywrap` 命名，而是保留本项目自己的 `execution` / `approval` / `llm` 语义。
+本文档用于后续把当前仓库迁移到 `trpc-group/trpc-agent-go` 官方仓库的 `examples` 目录。当前阶段不 fork、push 或在官方仓库直接改代码；先在独立仓库完成验收，再准备上游 PR。迁移必须包含实现、Skill 和测试，不能只提交 `examples/cr-agent` 当前的文档外壳。
 
 ## 建议目标路径
 
@@ -19,6 +19,7 @@ examples/cr-agent/
 | 当前路径 | 迁移用途 |
 |----------|----------|
 | `examples/cr-agent/README.md` -> `README.md` | 官方 example 的入口说明 |
+| `examples/cr-agent/DESIGN.md` -> `DESIGN.md` | 300–500 字方案设计说明 |
 | `examples/cr-agent/cr-agent.example.yaml` -> `cr-agent.example.yaml` | 安全默认配置，不含密钥 |
 | `examples/cr-agent/sample.diff` -> `sample.diff` | 最小可运行输入 |
 | `cmd/review-agent/` | 示例 CLI 入口 |
@@ -56,7 +57,7 @@ github.com/Skylm808/CR-trpc-agent-go/...
 1. 作为 `examples/cr-agent` 独立 Go module，保留本示例自己的 `go.mod`，依赖 `trpc.group/trpc-go/trpc-agent-go`。
 2. 合并到官方 `examples/go.mod`，把包路径改成 examples module 下的相对 import。
 
-建议先采用独立 example module，便于隔离 SQLite、Docker E2E 和 fixture 评测脚本。
+建议采用独立 example module，便于隔离 SQLite、Docker E2E 和 fixture 评测脚本。迁移演练应生成该 module 的 `go.mod`，并将当前仓库内 `github.com/Skylm808/CR-trpc-agent-go/...` import 机械替换为最终 module path；完成替换前不能声称目录已可直接复制编译。
 
 ## 后续框架路线
 
@@ -90,8 +91,10 @@ scripts/upstream_example_smoke.sh \
 `cr-agent.example.yaml` 和 `sample.diff`
 生成 `review_report.json`、`review_report.md`、`review_report.zh.md`、`review_diagnostics.json`。
 
-当前演练结论：采用独立 example module 的路径最自然；样例 config 中的
-`skills_root: skills`、`fixtures_root: testdata/fixtures` 在迁移目录下无需改动。
+当前演练采用独立 example module；样例 config 中的 `skills_root: skills`、
+`fixtures_root: testdata/fixtures` 在迁移目录下无需改动。默认配置是
+`mode: review`、`sandbox.enabled: true` 与 `runtime: container`，因此完整演练需要 Docker；无 Docker
+环境只能运行显式 `local-fallback` 的开发 smoke，不能作为生产沙箱证据。
 
 ## E2B / Cube 最小 adapter 边界
 
@@ -109,15 +112,16 @@ Issue 最终态里的真实远端沙箱。最小实现前置条件：
 ## 迁移前检查清单
 
 1. `GOCACHE=/private/tmp/cr-agent-gocache go test ./...`
-2. `scripts/eval.sh`
-3. `scripts/holdout_eval.sh`
-4. `bash scripts/hidden_matrix_smoke.sh`
-5. `GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh`
-6. `bash -n scripts/llm_smoke.sh`
-7. `bash -n scripts/llm_semantic_eval.sh`
-8. opt-in: `CR_AGENT_LLM_SMOKE=1 CR_AGENT_LLM_CONFIG=./cr-agent.yaml scripts/llm_semantic_eval.sh`
-9. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
-10. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
-11. `git diff --check`
-12. 确认 README 不含个人路径或独立仓库专属说法。
-11. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。
+2. `GOCACHE=/private/tmp/cr-agent-gocache go test -tags=integration -p 1 ./internal/agent ./cmd/review-agent ./scripts`
+3. `scripts/eval.sh`
+4. `scripts/holdout_eval.sh`
+5. `bash scripts/hidden_matrix_smoke.sh`
+6. `GOCACHE=/private/tmp/cr-agent-gocache scripts/upstream_example_smoke.sh`
+7. `bash -n scripts/llm_smoke.sh`
+8. `bash -n scripts/llm_semantic_eval.sh`
+9. opt-in: `CR_AGENT_LLM_SMOKE=1 CR_AGENT_LLM_CONFIG=./cr-agent.yaml scripts/llm_semantic_eval.sh`
+10. `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh`
+11. Docker 可用时运行 container E2E，并对比 `docker ps -a` 前后状态。
+12. `git diff --check`
+13. 确认 README 不含个人路径或独立仓库专属说法。
+13. 确认 docs 明确：SQLite 是审计 store，不是假装官方 Session Service。

@@ -66,18 +66,17 @@ type Audit struct {
 	Backend  string
 }
 
-// ProviderSelectionConfig 为 fake-model 模式选择 Provider。
+// ProviderSelectionConfig 为启用的模型评审选择 Provider。
 type ProviderSelectionConfig struct {
-	ModeFakeModel string
-	Mode          string
-	Custom        Provider
-	HTTP          HTTPConfig
-	OpenAI        OpenAIConfig
+	Enabled bool
+	Custom  Provider
+	HTTP    HTTPConfig
+	OpenAI  OpenAIConfig
 }
 
 // ConfiguredProvider 为当前模式选择语义审查 Provider。
 func ConfiguredProvider(cfg ProviderSelectionConfig) (Provider, Audit) {
-	if cfg.Mode != cfg.ModeFakeModel {
+	if !cfg.Enabled {
 		return nil, Audit{}
 	}
 	if cfg.OpenAI.Enabled {

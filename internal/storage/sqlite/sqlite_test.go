@@ -8,7 +8,51 @@ import (
 	"time"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
+	"github.com/Skylm808/CR-trpc-agent-go/internal/storage"
 )
+
+func TestSaveReviewRollsBackEveryRecordOnFailure(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "review.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	finding := review.Finding{
+		Severity: "high", Category: "security", File: "main.go", Line: 9,
+		Title: "Hardcoded secret", Source: "rule", RuleID: "secret-leak",
+	}
+	err = store.SaveReview(context.Background(), storage.ReviewRecord{
+		Task:     storage.Task{ID: "task-rollback", InputType: "diff", InputRef: "fixture.diff", InputDigest: "abc", Status: "done", Mode: "rule-only", CreatedAt: now},
+		Findings: []review.Finding{finding, finding}, // duplicate primary key forces the transaction to fail
+		Report:   storage.ReportRecord{JSON: []byte(`{"ok":true}`), Markdown: []byte("# report"), CreatedAt: now},
+	})
+	if err == nil {
+		t.Fatal("SaveReview should fail on duplicate findings")
+	}
+	if _, err := store.TaskByID(context.Background(), "task-rollback"); err != sql.ErrNoRows {
+		t.Fatalf("failed review must not leave its task behind, got %v", err)
+	}
+	if _, err := store.ReportByTaskID(context.Background(), "task-rollback"); err != sql.ErrNoRows {
+		t.Fatalf("failed review must not leave its report behind, got %v", err)
+	}
+}
+
+func TestSchemaRejectsAuditRowsWithoutTask(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "review.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer store.Close()
+
+	err = store.SaveDecision(context.Background(), storage.DecisionRecord{
+		TaskID: "missing-task", Command: "go test ./...", Action: "allow", At: time.Now(),
+	})
+	if err == nil {
+		t.Fatal("permission decision without a review task should violate its foreign key")
+	}
+}
 
 func TestStorePersistsAndLoadsTaskData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "review.db")
@@ -158,6 +202,10 @@ CREATE TABLE metrics (
 	if err != nil {
 		t.Fatalf("create legacy metrics: %v", err)
 	}
+	_, err = db.Exec(`INSERT INTO metrics(task_id,total_duration_ms,sandbox_duration_ms,model_duration_ms,tool_call_count,model_call_count,permission_block_count,finding_count,model_finding_count,model_exception_count,severity_counts_json,exception_counts_json,redaction_count,created_at) VALUES('legacy-task',1,0,0,1,0,0,0,0,0,'{}','{}',0,'2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert legacy metrics: %v", err)
+	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close legacy db: %v", err)
 	}
@@ -167,10 +215,22 @@ CREATE TABLE metrics (
 		t.Fatalf("Open should migrate legacy metrics: %v", err)
 	}
 	defer store.Close()
+	legacy, err := store.MetricsByTaskID(context.Background(), "legacy-task")
+	if err != nil {
+		t.Fatalf("read migrated legacy metrics: %v", err)
+	}
+	if legacy.Mode != nil || legacy.SandboxRequested != nil || legacy.SandboxExecuted != nil || legacy.ModelRequested != nil || legacy.ModelExecuted != nil {
+		t.Fatalf("legacy capability state must remain unknown: %+v", legacy)
+	}
 
 	now := time.Now().UTC().Truncate(time.Second)
 	if err := store.SaveMetrics(context.Background(), MetricsRecord{
 		TaskID:               "task-model-audit",
+		Mode:                 stringPointer("review"),
+		SandboxRequested:     boolPointer(false),
+		SandboxExecuted:      boolPointer(false),
+		ModelRequested:       boolPointer(true),
+		ModelExecuted:        boolPointer(true),
 		TotalDurationMS:      10,
 		SandboxDurationMS:    2,
 		ModelDurationMS:      3,
@@ -197,7 +257,14 @@ CREATE TABLE metrics (
 	if got.ModelProvider != "deepseek" || got.ModelName != "deepseek-chat" || got.ModelBackend != "trpc-agent-go/model/openai" {
 		t.Fatalf("migration did not preserve model audit fields: %+v", got)
 	}
+	if got.Mode == nil || *got.Mode != "review" || got.SandboxRequested == nil || *got.SandboxRequested || got.ModelRequested == nil || !*got.ModelRequested {
+		t.Fatalf("new capability state must be known even when false: %+v", got)
+	}
 }
+
+func boolPointer(value bool) *bool { return &value }
+
+func stringPointer(value string) *string { return &value }
 
 func TestStoreMigratesSandboxRunAuditColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")

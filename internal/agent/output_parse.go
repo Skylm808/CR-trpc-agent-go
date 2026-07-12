@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Skylm808/CR-trpc-agent-go/internal/review"
 )
@@ -97,7 +98,10 @@ func sandboxCommandOutput(raw any) commandOutput {
 func sandboxRunOutput(text string, limit int) string {
 	text = review.RedactSecrets(text)
 	if limit > 0 && len(text) > limit {
-		return text[:limit]
+		text = text[:limit]
+		for !utf8.ValidString(text) {
+			text = text[:len(text)-1]
+		}
 	}
 	return text
 }

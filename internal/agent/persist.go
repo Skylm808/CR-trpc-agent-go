@@ -9,50 +9,49 @@ import (
 )
 
 // persist 保存审计和报告数据。
-func (a *Agent) persist(ctx context.Context, taskID string, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport, markdownChineseReport, diagnosticsReport []byte) error {
-	// 保存权限决策。
+func (a *Agent) persist(ctx context.Context, task storage.Task, result review.Result, decisions []storage.DecisionRecord, runs []storage.SandboxRunRecord, jsonReport, markdownReport, markdownChineseReport, diagnosticsReport []byte) error {
+	now := time.Now()
+	mode := result.Metrics.Mode
+	sandboxRequested := result.Metrics.SandboxRequested
+	sandboxExecuted := result.Metrics.SandboxExecuted
+	modelRequested := result.Metrics.ModelRequested
+	modelExecuted := result.Metrics.ModelExecuted
+	record := storage.ReviewRecord{Task: task}
+	// 收集权限决策。
 	for _, decision := range decisions {
 		if decision.Command == "" && decision.Action == "" {
 			continue
 		}
-		if err := a.store.SaveDecision(ctx, decision); err != nil {
-			return err
-		}
+		record.Decisions = append(record.Decisions, decision)
 	}
 	if result.Metrics.RedactionCount > 0 {
-		// 有脱敏就记录过滤决策。
-		if err := a.store.SaveFilterDecision(ctx, storage.FilterDecisionRecord{
-			TaskID: taskID,
+		record.FilterDecisions = append(record.FilterDecisions, storage.FilterDecisionRecord{
+			TaskID: task.ID,
 			Target: "finding.evidence",
 			Action: "redact",
 			Reason: "secret pattern",
-			At:     time.Now(),
-		}); err != nil {
-			return err
-		}
+			At:     now,
+		})
 	}
-	// 保存沙箱摘要。
+	// 收集沙箱摘要。
 	for _, run := range runs {
 		if run.Command == "" && run.Status == "" {
 			continue
 		}
 		if run.FinishedAt.IsZero() {
-			run.FinishedAt = time.Now()
+			run.FinishedAt = now
 		}
 		run.ArtifactCount = len(result.Artifacts)
-		if err := a.store.SaveSandboxRun(ctx, run); err != nil {
-			return err
-		}
+		record.SandboxRuns = append(record.SandboxRuns, run)
 	}
-	// 审查项统一进入 findings 表。
-	for _, finding := range persistedReviewItems(result) {
-		if err := a.store.SaveFinding(ctx, taskID, finding); err != nil {
-			return err
-		}
-	}
-	// 保存聚合指标。
-	if err := a.store.SaveMetrics(ctx, storage.MetricsRecord{
-		TaskID: taskID, TotalDurationMS: result.Metrics.TotalDurationMS,
+	record.Findings = persistedReviewItems(result)
+	record.Metrics = storage.MetricsRecord{
+		TaskID: task.ID, Mode: &mode,
+		SandboxRequested:     &sandboxRequested,
+		SandboxExecuted:      &sandboxExecuted,
+		ModelRequested:       &modelRequested,
+		ModelExecuted:        &modelExecuted,
+		TotalDurationMS:      result.Metrics.TotalDurationMS,
 		SandboxDurationMS:    result.Metrics.SandboxDurationMS,
 		ModelDurationMS:      result.Metrics.ModelDurationMS,
 		ToolCallCount:        result.Metrics.ToolCallCount,
@@ -67,11 +66,9 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 		SeverityCountsJSON:   string(review.MustJSON(result.Metrics.SeverityCounts)),
 		ExceptionCountsJSON:  string(review.MustJSON(result.Metrics.ExceptionCounts)),
 		RedactionCount:       result.Metrics.RedactionCount,
-		At:                   time.Now(),
-	}); err != nil {
-		return err
+		At:                   now,
 	}
-	// 保存产物引用。
+	// 收集产物引用。
 	for _, artifact := range result.Artifacts {
 		digest := artifact.Digest
 		var size int64
@@ -91,20 +88,18 @@ func (a *Agent) persist(ctx context.Context, taskID string, result review.Result
 			digest = digestBytes(diagnosticsReport)
 			size = int64(len(diagnosticsReport))
 		}
-		if err := a.store.SaveArtifact(ctx, storage.ArtifactRecord{
-			TaskID: taskID,
+		record.Artifacts = append(record.Artifacts, storage.ArtifactRecord{
+			TaskID: task.ID,
 			Name:   artifact.Name,
 			Kind:   artifact.Kind,
 			Path:   artifact.Path,
 			Digest: digest,
 			Size:   size,
-			At:     time.Now(),
-		}); err != nil {
-			return err
-		}
+			At:     now,
+		})
 	}
-	// 保存最终报告。
-	return a.store.SaveReport(ctx, taskID, jsonReport, markdownReport)
+	record.Report = storage.ReportRecord{JSON: jsonReport, Markdown: markdownReport, CreatedAt: now}
+	return a.store.SaveReview(ctx, record)
 }
 
 // persistedReviewItems 返回需要落库的审查项。

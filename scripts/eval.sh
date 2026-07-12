@@ -5,13 +5,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURES_ROOT="${CR_AGENT_EVAL_FIXTURES_ROOT:-"$ROOT/testdata/fixtures"}"
 SKILLS_ROOT="${CR_AGENT_EVAL_SKILLS_ROOT:-"$ROOT/skills"}"
 RUNTIME="${CR_AGENT_EVAL_RUNTIME:-local-fallback}"
-MODE="${CR_AGENT_EVAL_MODE:-rule-only}"
+MODE="${CR_AGENT_EVAL_MODE:-review}"
+MODEL_ENABLED="${CR_AGENT_EVAL_MODEL_ENABLED:-false}"
 CONFIG="${CR_AGENT_EVAL_CONFIG:-/dev/null}"
-FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff http-body.diff sql-string-concat.diff command-injection.diff context-background.diff mutex-unlock.diff defer-in-loop.diff bare-return-err.diff string-concat-loop.diff dedupe.diff realistic-service-risk.diff sandbox-fail.diff sandbox-timeout.diff}"
+# Fault-injection fixtures belong to acceptance tests, not the accuracy matrix:
+# an unexpected infrastructure failure is always a hard evaluation failure.
+FIXTURES="${CR_AGENT_EVAL_FIXTURES:-safe.diff secret.diff secret-shapes.diff panic.diff todo.diff test-missing.diff missing-test.diff goroutine.diff context.diff resource.diff db-lifecycle.diff http-body.diff sql-string-concat.diff command-injection.diff context-background.diff mutex-unlock.diff defer-in-loop.diff bare-return-err.diff string-concat-loop.diff dedupe.diff realistic-service-risk.diff}"
 MATRIX_OVERRIDE="${CR_AGENT_EVAL_MATRIX:-}"
 EXPECTED_OVERRIDE="${CR_AGENT_EVAL_EXPECTED:-}"
 MATRIX_SOURCE_OVERRIDE="${CR_AGENT_EVAL_MATRIX_SOURCE:-}"
 REPORT_ROOT="${CR_AGENT_EVAL_REPORT_ROOT:-}"
+EVAL_BINARY="${CR_AGENT_EVAL_BINARY:-}"
 MIN_RECALL="${CR_AGENT_EVAL_MIN_RECALL:-0.800}"
 MAX_FALSE_POSITIVE_RATE="${CR_AGENT_EVAL_MAX_FALSE_POSITIVE_RATE:-0.150}"
 if [[ -n "$REPORT_ROOT" ]]; then
@@ -21,9 +25,26 @@ else
   OUT_ROOT="$(mktemp -d)"
 fi
 START_SECONDS="$(date +%s)"
-if [[ -z "$REPORT_ROOT" ]]; then
-  trap 'rm -rf "$OUT_ROOT"' EXIT
-fi
+LOCK_DIR="${CR_AGENT_EVAL_LOCK_DIR:-/private/tmp/cr-agent-eval.lock}"
+while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+  if [[ -f "$LOCK_DIR/pid" ]]; then
+    lock_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+    if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+      rm -rf "$LOCK_DIR"
+      continue
+    fi
+  fi
+  sleep 0.1
+done
+printf '%s\n' "$$" > "$LOCK_DIR/pid"
+
+cleanup() {
+  rm -rf "$LOCK_DIR"
+  if [[ -z "$REPORT_ROOT" ]]; then
+    rm -rf "$OUT_ROOT"
+  fi
+}
+trap cleanup EXIT
 
 EXPECTED_FILE="$OUT_ROOT/expected.tsv"
 MATRIX_SOURCE="builtin"
@@ -70,21 +91,31 @@ realistic-service-risk.diff	resource-leak	high	finding	true
 realistic-service-risk.diff	db-lifecycle	high	finding	true
 realistic-service-risk.diff	todo-marker	medium	finding	true
 realistic-service-risk.diff	missing-test-hint	low	warning	true
+realistic-service-risk.diff	string-concat-loop	low	needs_human_review	true
 TSV
 fi
 if [[ -n "$MATRIX_SOURCE_OVERRIDE" ]]; then
   MATRIX_SOURCE="$MATRIX_SOURCE_OVERRIDE"
 fi
 
+if [[ -z "$EVAL_BINARY" ]]; then
+  EVAL_BINARY="$OUT_ROOT/review-agent"
+  (cd "$ROOT" && go build -o "$EVAL_BINARY" ./cmd/review-agent)
+elif [[ ! -x "$EVAL_BINARY" ]]; then
+  echo "CR_AGENT_EVAL_BINARY is not executable: $EVAL_BINARY" >&2
+  exit 2
+fi
+
 for fixture in $FIXTURES; do
   mkdir -p "$OUT_ROOT/$fixture"
-  go run "$ROOT/cmd/review-agent" \
+  "$EVAL_BINARY" \
     --config "$CONFIG" \
     --fixture "$fixture" \
     --fixtures-root "$FIXTURES_ROOT" \
     --skills-root "$SKILLS_ROOT" \
     --runtime "$RUNTIME" \
-    --mode "$MODE" \
+	--mode "$MODE" \
+	--model-enabled="$MODEL_ENABLED" \
     --output-dir "$OUT_ROOT/$fixture" >/dev/null
 done
 
@@ -109,8 +140,12 @@ type item struct {
 }
 
 type report struct {
-	Findings []item `json:"findings"`
-	Warnings []item `json:"warnings"`
+	Findings        []item `json:"findings"`
+	Warnings        []item `json:"warnings"`
+	HumanReviewItems []item `json:"human_review_items"`
+	Metrics struct {
+		ExceptionCounts map[string]int `json:"exception_counts"`
+	} `json:"metrics"`
 }
 
 func main() {
@@ -150,6 +185,7 @@ func main() {
 	falseNegative := 0
 	var missing []string
 	var unexpected []string
+	var infrastructureFailures []string
 	for _, fixture := range fixtures {
 		want := expected[fixture]
 		for _, entry := range want {
@@ -159,9 +195,12 @@ func main() {
 				optionalExpected++
 			}
 		}
-		got, err := readActual(filepath.Join(outRoot, fixture, "review_report.json"))
+		got, infrastructureFailure, err := readActual(filepath.Join(outRoot, fixture, "review_report.json"))
 		if err != nil {
 			panic(err)
+		}
+		if infrastructureFailure {
+			infrastructureFailures = append(infrastructureFailures, fixture)
 		}
 		for key := range got {
 			if entry, ok := want[key]; ok && entry.Required {
@@ -183,13 +222,18 @@ func main() {
 	recall := ratio(truePositive, truePositive+falseNegative)
 	precision := ratio(truePositive, truePositive+falsePositive)
 	falsePositiveRate := ratioZero(falsePositive, truePositive+falsePositive)
-	fmt.Printf("fixtures=%d expected=%d required_expected=%d optional_expected=%d true_positive=%d false_positive=%d false_negative=%d recall=%.3f precision=%.3f false_positive_rate=%.3f missing_findings=%d unexpected_findings=%d duration_ms=%s matrix_source=%s\n",
-		len(fixtureSet), requiredExpected+optionalExpected, requiredExpected, optionalExpected, truePositive, falsePositive, falseNegative, recall, precision, falsePositiveRate, len(missing), len(unexpected), durationMS, matrixSource)
+	fmt.Printf("fixtures=%d expected=%d required_expected=%d optional_expected=%d true_positive=%d false_positive=%d false_negative=%d recall=%.3f precision=%.3f false_positive_rate=%.3f missing_findings=%d unexpected_findings=%d infrastructure_failures=%d duration_ms=%s matrix_source=%s\n",
+		len(fixtureSet), requiredExpected+optionalExpected, requiredExpected, optionalExpected, truePositive, falsePositive, falseNegative, recall, precision, falsePositiveRate, len(missing), len(unexpected), len(infrastructureFailures), durationMS, matrixSource)
 	if len(missing) > 0 {
 		fmt.Printf("missing=%s\n", strings.Join(missing, ","))
 	}
 	if len(unexpected) > 0 {
 		fmt.Printf("unexpected=%s\n", strings.Join(unexpected, ","))
+	}
+	if len(infrastructureFailures) > 0 {
+		fmt.Printf("infrastructure_failure_fixtures=%s\n", strings.Join(infrastructureFailures, ","))
+		fmt.Printf("threshold_failed=infrastructure_failure count=%d\n", len(infrastructureFailures))
+		os.Exit(1)
 	}
 	if recall < minRecall {
 		fmt.Printf("threshold_failed=recall actual=%.3f min=%.3f\n", recall, minRecall)
@@ -257,14 +301,14 @@ func parseThreshold(raw, name string) (float64, error) {
 	return value, nil
 }
 
-func readActual(path string) (map[string]bool, error) {
+func readActual(path string) (map[string]bool, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var rep report
 	if err := json.Unmarshal(data, &rep); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	out := map[string]bool{}
 	for _, entry := range append(rep.Findings, rep.Warnings...) {
@@ -273,7 +317,13 @@ func readActual(path string) (map[string]bool, error) {
 		}
 		out[entry.RuleID+"|"+entry.Severity+"|"+entry.Status] = true
 	}
-	return out, nil
+	infrastructureFailure := rep.Metrics.ExceptionCounts["sandbox_failed"] > 0 || rep.Metrics.ExceptionCounts["sandbox_timeout"] > 0
+	for _, entry := range rep.HumanReviewItems {
+		if entry.RuleID == "sandbox-command-failed" || entry.RuleID == "sandbox-command-timeout" {
+			infrastructureFailure = true
+		}
+	}
+	return out, infrastructureFailure, nil
 }
 
 func ratio(numerator, denominator int) float64 {

@@ -76,7 +76,15 @@ func allowsCodeExecFallback(args []byte, commands []string) bool {
 		if !ok || !strings.HasPrefix(strings.TrimSpace(prefix), "cd ") {
 			continue
 		}
-		if strings.TrimSpace(suffix) == command {
+		suffix = strings.TrimSpace(suffix)
+		if strings.HasPrefix(suffix, "export GOCACHE=") {
+			_, suffix, ok = strings.Cut(suffix, " && ")
+			if !ok {
+				continue
+			}
+			suffix = strings.TrimSpace(suffix)
+		}
+		if suffix == command {
 			return true
 		}
 	}

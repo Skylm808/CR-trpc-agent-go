@@ -1,22 +1,42 @@
 {
-  "task_id": "task-332d30652faa-1783733865069704000",
+  "task_id": "task-a755b98bdf78-1783781368358518000",
   "metrics": {
-    "total_duration_ms": 2265,
-    "sandbox_duration_ms": 2264,
-    "tool_call_count": 2
+    "total_duration_ms": 4394,
+    "sandbox_duration_ms": 4389,
+    "tool_call_count": 4,
+    "finding_count": 8,
+    "severity_counts": {
+      "critical": 1,
+      "high": 6,
+      "low": 2,
+      "medium": 1
+    },
+    "exception_counts": {
+      "sandbox_failed": 1
+    },
+    "redaction_count": 1
   },
   "input_metadata": {
     "changed_go_files": [
-      "reviewme.go"
+      "service.go"
     ],
     "package_names": [
-      "reviewme"
-    ]
+      "service"
+    ],
+    "module_path": "example.com/reviewfailure"
   },
   "governance_summary": {
     "permission_decisions": [
       {
         "command": "scripts/check.sh",
+        "action": "allow"
+      },
+      {
+        "command": "go test ./...",
+        "action": "allow"
+      },
+      {
+        "command": "go vet ./...",
         "action": "allow"
       }
     ]
@@ -25,14 +45,35 @@
     "runs": [
       {
         "command": "scripts/check.sh",
-        "runtime": "local-fallback",
+        "runtime": "container",
         "status": "ok",
         "timeout_ms": 30000,
         "output_limit_bytes": 65536,
         "env_whitelist": "PATH,HOME,TMPDIR,GOCACHE",
-        "stdout_digest": "d208b079434b5b80aee29bcb3d9424403d94d862350a3fe8cf7d011218a4d355",
-        "stderr_digest": "2a13af67601624cb4924e88c89583b6d14c362a01c585716097d241c0a47bd61",
-        "duration_ms": 2264
+        "stdout_digest": "1b87a8de242365c2cc57094113cc464b4a2554b7ba7170133d9889bb95db6bbe",
+        "stderr_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "duration_ms": 251
+      },
+      {
+        "command": "go test ./...",
+        "runtime": "container",
+        "status": "failed",
+        "timeout_ms": 30000,
+        "output_limit_bytes": 65536,
+        "env_whitelist": "PATH,HOME,TMPDIR,GOCACHE",
+        "exit_code": 1,
+        "stdout_digest": "24cd0006063271de5ea94b483466c5aac78e78cc3f1b14617ac6e6228ca397be",
+        "duration_ms": 3576
+      },
+      {
+        "command": "go vet ./...",
+        "runtime": "container",
+        "status": "ok",
+        "timeout_ms": 30000,
+        "output_limit_bytes": 65536,
+        "env_whitelist": "PATH,HOME,TMPDIR,GOCACHE",
+        "stdout_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "duration_ms": 562
       }
     ]
   },
@@ -59,8 +100,8 @@
     }
   ],
   "conclusion": {
-    "status": "pass",
-    "reason": "no_blocking_findings",
-    "summary": "No blocking findings were detected by the deterministic review chain."
+    "status": "fail",
+    "reason": "blocking_findings",
+    "summary": "Critical or high severity findings require changes before merge."
   }
 }

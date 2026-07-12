@@ -168,7 +168,7 @@ func TestRunParsedUnifiedDiffFindsSecretShapesAndSuppressesPlaceholders(t *testi
 	}
 }
 
-func TestRunDedupesRepeatedFindingsThroughReviewDedupe(t *testing.T) {
+func TestRunKeepsSameRuleOnDifferentLines(t *testing.T) {
 	t.Parallel()
 
 	result := runUnifiedDiff(t, ""+
@@ -181,9 +181,78 @@ func TestRunDedupesRepeatedFindingsThroughReviewDedupe(t *testing.T) {
 		"+func Crash() { panic(\"boom\") }\n"+
 		"+func CrashAgain() { panic(\"boom\") }\n")
 
-	if got := countRule(review.DedupeFindings(result.Findings), "panic-direct"); got != 1 {
-		t.Fatalf("expected exactly one panic-direct finding after dedupe, got %d", got)
+	if got := countRule(review.DedupeFindings(result.Findings), "panic-direct"); got != 2 {
+		t.Fatalf("expected both panic-direct findings on different lines, got %d", got)
 	}
+}
+
+func TestRunUsesFollowingCleanupInFullHunk(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/safe.go b/safe.go\n"+
+		"--- a/safe.go\n"+
+		"+++ b/safe.go\n"+
+		"@@ -1 +1,15 @@\n"+
+		" package safe\n"+
+		"+func safe(ctx context.Context, mu *sync.Mutex, db *sql.DB) {\n"+
+		"+  child, stop := context.WithCancel(ctx)\n"+
+		"+  defer stop()\n"+
+		"+  file, _ := os.Open(\"input\")\n"+
+		"+  defer file.Close()\n"+
+		"+  tx, _ := db.BeginTx(child, nil)\n"+
+		"+  defer tx.Rollback()\n"+
+		"+  mu.Lock()\n"+
+		"+  defer mu.Unlock()\n"+
+		"+  go func() { <-child.Done() }()\n"+
+		"+}\n")
+
+	for _, ruleID := range []string{"context-leak", "resource-leak", "db-lifecycle", "mutex-unlock-missing", "goroutine-leak"} {
+		assertNoRule(t, result.Findings, ruleID)
+	}
+}
+
+func TestRunAssociatesCleanupWithOpenedVariable(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/leak.go b/leak.go\n"+
+		"--- a/leak.go\n"+
+		"+++ b/leak.go\n"+
+		"@@ -1 +1,8 @@\n"+
+		" package leak\n"+
+		"+func leak() {\n"+
+		"+  first, _ := os.Open(\"first\")\n"+
+		"+  defer first.Close()\n"+
+		"+  second, _ := os.Open(\"second\")\n"+
+		"+  _ = second\n"+
+		"+}\n")
+
+	if got := countRule(result.Findings, "resource-leak"); got != 1 {
+		t.Fatalf("expected only the unclosed second resource, got %d: %+v", got, result.Findings)
+	}
+	for _, finding := range result.Findings {
+		if finding.RuleID == "resource-leak" && finding.Line != 5 {
+			t.Fatalf("expected resource leak on second open at line 5, got %+v", finding)
+		}
+	}
+}
+
+func TestRunAllowsFixedExecutableWithDynamicArguments(t *testing.T) {
+	t.Parallel()
+
+	result := runUnifiedDiff(t, ""+
+		"diff --git a/git.go b/git.go\n"+
+		"--- a/git.go\n"+
+		"+++ b/git.go\n"+
+		"@@ -1 +1,4 @@\n"+
+		" package gitutil\n"+
+		"+func run(args []string) {\n"+
+		"+  cmd := exec.Command(\"git\", args...)\n"+
+		"+  other := exec.Command(\"git\", \"branch-\"+args[0])\n"+
+		"+}\n")
+
+	assertNoRule(t, result.Findings, "command-injection")
 }
 
 func runUnifiedDiff(t *testing.T, diff string) Analysis {

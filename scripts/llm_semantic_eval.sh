@@ -197,7 +197,8 @@ for fixture in $FIXTURES; do
     --diff-file "$diff_path"
     --skills-root "$SKILLS_ROOT"
     --runtime "$RUNTIME"
-    --mode fake-model
+    --mode review
+    --model-enabled
     --output-dir "$case_dir"
   )
   if [[ "$USE_CONFIG" == "1" ]]; then

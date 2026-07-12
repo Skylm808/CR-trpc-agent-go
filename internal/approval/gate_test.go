@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Skylm808/CR-trpc-agent-go/internal/execution"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -90,5 +91,29 @@ func TestPermissionPolicyAllowsOnlySkillAndReviewCommands(t *testing.T) {
 				t.Fatalf("permission action = %q, want %q (decision=%+v)", got.Action, tc.want, got)
 			}
 		})
+	}
+}
+
+func TestPermissionPolicyAllowsExactGeneratedCodeExecFallback(t *testing.T) {
+	t.Parallel()
+
+	command := "go vet ./..."
+	args, err := json.Marshal(map[string]any{
+		"code_blocks": []map[string]string{{
+			"code": execution.SandboxCode(execution.RuntimeLocalFallback, "/tmp/repo with spaces", command),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal fallback args: %v", err)
+	}
+	decision, err := NewPermissionPolicy("scripts/check.sh", []string{command}).CheckToolPermission(
+		context.Background(),
+		&tool.PermissionRequest{ToolName: "execute_code", Arguments: args},
+	)
+	if err != nil {
+		t.Fatalf("CheckToolPermission returned error: %v", err)
+	}
+	if decision.Action != tool.PermissionActionAllow {
+		t.Fatalf("generated fallback permission = %q, want allow: %+v", decision.Action, decision)
 	}
 }

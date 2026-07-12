@@ -55,6 +55,7 @@ func NewExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 		), nil
 	case RuntimeContainer:
 		opts := []containerexec.Option{
+			containerexec.WithHostConfig(ContainerHostConfig()),
 			containerexec.WithContainerConfig(dockercontainer.Config{
 				Image:      DefaultContainerImage,
 				WorkingDir: "/",
@@ -85,6 +86,24 @@ func NewExecutor(cfg Config) (codeexecutor.CodeExecutor, error) {
 		return FakeExecutor{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported runtime %q", cfg.Runtime)
+	}
+}
+
+// ContainerHostConfig returns the enforced production isolation profile.
+func ContainerHostConfig() dockercontainer.HostConfig {
+	pidsLimit := int64(256)
+	return dockercontainer.HostConfig{
+		AutoRemove:     true,
+		Privileged:     false,
+		NetworkMode:    "none",
+		ReadonlyRootfs: false,
+		CapDrop:        []string{"ALL"},
+		SecurityOpt:    []string{"no-new-privileges"},
+		Resources: dockercontainer.Resources{
+			Memory:    1024 * 1024 * 1024,
+			NanoCPUs:  2_000_000_000,
+			PidsLimit: &pidsLimit,
+		},
 	}
 }
 
@@ -120,6 +139,15 @@ func SandboxExecCommand(runtime string, command string) string {
 		return GoSandboxBinary + strings.TrimPrefix(command, "go")
 	}
 	return command
+}
+
+// BoundedSandboxCommand caps combined stdout/stderr before executor collection.
+func BoundedSandboxCommand(command string, limit int) string {
+	if limit <= 0 {
+		return command
+	}
+	pipeline := fmt.Sprintf("{ %s; } 2>&1 | { head -c %d; cat >/dev/null; }", command, limit)
+	return "bash -o pipefail -c " + ShellQuote(pipeline)
 }
 
 // SandboxEnv 返回传给 workspace execution 的实际环境变量。
@@ -205,7 +233,7 @@ func SandboxRepoPathForRuntime(runtime string, hostRepoPath string) string {
 // SandboxCode 构造 legacy codeexec fallback 命令。
 func SandboxCode(runtime string, hostRepoPath string, command string) string {
 	return "cd " + ShellQuote(SandboxRepoPathForRuntime(runtime, hostRepoPath)) +
-		" && GOCACHE=" + ShellQuote(GoSandboxCacheDir) + " " + command
+		" && export GOCACHE=" + ShellQuote(GoSandboxCacheDir) + " && " + command
 }
 
 // ShellQuote 返回 POSIX 单引号转义后的值。

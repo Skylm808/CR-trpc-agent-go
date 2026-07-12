@@ -40,28 +40,35 @@ const (
 	// RuntimeE2B 是预留的 E2B 沙箱入口；当前显式返回 unsupported。
 	RuntimeE2B = execution.RuntimeE2B
 
+	// ModeReview 执行确定性规则，并按独立能力开关追加沙箱或模型检查。
+	ModeReview = "review"
 	// ModeRuleOnly 只执行确定性规则。
+	// Deprecated: use ModeReview with both capability switches disabled.
 	ModeRuleOnly = "rule-only"
 	// ModeDryRun 只演练治理和落库。
 	ModeDryRun = "dry-run"
 	// ModeSandbox 执行规则和 Go 检查。
+	// Deprecated: use ModeReview with SandboxEnabled set to true.
 	ModeSandbox = "sandbox"
 	// ModeFakeModel 运行规则链路和 deterministic fake model provider。
+	// Deprecated: use ModeReview with ModelEnabled set to true.
 	ModeFakeModel = "fake-model"
 )
 
 const (
-	defaultSkillName        = "code-review"
-	defaultSkillCommand     = "scripts/check.sh"
-	defaultOutputLimitBytes = 64 * 1024
-	defaultMaxArtifactBytes = 1024 * 1024
-	defaultTimeout          = 30 * time.Second
-	containerRepoMountPath  = execution.ContainerRepoMountPath
-	defaultContainerImage   = execution.DefaultContainerImage
-	goSandboxCacheDir       = execution.GoSandboxCacheDir
-	goSandboxBinary         = execution.GoSandboxBinary
-	goSandboxPath           = execution.GoSandboxPath
-	sandboxEnvWhitelist     = execution.SandboxEnvWhitelist
+	defaultSkillName             = "code-review"
+	defaultSkillCommand          = "scripts/check.sh"
+	defaultOutputLimitBytes      = 64 * 1024
+	defaultMaxArtifactBytes      = 1024 * 1024
+	defaultMaxArtifactTotalBytes = 4 * 1024 * 1024
+	defaultMaxArtifactCount      = 4
+	defaultTimeout               = 30 * time.Second
+	containerRepoMountPath       = execution.ContainerRepoMountPath
+	defaultContainerImage        = execution.DefaultContainerImage
+	goSandboxCacheDir            = execution.GoSandboxCacheDir
+	goSandboxBinary              = execution.GoSandboxBinary
+	goSandboxPath                = execution.GoSandboxPath
+	sandboxEnvWhitelist          = execution.SandboxEnvWhitelist
 )
 
 // Config 保存一次审查的依赖和边界。
@@ -84,6 +91,10 @@ type Config struct {
 	OutputLimitBytes int
 	// MaxArtifactBytes 是单个产物大小上限。
 	MaxArtifactBytes int64
+	// MaxArtifactTotalBytes limits all report artifacts for one review.
+	MaxArtifactTotalBytes int64
+	// MaxArtifactCount limits the number of report artifacts.
+	MaxArtifactCount int
 	// EnableStaticcheck 控制可选 staticcheck。
 	EnableStaticcheck bool
 	// ArtifactService 接入官方 artifact service。
@@ -114,13 +125,22 @@ type Request struct {
 	HeadRef string
 	// Mode 是执行模式。
 	Mode string
+	// SandboxEnabled 显式控制可选 Go 沙箱检查；nil 时允许旧模式推导默认值。
+	SandboxEnabled *bool
+	// ModelEnabled 显式控制模型评审；nil 时允许旧模式推导默认值。
+	ModelEnabled *bool
 }
 
 // defaultPermissionPolicy 返回代码审查命令的固定 allowlist。
-func defaultPermissionPolicy() tool.PermissionPolicy {
+func defaultPermissionPolicy(outputLimit int) tool.PermissionPolicy {
 	commands := approval.AllowedReviewCommands(true)
 	for _, command := range approval.AllowedReviewCommands(true) {
-		commands = append(commands, execution.SandboxExecCommand(RuntimeContainer, command))
+		containerCommand := execution.SandboxExecCommand(RuntimeContainer, command)
+		commands = append(commands,
+			containerCommand,
+			execution.BoundedSandboxCommand(command, outputLimit),
+			execution.BoundedSandboxCommand(containerCommand, outputLimit),
+		)
 	}
 	return approval.NewPermissionPolicy(defaultSkillCommand, commands)
 }
@@ -150,6 +170,19 @@ type Agent struct {
 // New 创建基于 trpc-agent-go 的 CR Agent。
 func New(cfg Config) (*Agent, error) {
 	cfg = normalizeConfig(cfg)
+	providerCount := 0
+	if cfg.ModelProvider != nil {
+		providerCount++
+	}
+	if cfg.ModelHTTP.Enabled {
+		providerCount++
+	}
+	if cfg.ModelOpenAI.Enabled {
+		providerCount++
+	}
+	if providerCount > 1 {
+		return nil, errors.New("multiple model providers are configured")
+	}
 	if cfg.SkillsRoot == "" {
 		return nil, errors.New("skills root is required")
 	}
@@ -198,7 +231,7 @@ func New(cfg Config) (*Agent, error) {
 		runTool:         runTool,
 		checkTool:       toolcodeexec.NewTool(exec, toolcodeexec.WithName("execute_code"), toolcodeexec.WithLanguages("bash")),
 		exec:            exec,
-		policy:          defaultPermissionPolicy(),
+		policy:          defaultPermissionPolicy(cfg.OutputLimitBytes),
 		store:           store,
 		artifactService: cfg.ArtifactService,
 		modelProvider:   cfg.ModelProvider,
@@ -233,6 +266,10 @@ func (a *Agent) Run(ctx context.Context, req Request) (review.Result, error) {
 
 // runDirect 执行一次完整审查。官方 Runner adapter 调用该兼容执行体。
 func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Result, err error) {
+	plan, err := normalizeExecutionPlan(req)
+	if err != nil {
+		return review.Result{}, err
+	}
 	ctx, span := telemetrytrace.Tracer.Start(ctx, "cr-agent.review")
 	taskID := ""
 	defer func() {
@@ -246,11 +283,8 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 	}()
 
 	start := time.Now()
-	mode := strings.TrimSpace(req.Mode)
-	if mode == "" {
-		mode = ModeRuleOnly
-	}
-	recordReviewStartTelemetry(span, a.cfg, req, mode)
+	mode := plan.Mode
+	recordReviewStartTelemetry(span, a.cfg, req, plan)
 
 	// 统一把输入收敛成 diff。
 	diff, inputRef, err := readInput(a.cfg, req)
@@ -277,7 +311,7 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 		taskStarted = true
 	}
 
-	result, decisions, runs, toolCallCount, runErr := a.runReviewChecks(ctx, taskID, mode, req.RepoPath, diff)
+	result, decisions, runs, toolCallCount, runErr := a.runReviewChecks(ctx, taskID, plan, req.RepoPath, diff)
 	a.emitReviewEvent(ctx, taskID, reviewEventSkillRun, defaultSkillCommand)
 	for _, run := range runs {
 		a.emitReviewEvent(ctx, taskID, reviewEventSandboxRun, run.Command)
@@ -293,8 +327,9 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 		ToolCallCount: toolCallCount,
 		Decisions:     decisions,
 		Runs:          runs,
+		Plan:          plan,
 	})
-	if provider, audit := a.configuredModelProvider(mode); provider != nil {
+	if provider, audit := a.configuredModelProvider(plan.ModelRequested); provider != nil {
 		var modelSummary llm.RunSummary
 		result, modelSummary = a.runModelReview(ctx, taskID, provider, audit, result, diff, inputMeta)
 		a.emitReviewEvent(ctx, taskID, reviewEventModelReview, fmt.Sprintf("calls=%d findings=%d exceptions=%d", modelSummary.CallCount, modelSummary.FindingCount, modelSummary.ExceptionCount))
@@ -306,6 +341,7 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 			Decisions:     decisions,
 			Runs:          runs,
 			Model:         modelSummary,
+			Plan:          plan,
 		})
 	}
 
@@ -319,12 +355,12 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 	}
 	a.emitReviewEvent(ctx, taskID, reviewEventReportWritten, "review_report.json")
 	if a.store != nil {
-		// 写入完整审计数据。
-		if err := a.persist(ctx, taskID, result, decisions, runs, reports.JSON, reports.Markdown, reports.MarkdownZH, reports.Diagnostics); err != nil {
-			return review.Result{}, err
-		}
-		// 最后标记任务完成。
-		if err := a.saveTaskStatus(ctx, taskID, inputRef, digestBytes(diff), req.RepoPath, mode, "done", start, time.Now()); err != nil {
+		// 完整审计数据和最终任务状态在同一事务提交。
+		if err := a.persist(ctx, storage.Task{
+			ID: taskID, InputType: "diff", InputRef: inputRef, InputDigest: digestBytes(diff),
+			RepoPath: req.RepoPath, Status: "done", Mode: mode, CreatedAt: start,
+			StartedAt: start, FinishedAt: time.Now(),
+		}, result, decisions, runs, reports.JSON, reports.Markdown, reports.MarkdownZH, reports.Diagnostics); err != nil {
 			return review.Result{}, err
 		}
 	}
@@ -334,7 +370,12 @@ func (a *Agent) runDirect(ctx context.Context, req Request) (result review.Resul
 }
 
 // runReviewChecks 执行规则链路并收集治理/沙箱记录。
-func (a *Agent) runReviewChecks(ctx context.Context, taskID, mode, repoPath string, diff []byte) (review.Result, []storage.DecisionRecord, []storage.SandboxRunRecord, int, error) {
+func (a *Agent) runReviewChecks(ctx context.Context, taskID string, plan executionPlan, repoPath string, diff []byte) (review.Result, []storage.DecisionRecord, []storage.SandboxRunRecord, int, error) {
+	if plan.Mode == ModeDryRun {
+		// dry-run validates Skill loading but never enters a code executor or model provider.
+		result, run, decision, err := a.runDryRun(ctx, taskID)
+		return result, []storage.DecisionRecord{decision}, []storage.SandboxRunRecord{run}, 1, err
+	}
 	if a.cfg.Runtime == RuntimeE2B {
 		result, run, decision := a.runUnsupportedRuntime(taskID, RuntimeE2B)
 		return result, []storage.DecisionRecord{decision}, []storage.SandboxRunRecord{run}, 0, nil
@@ -345,22 +386,23 @@ func (a *Agent) runReviewChecks(ctx context.Context, taskID, mode, repoPath stri
 	var runRecord storage.SandboxRunRecord
 	var decision storage.DecisionRecord
 	var err error
-	if mode == ModeDryRun {
-		// dry-run 不进入执行器。
-		toolCallCount = 1
-		result, runRecord, decision, err = a.runDryRun(ctx, taskID)
-	} else {
-		// 其他模式先执行 code-review Skill。
-		result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
-	}
+	// review mode always executes the code-review Skill first.
+	result, runRecord, decision, err = a.runSkillChecks(ctx, taskID, diff)
 	decisions := []storage.DecisionRecord{decision}
 	runs := []storage.SandboxRunRecord{runRecord}
-	if mode == ModeSandbox && strings.TrimSpace(repoPath) != "" {
-		// sandbox 模式追加 Go 检查。
-		checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, repoPath)
-		decisions = append(decisions, checkDecisions...)
-		runs = append(runs, checkRuns...)
-		toolCallCount += len(checkRuns)
+	if plan.SandboxRequested {
+		if strings.TrimSpace(repoPath) == "" {
+			skipResult, skipDecision, skipRun := sandboxUnavailableAudit(taskID)
+			result.Warnings = append(result.Warnings, skipResult.Warnings...)
+			decisions = append(decisions, skipDecision)
+			runs = append(runs, skipRun)
+		} else {
+			// sandbox capability appends Go checks after the common Skill stage.
+			checkDecisions, checkRuns := a.runGoSandboxChecks(ctx, taskID, repoPath)
+			decisions = append(decisions, checkDecisions...)
+			runs = append(runs, checkRuns...)
+			toolCallCount += len(checkRuns)
+		}
 	}
 	return result, decisions, runs, toolCallCount, err
 }
@@ -495,6 +537,12 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.MaxArtifactBytes <= 0 {
 		cfg.MaxArtifactBytes = defaultMaxArtifactBytes
 	}
+	if cfg.MaxArtifactTotalBytes <= 0 {
+		cfg.MaxArtifactTotalBytes = defaultMaxArtifactTotalBytes
+	}
+	if cfg.MaxArtifactCount <= 0 {
+		cfg.MaxArtifactCount = defaultMaxArtifactCount
+	}
 	if cfg.OutputDir == "" {
 		cfg.OutputDir = "."
 	}
@@ -505,10 +553,12 @@ func normalizeConfig(cfg Config) Config {
 }
 
 // recordReviewStartTelemetry 记录审查入口边界。
-func recordReviewStartTelemetry(span oteltrace.Span, cfg Config, req Request, mode string) {
+func recordReviewStartTelemetry(span oteltrace.Span, cfg Config, req Request, plan executionPlan) {
 	span.SetAttributes(
 		attribute.String("cr_agent.runtime", cfg.Runtime),
-		attribute.String("cr_agent.mode", mode),
+		attribute.String("cr_agent.mode", plan.Mode),
+		attribute.Bool("cr_agent.sandbox_requested", plan.SandboxRequested),
+		attribute.Bool("cr_agent.model_requested", plan.ModelRequested),
 		attribute.String("cr_agent.input_type", requestInputKind(req)),
 		attribute.String("cr_agent.base_ref", req.BaseRef),
 		attribute.String("cr_agent.head_ref", req.HeadRef),
@@ -528,6 +578,8 @@ func recordReviewResultTelemetry(span oteltrace.Span, result review.Result) {
 		attribute.Int("cr_agent.model_call_count", result.Metrics.ModelCallCount),
 		attribute.Int("cr_agent.model_finding_count", result.Metrics.ModelFindingCount),
 		attribute.Int("cr_agent.model_exception_count", result.Metrics.ModelExceptionCount),
+		attribute.Bool("cr_agent.sandbox_executed", result.Metrics.SandboxExecuted),
+		attribute.Bool("cr_agent.model_executed", result.Metrics.ModelExecuted),
 		attribute.String("cr_agent.model_provider", result.Metrics.ModelProvider),
 		attribute.String("cr_agent.model_name", result.Metrics.ModelName),
 		attribute.String("cr_agent.model_backend", result.Metrics.ModelBackend),

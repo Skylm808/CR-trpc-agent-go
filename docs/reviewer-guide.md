@@ -43,12 +43,13 @@ Recommended reviewer commands:
 
 | Layer | Command | What it proves |
 | --- | --- | --- |
-| Unit/integration | `GOCACHE=/private/tmp/cr-agent-gocache go test -p 1 ./...` | Core parser, rules, reports, persistence, scripts, and CLI contracts. |
+| Fast unit | `GOCACHE=/private/tmp/cr-agent-gocache go test ./...` | Parser, rules, reports, persistence and lightweight CLI contracts; expected around 15-20 seconds locally. |
+| Integration | `GOCACHE=/private/tmp/cr-agent-gocache go test -tags=integration -p 1 ./internal/agent ./cmd/review-agent ./scripts` | Representative real workspace, CLI, SQLite and script contracts; fixture matrices are excluded to avoid duplicate evaluation. |
 | Public fixtures | `GOCACHE=/private/tmp/cr-agent-gocache scripts/eval.sh` | Deterministic fixture recall and false-positive accounting. |
 | Holdout fixtures | `GOCACHE=/private/tmp/cr-agent-gocache scripts/holdout_eval.sh` | Broader local recall/precision matrix. |
 | Hidden-like smoke | `GOCACHE=/private/tmp/cr-agent-gocache bash scripts/hidden_matrix_smoke.sh` | External matrix contract without committing hidden samples. |
 | Acceptance | `CR_AGENT_ACCEPTANCE_DOCKER=skip GOCACHE=/private/tmp/cr-agent-gocache scripts/acceptance.sh` | CLI reports, SQLite audit, and generated artifacts. |
-| Container runtime | `CR_AGENT_RUN_CONTAINER_TESTS=1 GOCACHE=/private/tmp/cr-agent-gocache go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1` | Real container executor path when Docker is available. |
+| Container runtime | `CR_AGENT_RUN_CONTAINER_TESTS=1 GOCACHE=/private/tmp/cr-agent-gocache go test -tags=integration ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1` | Real container executor path when Docker is available. |
 | Live semantic evidence | `CR_AGENT_LLM_SMOKE=1 CR_AGENT_LLM_CONFIG=./cr-agent.yaml scripts/llm_semantic_eval.sh` | Real provider call on fixed semantic fixtures; evidence only, not a hard CI gate. |
 | Repo LLM smoke | `CR_AGENT_LLM_SMOKE=1 scripts/repo_llm_smoke.sh --repo /path/to/repo --config ./cr-agent.yaml --go-only` | Real provider call against a local git repository diff. |
 
@@ -63,7 +64,7 @@ is environment-dependent. The semantic eval writes:
 - one report directory per fixture, including `review_report.zh.md`
 
 Treat these files as review evidence, not deterministic CI gates. Deterministic
-CI should use unit tests, fixture evaluation, holdout evaluation, and fake-model
+CI should use unit tests, fixture evaluation, holdout evaluation, and fake-provider
 provider tests.
 
 ## Not Tested / Known Limits

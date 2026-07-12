@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	cragent "github.com/Skylm808/CR-trpc-agent-go/internal/agent"
@@ -14,23 +15,31 @@ const defaultConfigFile = "cr-agent.yaml"
 
 // fileConfig 对应 cr-agent.yaml。字段名保持贴近 CLI flag，便于用户从长命令迁移到配置文件。
 type fileConfig struct {
-	DiffFile     string          `yaml:"diff_file"`
-	FileList     string          `yaml:"file_list"`
-	RepoPath     string          `yaml:"repo_path"`
-	Fixture      string          `yaml:"fixture"`
-	BaseRef      string          `yaml:"base_ref"`
-	HeadRef      string          `yaml:"head_ref"`
-	OutputDir    string          `yaml:"output_dir"`
-	Mode         string          `yaml:"mode"`
-	SQLitePath   string          `yaml:"sqlite"`
-	Runtime      string          `yaml:"runtime"`
-	SkillsRoot   string          `yaml:"skills_root"`
-	FixturesRoot string          `yaml:"fixtures_root"`
-	Staticcheck  *bool           `yaml:"staticcheck"`
-	Model        fileModelConfig `yaml:"model"`
+	DiffFile     string            `yaml:"diff_file"`
+	FileList     string            `yaml:"file_list"`
+	RepoPath     string            `yaml:"repo_path"`
+	Fixture      string            `yaml:"fixture"`
+	BaseRef      string            `yaml:"base_ref"`
+	HeadRef      string            `yaml:"head_ref"`
+	OutputDir    string            `yaml:"output_dir"`
+	Mode         string            `yaml:"mode"`
+	SQLitePath   string            `yaml:"sqlite"`
+	NoPersist    *bool             `yaml:"no_persist"`
+	Runtime      string            `yaml:"runtime"`
+	SkillsRoot   string            `yaml:"skills_root"`
+	FixturesRoot string            `yaml:"fixtures_root"`
+	Staticcheck  *bool             `yaml:"staticcheck"`
+	Sandbox      fileSandboxConfig `yaml:"sandbox"`
+	Model        fileModelConfig   `yaml:"model"`
+}
+
+type fileSandboxConfig struct {
+	Enabled     *bool `yaml:"enabled"`
+	Staticcheck *bool `yaml:"staticcheck"`
 }
 
 type fileModelConfig struct {
+	Enabled   *bool  `yaml:"enabled"`
 	Provider  string `yaml:"provider"`
 	Name      string `yaml:"name"`
 	Endpoint  string `yaml:"endpoint"`
@@ -77,6 +86,8 @@ func optionsFromConfig(path string) (Options, error) {
 		HeadRef:        cfg.HeadRef,
 		OutputDir:      cfg.OutputDir,
 		Mode:           cfg.Mode,
+		SandboxEnabled: cloneBool(cfg.Sandbox.Enabled),
+		ModelEnabled:   cloneBool(cfg.Model.Enabled),
 		SQLitePath:     cfg.SQLitePath,
 		Runtime:        cfg.Runtime,
 		SkillsRoot:     cfg.SkillsRoot,
@@ -89,8 +100,13 @@ func optionsFromConfig(path string) (Options, error) {
 		ModelBaseURL:   cfg.Model.BaseURL,
 		ModelVariant:   cfg.Model.Variant,
 	}
-	if cfg.Staticcheck != nil {
+	if cfg.Sandbox.Staticcheck != nil {
+		opts.Staticcheck = *cfg.Sandbox.Staticcheck
+	} else if cfg.Staticcheck != nil {
 		opts.Staticcheck = *cfg.Staticcheck
+	}
+	if cfg.NoPersist != nil {
+		opts.NoPersist = *cfg.NoPersist
 	}
 	return opts, nil
 }
@@ -105,7 +121,16 @@ func applyCLIOptions(opts *Options, cli Options) {
 	applyStringOption(&opts.HeadRef, cli.HeadRef, cli, "head-ref")
 	applyStringOption(&opts.OutputDir, cli.OutputDir, cli, "output-dir")
 	applyStringOption(&opts.Mode, cli.Mode, cli, "mode")
+	if optionWasSet(cli, "sandbox", cli.SandboxEnabled != nil) {
+		opts.SandboxEnabled = cloneBool(cli.SandboxEnabled)
+	}
+	if optionWasSet(cli, "model-enabled", cli.ModelEnabled != nil) {
+		opts.ModelEnabled = cloneBool(cli.ModelEnabled)
+	}
 	applyStringOption(&opts.SQLitePath, cli.SQLitePath, cli, "sqlite")
+	if optionWasSet(cli, "no-persist", cli.NoPersist) {
+		opts.NoPersist = cli.NoPersist
+	}
 	applyStringOption(&opts.Runtime, cli.Runtime, cli, "runtime")
 	applyStringOption(&opts.SkillsRoot, cli.SkillsRoot, cli, "skills-root")
 	applyStringOption(&opts.FixturesRoot, cli.FixturesRoot, cli, "fixtures-root")
@@ -128,6 +153,14 @@ func applyStringOption(target *string, value string, cli Options, flagName strin
 	if optionWasSet(cli, flagName, strings.TrimSpace(value) != "") {
 		*target = value
 	}
+}
+
+func cloneBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func applyStringOptionAny(target *string, value string, cli Options, flagNames ...string) {
@@ -159,8 +192,13 @@ func applyOptionDefaults(opts *Options) {
 	if strings.TrimSpace(opts.OutputDir) == "" {
 		opts.OutputDir = "."
 	}
+	if opts.NoPersist {
+		opts.SQLitePath = ""
+	} else if strings.TrimSpace(opts.SQLitePath) == "" {
+		opts.SQLitePath = filepath.Join(opts.OutputDir, "review.db")
+	}
 	if strings.TrimSpace(opts.Mode) == "" {
-		opts.Mode = cragent.ModeRuleOnly
+		opts.Mode = cragent.ModeReview
 	}
 	if strings.TrimSpace(opts.Runtime) == "" {
 		opts.Runtime = cragent.RuntimeContainer

@@ -35,6 +35,7 @@ type reviewResultContext struct {
 	Decisions     []storage.DecisionRecord
 	Runs          []storage.SandboxRunRecord
 	Model         llm.RunSummary
+	Plan          executionPlan
 }
 
 // finalizeReviewResult 补齐报告、落库和 telemetry 共用字段。
@@ -42,6 +43,11 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	result.TaskID = ctx.TaskID
 	result.Created = time.Now()
 	result.InputMetadata = ctx.InputMetadata
+	result.Metrics.Mode = ctx.Plan.Mode
+	result.Metrics.SandboxRequested = ctx.Plan.SandboxRequested
+	result.Metrics.SandboxExecuted = sandboxExecutionStarted(ctx.Runs)
+	result.Metrics.ModelRequested = ctx.Plan.ModelRequested
+	result.Metrics.ModelExecuted = ctx.Model.CallCount > 0
 	result.Metrics.TotalDurationMS = time.Since(ctx.StartedAt).Milliseconds()
 	result.Metrics.ToolCallCount = ctx.ToolCallCount
 	result.Metrics.SandboxDurationMS = totalSandboxDuration(ctx.Runs)
@@ -58,6 +64,7 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	if result.Metrics.ExceptionCounts == nil {
 		result.Metrics.ExceptionCounts = map[string]int{}
 	}
+	delete(result.Metrics.ExceptionCounts, "sandbox_failed")
 	for _, run := range ctx.Runs {
 		if run.Status == "failed" || run.Status == "error" || run.Status == "timed_out" {
 			incrementException(result.Metrics.ExceptionCounts, "sandbox_failed")
@@ -71,6 +78,15 @@ func finalizeReviewResult(result review.Result, ctx reviewResultContext) review.
 	result.Summary = fmt.Sprintf("%d findings, %d warnings", len(result.Findings), len(result.Warnings))
 	result.Conclusion = conclusion(result)
 	return result
+}
+
+func sandboxExecutionStarted(runs []storage.SandboxRunRecord) bool {
+	for _, run := range runs {
+		if run.ExecutionStarted && run.Command != defaultSkillCommand {
+			return true
+		}
+	}
+	return false
 }
 
 // buildReportBundle 生成三份对外产物。
@@ -141,6 +157,19 @@ func reportPayloads(jsonReport, markdownReport, markdownChineseReport, diagnosti
 
 // enforceArtifactLimits 阻止超大产物落盘或入库。
 func enforceArtifactLimits(cfg Config, artifacts []artifactPayload) error {
+	if cfg.MaxArtifactCount > 0 && len(artifacts) > cfg.MaxArtifactCount {
+		return fmt.Errorf("artifact count limit exceeded: %d > %d", len(artifacts), cfg.MaxArtifactCount)
+	}
+	var total int64
+	for _, artifact := range artifacts {
+		if artifactMIMEType(artifact.Name) == "" || filepath.Base(artifact.Name) != artifact.Name {
+			return fmt.Errorf("artifact name %q is not allowed", artifact.Name)
+		}
+		total += int64(len(artifact.Data))
+	}
+	if cfg.MaxArtifactTotalBytes > 0 && total > cfg.MaxArtifactTotalBytes {
+		return fmt.Errorf("artifact total size limit exceeded: %d > %d", total, cfg.MaxArtifactTotalBytes)
+	}
 	for _, artifact := range artifacts {
 		if int64(len(artifact.Data)) > cfg.MaxArtifactBytes {
 			return fmt.Errorf("artifact %s exceeds size limit: %d > %d", artifact.Name, len(artifact.Data), cfg.MaxArtifactBytes)

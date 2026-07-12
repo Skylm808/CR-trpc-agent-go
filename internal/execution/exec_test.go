@@ -2,11 +2,70 @@ package execution
 
 import (
 	"context"
+	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
+
+func TestContainerHostConfigEnforcesProductionIsolation(t *testing.T) {
+	t.Parallel()
+
+	host := ContainerHostConfig()
+	if host.NetworkMode != "none" || host.Privileged {
+		t.Fatalf("container network/privilege boundary is unsafe: %+v", host)
+	}
+	if host.PidsLimit == nil || *host.PidsLimit <= 0 || host.Resources.Memory <= 0 || host.Resources.NanoCPUs <= 0 {
+		t.Fatalf("container resource limits are incomplete: %+v", host.Resources)
+	}
+	if !containsString(host.CapDrop, "ALL") || !containsString(host.SecurityOpt, "no-new-privileges") {
+		t.Fatalf("container capabilities/security options are incomplete: %+v", host)
+	}
+}
+
+func TestBoundedSandboxCommandUsesFixedPipefailWrapper(t *testing.T) {
+	t.Parallel()
+
+	got := BoundedSandboxCommand("go test ./...", 4096)
+	want := "bash -o pipefail -c '{ go test ./...; } 2>&1 | { head -c 4096; cat >/dev/null; }'"
+	if got != want {
+		t.Fatalf("bounded command = %q, want %q", got, want)
+	}
+	if unbounded := BoundedSandboxCommand("go test ./...", 0); unbounded != "go test ./..." {
+		t.Fatalf("zero-limit command = %q, want original", unbounded)
+	}
+}
+
+func TestBoundedSandboxCommandPreservesExitStatusAfterLargeOutput(t *testing.T) {
+	t.Parallel()
+
+	command := BoundedSandboxCommand("dd if=/dev/zero bs=131072 count=1 2>/dev/null", 1024)
+	out, err := exec.Command("bash", "-c", command).CombinedOutput()
+	if err != nil {
+		t.Fatalf("bounded successful command failed: %v output=%q", err, out)
+	}
+	if len(out) != 1024 {
+		t.Fatalf("bounded output length = %d, want 1024", len(out))
+	}
+
+	command = BoundedSandboxCommand("printf failure; exit 7", 1024)
+	out, err = exec.Command("bash", "-c", command).CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
+		t.Fatalf("failing command error = %v output=%q, want exit 7", err, out)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
 
 func TestSandboxEnvUsesOnlyWhitelistedKeysAndDropsSecrets(t *testing.T) {
 	t.Setenv("PATH", "/host/bin")

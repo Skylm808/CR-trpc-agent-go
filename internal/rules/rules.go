@@ -36,7 +36,6 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 				}
 				text := strings.TrimSpace(line.Text)
 				hunkBefore := hunkTextBefore(hunk, lineIndex)
-				localHunkText := hunkBefore + "\n" + text
 				if file.Path == "" {
 					continue
 				}
@@ -55,7 +54,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if strings.Contains(text, "panic(") && !hasRuleInFile(out.Findings, file.Path, "panic-direct") {
+				if strings.Contains(text, "panic(") {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "error_handling",
@@ -70,7 +69,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsHTTPBodyLeak(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "http-body-close") {
+				if reportsHTTPBodyLeak(text, hunkText) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "resource",
@@ -85,7 +84,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsSQLStringConcat(text) && !hasRuleInFile(out.Findings, file.Path, "sql-string-concat") {
+				if reportsSQLStringConcat(text) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "critical",
 						Category:       "security",
@@ -100,7 +99,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsCommandInjection(text) && !hasRuleInFile(out.Findings, file.Path, "command-injection") {
+				if reportsCommandInjection(text) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "critical",
 						Category:       "security",
@@ -115,7 +114,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsContextBackgroundMisuse(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "context-background-misuse") {
+				if reportsContextBackgroundMisuse(text, hunkText) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "lifecycle",
@@ -130,7 +129,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsMutexUnlockMissing(text, hunkText) && !hasRuleInFile(out.Findings, file.Path, "mutex-unlock-missing") {
+				if reportsMutexUnlockMissing(text, hunkText) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "high",
 						Category:       "concurrency",
@@ -145,7 +144,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsDeferInLoop(text, hunkBefore) && !hasRuleInFile(out.Findings, file.Path, "defer-in-loop") {
+				if reportsDeferInLoop(text, hunkBefore) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "resource",
@@ -160,7 +159,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsBareReturnErr(text) && !hasRuleInFile(out.Findings, file.Path, "bare-return-err") {
+				if reportsBareReturnErr(text) {
 					out.Findings = append(out.Findings, review.Finding{
 						Severity:       "medium",
 						Category:       "error_handling",
@@ -175,7 +174,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 						Status:         "finding",
 					})
 				}
-				if reportsStringConcatLoop(text, hunkBefore, hunkText) && !hasRuleInFile(out.Warnings, file.Path, "string-concat-loop") {
+				if reportsStringConcatLoop(text, hunkBefore, hunkText) {
 					out.Warnings = append(out.Warnings, review.Finding{
 						Severity:       "low",
 						Category:       "performance",
@@ -209,7 +208,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 					})
 				}
 				if strings.Contains(text, "go func") || strings.HasPrefix(text, "go ") {
-					if !containsAny(localHunkText, "WaitGroup", "ctx.Done", "errgroup", "done", "sync.") {
+					if !containsAny(hunkText, "WaitGroup", ".Done()", "errgroup", "done", "sync.") {
 						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "concurrency",
@@ -228,7 +227,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 				if strings.Contains(text, "context.WithCancel") ||
 					strings.Contains(text, "context.WithTimeout") ||
 					strings.Contains(text, "context.WithDeadline") {
-					if !containsAny(localHunkText, "defer cancel()", "ctx.Done", "cancel()") {
+					if !contextHasCancelCleanup(text, hunkText) {
 						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "lifecycle",
@@ -245,7 +244,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 					}
 				}
 				if strings.Contains(text, "os.Open") || strings.Contains(text, "os.OpenFile") || strings.Contains(text, "os.Create") {
-					if !containsAny(localHunkText, "defer", "Close()") {
+					if !resourceHasCleanup(text, hunkText) {
 						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "resource",
@@ -262,7 +261,7 @@ func Run(diff review.ParsedDiff, opts Options) Analysis {
 					}
 				}
 				if strings.Contains(text, "sql.Open") || strings.Contains(text, ".BeginTx") || strings.Contains(text, ".Begin(") {
-					if !containsAny(localHunkText, "Rollback()", "Close()") {
+					if !databaseHasCleanup(text, hunkText) {
 						out.Findings = append(out.Findings, review.Finding{
 							Severity:       "high",
 							Category:       "database",
@@ -326,20 +325,15 @@ func containsAny(text string, needles ...string) bool {
 	return false
 }
 
-func hasRuleInFile(findings []review.Finding, file string, ruleID string) bool {
-	for _, finding := range findings {
-		if finding.File == file && finding.RuleID == ruleID {
-			return true
-		}
-	}
-	return false
-}
-
 func reportsHTTPBodyLeak(text string, hunkText string) bool {
 	if !containsAny(text, "http.Get(", "http.Post(", "http.Head(", "http.DefaultClient.Do(", ".Do(") {
 		return false
 	}
-	return !containsAny(hunkText, "Body.Close()", "defer resp.Body.Close()", "defer response.Body.Close()")
+	name := assignedVariable(text)
+	if name != "" {
+		return !strings.Contains(hunkText, name+".Body.Close()")
+	}
+	return !strings.Contains(hunkText, "Body.Close()")
 }
 
 func reportsSQLStringConcat(text string) bool {
@@ -357,13 +351,10 @@ func reportsCommandInjection(text string) bool {
 	if strings.Contains(text, "\"-c\"") || strings.Contains(text, "'-c'") {
 		return true
 	}
-	if strings.Contains(text, "+") {
-		return true
-	}
-	return commandCallHasDynamicArgument(text)
+	return commandCallHasDynamicExecutable(text)
 }
 
-func commandCallHasDynamicArgument(text string) bool {
+func commandCallHasDynamicExecutable(text string) bool {
 	start := strings.Index(text, "exec.Command")
 	if start < 0 {
 		return false
@@ -374,19 +365,11 @@ func commandCallHasDynamicArgument(text string) bool {
 		return false
 	}
 	args := strings.Split(text[start+open+1:close], ",")
-	for i, arg := range args {
-		arg = strings.TrimSpace(arg)
-		if arg == "" {
-			continue
-		}
-		if strings.HasPrefix(text[start:], "exec.CommandContext") && i == 0 {
-			continue
-		}
-		if !isQuotedLiteral(arg) {
-			return true
-		}
+	executableIndex := 0
+	if strings.HasPrefix(text[start:], "exec.CommandContext") {
+		executableIndex = 1
 	}
-	return false
+	return executableIndex >= len(args) || !isQuotedLiteral(strings.TrimSpace(args[executableIndex]))
 }
 
 func isQuotedLiteral(text string) bool {
@@ -403,7 +386,43 @@ func reportsMutexUnlockMissing(text string, hunkText string) bool {
 	if !strings.Contains(text, ".Lock()") || strings.Contains(text, ".RLock()") {
 		return false
 	}
-	return !containsAny(hunkText, ".Unlock()", "defer mu.Unlock()", "defer mutex.Unlock()")
+	receiver := strings.TrimSpace(strings.TrimSuffix(text, ".Lock()"))
+	return receiver == "" || !strings.Contains(hunkText, receiver+".Unlock()")
+}
+
+var assignmentVariablePattern = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*[A-Za-z_][A-Za-z0-9_]*)?\s*:=`)
+var contextCancelPattern = regexp.MustCompile(`(?:[A-Za-z_][A-Za-z0-9_]*|_)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*context\.With(?:Cancel|Timeout|Deadline)`)
+
+func assignedVariable(text string) string {
+	match := assignmentVariablePattern.FindStringSubmatch(text)
+	if len(match) == 2 {
+		return match[1]
+	}
+	return ""
+}
+
+func contextHasCancelCleanup(text, hunkText string) bool {
+	match := contextCancelPattern.FindStringSubmatch(text)
+	if len(match) != 2 {
+		return false
+	}
+	return strings.Contains(hunkText, match[1]+"()")
+}
+
+func resourceHasCleanup(text, hunkText string) bool {
+	name := assignedVariable(text)
+	return name != "" && strings.Contains(hunkText, name+".Close()")
+}
+
+func databaseHasCleanup(text, hunkText string) bool {
+	name := assignedVariable(text)
+	if name == "" {
+		return false
+	}
+	if strings.Contains(text, "sql.Open") {
+		return strings.Contains(hunkText, name+".Close()")
+	}
+	return strings.Contains(hunkText, name+".Rollback()")
 }
 
 func reportsDeferInLoop(text string, hunkBefore string) bool {

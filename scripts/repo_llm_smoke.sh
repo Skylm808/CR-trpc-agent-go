@@ -164,7 +164,8 @@ args=(
   --repo-path "$REPO"
   --skills-root "$SKILLS_ROOT"
   --runtime "$RUNTIME"
-  --mode fake-model
+  --mode review
+  --model-enabled
   --output-dir "$OUT"
 )
 

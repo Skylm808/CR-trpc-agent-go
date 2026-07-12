@@ -48,6 +48,11 @@ type Conclusion struct {
 
 // Metrics 保存审查指标。
 type Metrics struct {
+	Mode                string         `json:"mode"`
+	SandboxRequested    bool           `json:"sandbox_requested"`
+	SandboxExecuted     bool           `json:"sandbox_executed"`
+	ModelRequested      bool           `json:"model_requested"`
+	ModelExecuted       bool           `json:"model_executed"`
 	TotalDurationMS     int64          `json:"total_duration_ms,omitempty"`
 	SandboxDurationMS   int64          `json:"sandbox_duration_ms,omitempty"`
 	ModelDurationMS     int64          `json:"model_duration_ms,omitempty"`

@@ -1,3 +1,5 @@
+//go:build scriptcontract
+
 package main
 
 import (

@@ -31,11 +31,21 @@ Not-tested limits.
 
 ## Quick Start
 
-Run the full unit/integration suite:
+Run the fast unit suite:
 
 ```bash
 GOCACHE=/private/tmp/cr-agent-gocache go test ./...
 ```
+
+Run real workspace/CLI integration tests separately:
+
+```bash
+GOCACHE=/private/tmp/cr-agent-gocache \
+go test -tags=integration -p 1 ./internal/agent ./cmd/review-agent ./scripts
+```
+
+The full fixture matrices are owned by `scripts/eval.sh` and
+`scripts/holdout_eval.sh`, so integration tests do not run them again.
 
 Run the local acceptance workflow:
 
@@ -50,7 +60,8 @@ go run ./cmd/review-agent --runtime local-fallback --output-dir /tmp/review-out
 ```
 
 When no input flag is provided, the CLI treats the current directory as
-`--repo-path .`. The default built-in mode is `rule-only`; it does not require an
+`--repo-path .`. The default built-in mode is `review` with both optional
+capabilities disabled; it does not require an
 API key.
 
 ## Config YAML
@@ -64,7 +75,7 @@ cp cr-agent.example.yaml cr-agent.yaml
 `cr-agent.yaml` is ignored by git. A minimal local config:
 
 ```yaml
-mode: rule-only
+mode: review
 runtime: local-fallback
 output_dir: .cr-agent/reports
 skills_root: skills
@@ -79,14 +90,15 @@ CLI flags > YAML > env/default
 
 ## DeepSeek / OpenAI-Compatible
 
-`fake-model` means "enter the model review stage." It does not always mean the
-provider is fake. If `model.provider=deepseek`, the review calls DeepSeek.
+`model.enabled` controls whether model review runs. `model.provider` only selects
+the provider implementation.
 
 Recommended DeepSeek config:
 
 ```yaml
-mode: fake-model
+mode: review
 model:
+  enabled: true
   provider: deepseek
   name: deepseek-chat
   api_key_env: DEEPSEEK_API_KEY
@@ -114,10 +126,12 @@ export OPENAI_BASE_URL="https://your-gateway.example.com/v1"
 
 | Mode | Behavior |
 |------|----------|
-| `rule-only` | Run deterministic Skill/rule checks. No model call. |
-| `dry-run` | Load the Skill and record skipped execution. |
-| `sandbox` | Run Skill checks plus Go checks through workspace execution. |
-| `fake-model` | Run Skill checks and then the model review stage. Uses fake provider unless a real provider is configured. |
+| `review` | Run deterministic Skill/rules and optionally enable sandbox and model capabilities. |
+| `dry-run` | Load the Skill and record skipped execution without entering an executor or model provider. |
+
+`review` supports rules only, rules+sandbox, rules+model, and rules+sandbox+model.
+Legacy `rule-only`, `sandbox`, and `fake-model` values remain accepted as aliases
+for the first three combinations.
 
 ## Outputs
 
@@ -133,6 +147,9 @@ After a real model run, `metrics` includes non-sensitive audit fields:
 - `model_provider`
 - `model_name`
 - `model_backend`
+- `mode`
+- `sandbox_requested` / `sandbox_executed`
+- `model_requested` / `model_executed`
 
 With `--sqlite /path/to/review.db`, the audit store can replay:
 
@@ -156,7 +173,9 @@ Common CLI flags:
 ```text
 --fixture        run a fixture from --fixtures-root
 --runtime        container, local-fallback, or e2b
---staticcheck    include staticcheck ./... in sandbox mode
+--sandbox        enable go test / go vet
+--model-enabled  enable model review
+--staticcheck    include staticcheck ./... in the sandbox capability
 ```
 
 `container` is the default production sandbox path. `local-fallback` is for
@@ -184,7 +203,7 @@ Docker container sandbox test:
 docker ps -a
 CR_AGENT_RUN_CONTAINER_TESTS=1 \
 GOCACHE=/private/tmp/cr-agent-gocache \
-go test ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
+go test -tags=integration ./internal/agent -run TestAgentRunContainerRuntimeExecutesGoChecks -count=1
 docker ps -a
 ```
 

@@ -8,13 +8,12 @@ import (
 )
 
 // configuredModelProvider 为本次运行选择可选 LLM 审查边界。
-func (a *Agent) configuredModelProvider(mode string) (llm.Provider, llm.Audit) {
+func (a *Agent) configuredModelProvider(enabled bool) (llm.Provider, llm.Audit) {
 	return llm.ConfiguredProvider(llm.ProviderSelectionConfig{
-		ModeFakeModel: ModeFakeModel,
-		Mode:          mode,
-		Custom:        a.modelProvider,
-		HTTP:          a.cfg.ModelHTTP,
-		OpenAI:        a.cfg.ModelOpenAI,
+		Enabled: enabled,
+		Custom:  a.modelProvider,
+		HTTP:    a.cfg.ModelHTTP,
+		OpenAI:  a.cfg.ModelOpenAI,
 	})
 }
 
